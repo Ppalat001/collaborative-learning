@@ -1,0 +1,92 @@
+[
+  {
+    "id": "scenario-01",
+    "order": 1,
+    "title": "Explaining a Concept",
+    "taskType": "explain",
+    "expectedDiscussionMinutes": 8,
+    "description": "Your group has been asked to explain how photosynthesis works to a younger student who only knows that plants are green. Work together to produce a clear explanation that avoids jargon but remains accurate.",
+    "promptForGroup": "Discuss how you would explain photosynthesis. What analogy or example might help? What details are essential vs. optional?"
+  },
+  {
+    "id": "scenario-02",
+    "order": 2,
+    "title": "Improving a Weak Answer",
+    "taskType": "expand_answer",
+    "expectedDiscussionMinutes": 7,
+    "description": "A student wrote: \"The Industrial Revolution happened because of steam engines.\" Your group must discuss what is incomplete or misleading about this answer and how to improve it.",
+    "promptForGroup": "Identify gaps in the answer. What causes, effects, or context are missing? Agree on how you would revise it."
+  },
+  {
+    "id": "scenario-03",
+    "order": 3,
+    "title": "Short Case Study",
+    "taskType": "case_study",
+    "expectedDiscussionMinutes": 10,
+    "description": "A local clinic wants to reduce missed appointments. They are considering reminder texts, a small cancellation fee, or longer booking windows. Your group must analyze the trade-offs and recommend one approach with justification.",
+    "promptForGroup": "Compare the three options. Who benefits and who might be harmed by each? What evidence or assumptions are you using?"
+  },
+  {
+    "id": "scenario-04",
+    "order": 4,
+    "title": "Making a Judgment Call",
+    "taskType": "judgment",
+    "expectedDiscussionMinutes": 8,
+    "description": "A team leader must decide whether to publish preliminary research findings before peer review because a competitor may release similar results soon. Discuss whether early publication is justified and under what conditions.",
+    "promptForGroup": "Weigh scientific integrity, competitive pressure, and public benefit. What criteria should guide the decision?"
+  },
+  {
+    "id": "scenario-05",
+    "order": 5,
+    "title": "Choosing Among Solutions",
+    "taskType": "solutions",
+    "expectedDiscussionMinutes": 9,
+    "description": "Your school has budget for one sustainability project: solar panels, a community garden, or a bike-share program. Choose one project and explain why it should be prioritized over the others.",
+    "promptForGroup": "Define what \"best\" means for your group (cost, impact, equity, etc.). Compare options using those criteria."
+  },
+  {
+    "id": "scenario-06",
+    "order": 6,
+    "title": "Reflecting on Learning",
+    "taskType": "reflection",
+    "expectedDiscussionMinutes": 6,
+    "description": "Reflect on a time when your group struggled to understand a new topic in class. Discuss what helped or hindered your learning and what you would do differently next time.",
+    "promptForGroup": "Share specific strategies that worked or failed. Connect your experience to how groups learn together."
+  },
+  {
+    "id": "scenario-07",
+    "order": 7,
+    "title": "Ethical Dilemma",
+    "taskType": "judgment",
+    "expectedDiscussionMinutes": 10,
+    "description": "An AI writing tool can help students draft essays faster, but some students use it to avoid learning writing skills. Should your institution allow unrestricted use, restrict it, or ban it? Defend your group's position.",
+    "promptForGroup": "Consider fairness, learning outcomes, and enforcement. Where do you draw the line between support and substitution?"
+  },
+  {
+    "id": "scenario-08",
+    "order": 8,
+    "title": "Data Interpretation",
+    "taskType": "case_study",
+    "expectedDiscussionMinutes": 8,
+    "description": "A survey shows 70% of students prefer online lectures, but only 40% pass the final exam in the online cohort vs. 65% in person. Your group must interpret these results and suggest what the data does and does not show.",
+    "promptForGroup": "Avoid jumping to conclusions. What alternative explanations exist? What additional data would you want?"
+  },
+  {
+    "id": "scenario-09",
+    "order": 9,
+    "title": "Designing a Process",
+    "taskType": "solutions",
+    "expectedDiscussionMinutes": 9,
+    "description": "Your group must design a fair process for dividing presentation topics among four members when everyone has different strengths and schedule constraints.",
+    "promptForGroup": "Propose a process that is transparent and equitable. How will you handle disagreement about workload?"
+  },
+  {
+    "id": "scenario-10",
+    "order": 10,
+    "title": "Synthesis and Recommendation",
+    "taskType": "reflection",
+    "expectedDiscussionMinutes": 10,
+    "description": "Looking back at collaborative learning in general, your group must write a short recommendation for teachers: one practice to encourage and one practice to avoid when using AI in group work.",
+    "promptForGroup": "Draw on your experience in this activity and prior group work. Be specific about why each practice matters."
+  }
+]

@@ -1,0 +1,124 @@
+{
+  "preTest": {
+    "title": "Pre-study knowledge check",
+    "description": "Answer these questions individually before your group begins. There are no wrong answers — this helps measure learning gains.",
+    "questions": [
+      {
+        "id": "pre-1",
+        "text": "What is collaborative learning?",
+        "options": [
+          "Working alone on the same assignment",
+          "Learning through joint engagement and shared responsibility among group members",
+          "Having an AI complete tasks for the group",
+          "Competing against other groups for the highest score"
+        ],
+        "correctIndex": 1
+      },
+      {
+        "id": "pre-2",
+        "text": "In educational scaffolding, the AI agent should primarily:",
+        "options": [
+          "Provide final answers so the group can move on quickly",
+          "Replace group discussion when members disagree",
+          "Support the group's thinking without taking over the task",
+          "Grade the group's work automatically"
+        ],
+        "correctIndex": 2
+      },
+      {
+        "id": "pre-3",
+        "text": "A guiding question from an AI tutor is meant to:",
+        "options": [
+          "State the correct answer directly",
+          "Prompt the group to reason further without giving the solution",
+          "Summarize the entire discussion",
+          "Split tasks among group members"
+        ],
+        "correctIndex": 1
+      },
+      {
+        "id": "pre-4",
+        "text": "When a group receives AI feedback on a draft answer, they should:",
+        "options": [
+          "Copy the AI text as their final answer",
+          "Use the feedback to revise their own reasoning together",
+          "Ignore it and submit the draft unchanged",
+          "Ask the AI for a full answer instead"
+        ],
+        "correctIndex": 1
+      },
+      {
+        "id": "pre-5",
+        "text": "Learner autonomy in AI-supported collaboration means:",
+        "options": [
+          "The AI decides what support the group needs",
+          "The group chooses when and what type of AI support to use",
+          "Students work without any group interaction",
+          "The researcher selects scaffolding for each scenario"
+        ],
+        "correctIndex": 1
+      }
+    ]
+  },
+  "postTest": {
+    "title": "Post-study knowledge check",
+    "description": "Answer these questions individually after completing all scenarios. Your responses help measure what you learned during the activity.",
+    "questions": [
+      {
+        "id": "post-1",
+        "text": "Which scaffolding type is best when a group has lost track of their discussion?",
+        "options": [
+          "Full expert answer",
+          "Summary of discussion",
+          "Task splitting",
+          "No assistance"
+        ],
+        "correctIndex": 1
+      },
+      {
+        "id": "post-2",
+        "text": "Why might providing a full expert answer be risky in collaborative learning?",
+        "options": [
+          "It takes too long to generate",
+          "It can reduce group reasoning and create over-reliance on AI",
+          "Groups cannot read long responses",
+          "It is never useful for comparison"
+        ],
+        "correctIndex": 1
+      },
+      {
+        "id": "post-3",
+        "text": "Conflict support scaffolding should help a group:",
+        "options": [
+          "Pick the majority opinion automatically",
+          "Compare ideas respectfully using shared criteria",
+          "End the discussion immediately",
+          "Remove dissenting members from the task"
+        ],
+        "correctIndex": 1
+      },
+      {
+        "id": "post-4",
+        "text": "Effective group collaboration with AI means:",
+        "options": [
+          "Letting AI autopilot while members watch",
+          "Using AI to support discussion while the group retains agency",
+          "Avoiding all AI support",
+          "Each member requesting different scaffolding types"
+        ],
+        "correctIndex": 1
+      },
+      {
+        "id": "post-5",
+        "text": "After receiving a hint or guiding question, a group should:",
+        "options": [
+          "Submit the AI text as their final answer",
+          "Build on the prompt through further discussion",
+          "Request full answer scaffolding next",
+          "Skip to the next scenario"
+        ],
+        "correctIndex": 1
+      }
+    ]
+  }
+}
