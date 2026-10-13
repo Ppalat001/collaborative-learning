@@ -3,7 +3,7 @@ import type { ScaffoldingType, Scenario } from "@/lib/types";
 export interface ScaffoldPromptContext {
   scenario: Scenario;
   discussionText: string;
-  draftAnswer?: string;
+  helpReason?: string;
 }
 
 const BASE_SYSTEM_PROMPT = `You are a learning support agent in a collaborative educational research study.
@@ -29,7 +29,7 @@ Focus on clarifying concepts, not resolving the dilemma for them.`,
 Do NOT apply the example directly as the answer to this scenario.
 Make clear it is an analogy, not the solution.`,
 
-  feedback: `Review the group's draft answer (if provided) and discussion.
+  feedback: `Review the ideas and answer the group has developed in its discussion so far.
 Name at least one strength and one or two specific areas to revise or deepen.
 Do NOT rewrite the full answer for them — guide improvement only.`,
 
@@ -53,7 +53,7 @@ Note that they should compare this to their own reasoning — not copy it.`,
 };
 
 function buildUserMessage(context: ScaffoldPromptContext): string {
-  const { scenario, discussionText, draftAnswer } = context;
+  const { scenario, discussionText, helpReason } = context;
   const parts = [
     `Scenario title: ${scenario.title}`,
     `Task type: ${scenario.taskType}`,
@@ -64,28 +64,11 @@ function buildUserMessage(context: ScaffoldPromptContext): string {
     discussionText.trim() || "(No discussion recorded yet)",
   ];
 
-  if (draftAnswer?.trim()) {
-    parts.push("", `Group draft answer:`, draftAnswer.trim());
+  if (helpReason?.trim()) {
+    parts.push("", `Why the group says it needs help: ${helpReason.trim()}`);
   }
 
   return parts.join("\n");
-}
-
-export function buildScaffoldMessages(context: ScaffoldPromptContext): {
-  system: string;
-  user: string;
-} {
-  const scaffoldingType = context.scenario
-    ? ("scaffoldingType" in context
-        ? (context as ScaffoldPromptContext & { scaffoldingType: ScaffoldingType })
-            .scaffoldingType
-        : null)
-    : null;
-
-  return {
-    system: BASE_SYSTEM_PROMPT,
-    user: buildUserMessage(context),
-  };
 }
 
 export function getScaffoldSystemPrompt(scaffoldingType: ScaffoldingType): string {

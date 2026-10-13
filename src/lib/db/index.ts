@@ -5,7 +5,7 @@ import path from "path";
 import * as schema from "./schema";
 
 const dbPath =
-  process.env.DATABASE_URL?.replace("file:", "") ??
+  process.env.DATABASE_URL?.replace(/^file:/, "") ||
   path.join(process.cwd(), "data", "research.db");
 
 const dir = path.dirname(dbPath);

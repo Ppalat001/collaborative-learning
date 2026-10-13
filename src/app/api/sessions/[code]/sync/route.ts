@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import {
+  getParticipantInSession,
   getSessionByCode,
-  saveSurvey,
-  updateAttemptDiscussion,
+  updateAttemptFields,
+  type EditBatch,
 } from "@/lib/services/sessions";
 import { getRoomState } from "@/lib/socket";
+import { SHARED_FIELDS, isSharedField, type SharedField } from "@/lib/instruments";
+
+const MAX_INSERTED_TEXT = 5000;
 
 export async function GET(
   request: Request,
@@ -28,6 +32,26 @@ export async function GET(
   }
 }
 
+function parseFields(source: Record<string, unknown>) {
+  const fields: Partial<Record<SharedField, string>> = {};
+  for (const field of SHARED_FIELDS) {
+    if (typeof source[field] === "string") fields[field] = source[field] as string;
+  }
+  return fields;
+}
+
+function parseEdits(value: unknown): EditBatch[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((edit) => edit && isSharedField(String(edit.field)))
+    .map((edit) => ({
+      field: edit.field as SharedField,
+      charsAdded: Math.max(0, Math.floor(Number(edit.charsAdded) || 0)),
+      charsRemoved: Math.max(0, Math.floor(Number(edit.charsRemoved) || 0)),
+      insertedText: String(edit.insertedText ?? "").slice(0, MAX_INSERTED_TEXT),
+    }));
+}
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ code: string }> }
@@ -36,15 +60,23 @@ export async function POST(
     const { code } = await params;
     const body = await request.json();
     const scenarioOrder = Number(body.scenarioOrder ?? 1);
-    const discussionText = String(body.discussionText ?? "");
-    const draftAnswer = String(body.draftAnswer ?? "");
 
     const session = await getSessionByCode(code);
     if (!session) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
 
-    await updateAttemptDiscussion(session.id, scenarioOrder, discussionText, draftAnswer);
+    const participant = await getParticipantInSession(session.id, body.participantId);
+    const fields = parseFields(body.fields ?? body);
+    const edits = parseEdits(body.edits);
+
+    await updateAttemptFields(
+      session.id,
+      scenarioOrder,
+      fields,
+      edits,
+      participant?.id ?? null
+    );
 
     return NextResponse.json({ ok: true });
   } catch (error) {

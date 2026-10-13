@@ -4,6 +4,8 @@ import { generateAnonymousId, generateSessionCode } from "@/lib/utils/codes";
 import { nowIso } from "@/lib/utils/dates";
 import { getScenarioByOrder, getScenarios } from "@/lib/utils/scenarios";
 import { logResearchEvent } from "@/lib/utils/export";
+import type { SharedField, SurveyRatingKey } from "@/lib/instruments";
+import type { DiscussionMessage } from "@/lib/types";
 
 export async function createSession() {
   const code = generateSessionCode();
@@ -125,22 +127,127 @@ export async function getOrCreateAttempt(sessionId: string, scenarioOrder: numbe
   return attempt;
 }
 
-export async function updateAttemptDiscussion(
+export async function getParticipantInSession(
+  sessionId: string,
+  participantId: string | null | undefined
+) {
+  if (!participantId) return null;
+  const [participant] = await db
+    .select()
+    .from(schema.participants)
+    .where(
+      and(
+        eq(schema.participants.id, participantId),
+        eq(schema.participants.sessionId, sessionId)
+      )
+    )
+    .limit(1);
+  return participant ?? null;
+}
+
+async function getSessionMembers(sessionId: string) {
+  return db
+    .select()
+    .from(schema.participants)
+    .where(eq(schema.participants.sessionId, sessionId))
+    .orderBy(asc(schema.participants.joinedAt));
+}
+
+function toDiscussionMessage(
+  message: typeof schema.discussionMessages.$inferSelect,
+  members: (typeof schema.participants.$inferSelect)[]
+): DiscussionMessage {
+  const index = members.findIndex((m) => m.id === message.participantId);
+  return {
+    id: message.id,
+    participantId: message.participantId,
+    authorName: index >= 0 ? members[index].displayName : "Unknown",
+    colorIndex: index >= 0 ? index : -1,
+    text: message.text,
+    createdAt: message.createdAt,
+  };
+}
+
+export async function getDiscussionMessages(
+  sessionId: string,
+  scenarioOrder: number
+): Promise<DiscussionMessage[]> {
+  const [messages, members] = await Promise.all([
+    db
+      .select()
+      .from(schema.discussionMessages)
+      .where(
+        and(
+          eq(schema.discussionMessages.sessionId, sessionId),
+          eq(schema.discussionMessages.scenarioOrder, scenarioOrder)
+        )
+      )
+      .orderBy(asc(schema.discussionMessages.createdAt)),
+    getSessionMembers(sessionId),
+  ]);
+  return messages.map((message) => toDiscussionMessage(message, members));
+}
+
+export function formatTranscript(messages: DiscussionMessage[]): string {
+  return messages.map((m) => `${m.authorName}: ${m.text}`).join("\n");
+}
+
+export async function addDiscussionMessage(
   sessionId: string,
   scenarioOrder: number,
-  discussionText: string,
-  draftAnswer: string
+  participantId: string,
+  text: string
+): Promise<DiscussionMessage | null> {
+  const attempt = await getOrCreateAttempt(sessionId, scenarioOrder);
+  if (attempt.submitted) return null;
+
+  const [message] = await db
+    .insert(schema.discussionMessages)
+    .values({ sessionId, participantId, scenarioOrder, text })
+    .returning();
+
+  return toDiscussionMessage(message, await getSessionMembers(sessionId));
+}
+
+export interface EditBatch {
+  field: SharedField;
+  charsAdded: number;
+  charsRemoved: number;
+  insertedText: string;
+}
+
+export async function updateAttemptFields(
+  sessionId: string,
+  scenarioOrder: number,
+  fields: Partial<Record<SharedField, string>>,
+  edits: EditBatch[],
+  participantId: string | null
 ) {
   const attempt = await getOrCreateAttempt(sessionId, scenarioOrder);
+  if (attempt.submitted) return attempt;
+
   const [updated] = await db
     .update(schema.scenarioAttempts)
-    .set({
-      discussionText,
-      draftAnswer,
-      updatedAt: nowIso(),
-    })
+    .set({ ...fields, updatedAt: nowIso() })
     .where(eq(schema.scenarioAttempts.id, attempt.id))
     .returning();
+
+  const meaningfulEdits = edits.filter(
+    (edit) => edit.charsAdded > 0 || edit.charsRemoved > 0
+  );
+  if (meaningfulEdits.length > 0) {
+    await db.insert(schema.editEvents).values(
+      meaningfulEdits.map((edit) => ({
+        sessionId,
+        participantId,
+        scenarioOrder,
+        field: edit.field,
+        charsAdded: edit.charsAdded,
+        charsRemoved: edit.charsRemoved,
+        insertedText: edit.insertedText,
+      }))
+    );
+  }
 
   return updated;
 }
@@ -148,7 +255,9 @@ export async function updateAttemptDiscussion(
 export async function submitFinalAnswer(
   sessionId: string,
   scenarioOrder: number,
-  finalAnswer: string
+  finalAnswer: string,
+  ownWordsExplanation: string,
+  participantId: string | null
 ) {
   const attempt = await getOrCreateAttempt(sessionId, scenarioOrder);
   const scenarios = getScenarios();
@@ -158,6 +267,8 @@ export async function submitFinalAnswer(
     .update(schema.scenarioAttempts)
     .set({
       finalAnswer: finalAnswer.trim(),
+      ownWordsExplanation: ownWordsExplanation.trim(),
+      submittedBy: participantId,
       finalAnswerAt: nowIso(),
       submitted: true,
       updatedAt: nowIso(),
@@ -177,41 +288,102 @@ export async function submitFinalAnswer(
       .where(eq(schema.sessions.id, sessionId));
   }
 
-  await logResearchEvent(sessionId, "final_answer_submitted", {
-    scenarioOrder,
-    finalAnswerLength: finalAnswer.trim().length,
-  });
+  await logResearchEvent(
+    sessionId,
+    "final_answer_submitted",
+    {
+      scenarioOrder,
+      finalAnswerLength: finalAnswer.trim().length,
+    },
+    participantId ?? undefined
+  );
 
   return updated;
 }
 
+export async function getParticipantSurvey(
+  sessionId: string,
+  scenarioId: string,
+  participantId: string
+) {
+  const [survey] = await db
+    .select()
+    .from(schema.surveys)
+    .where(
+      and(
+        eq(schema.surveys.sessionId, sessionId),
+        eq(schema.surveys.scenarioId, scenarioId),
+        eq(schema.surveys.participantId, participantId)
+      )
+    )
+    .limit(1);
+  return survey ?? null;
+}
+
+export type SurveyRatings = Partial<Record<SurveyRatingKey, number | null>> & {
+  supportAmount: string | null;
+  openReflection?: string;
+};
+
 export async function saveSurvey(
   sessionId: string,
   scenarioId: string,
-  ratings: {
-    autonomyRating: number;
-    satisfactionRating: number;
-    collaborationRating: number;
-    perceivedHelpfulness: number;
-    openReflection?: string;
-  }
+  participantId: string,
+  ratings: SurveyRatings
 ) {
+  const existing = await getParticipantSurvey(sessionId, scenarioId, participantId);
+  if (existing) return existing;
+
   const [survey] = await db
     .insert(schema.surveys)
     .values({
       sessionId,
       scenarioId,
+      participantId,
       ...ratings,
       openReflection: ratings.openReflection?.trim() || null,
     })
     .returning();
 
-  await logResearchEvent(sessionId, "survey_submitted", {
-    scenarioId,
-    ...ratings,
-  });
+  await logResearchEvent(
+    sessionId,
+    "survey_submitted",
+    { scenarioId, ...ratings },
+    participantId
+  );
 
   return survey;
+}
+
+export async function getFinalReflection(sessionId: string, participantId: string) {
+  const [reflection] = await db
+    .select()
+    .from(schema.finalReflections)
+    .where(
+      and(
+        eq(schema.finalReflections.sessionId, sessionId),
+        eq(schema.finalReflections.participantId, participantId)
+      )
+    )
+    .limit(1);
+  return reflection ?? null;
+}
+
+export async function saveFinalReflection(
+  sessionId: string,
+  participantId: string,
+  answers: Record<string, string>
+) {
+  const existing = await getFinalReflection(sessionId, participantId);
+  if (existing) return existing;
+
+  const [reflection] = await db
+    .insert(schema.finalReflections)
+    .values({ sessionId, participantId, answers })
+    .returning();
+
+  await logResearchEvent(sessionId, "final_reflection_submitted", undefined, participantId);
+  return reflection;
 }
 
 export async function saveAssessment(

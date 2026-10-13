@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AssessmentForm } from "@/components/AssessmentForm";
+import { useStoredParticipant } from "@/hooks/useStoredParticipant";
 import { getAssessment } from "@/lib/utils/assessment";
 
 interface SessionInfo {
@@ -28,13 +29,9 @@ export default function SessionLobbyPage() {
   const [totalScenarios, setTotalScenarios] = useState(10);
   const [loading, setLoading] = useState(true);
   const [consentChecked, setConsentChecked] = useState(false);
-  const [participantId, setParticipantId] = useState<string | null>(null);
+  const participantId = useStoredParticipant().id;
   const [preTestCompleted, setPreTestCompleted] = useState(false);
   const preTest = getAssessment("pre");
-
-  useEffect(() => {
-    setParticipantId(localStorage.getItem("participantId"));
-  }, []);
 
   useEffect(() => {
     async function load() {

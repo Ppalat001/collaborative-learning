@@ -1,40 +1,23 @@
 import { NextResponse } from "next/server";
-import {
-  assessmentRowsToCsv,
-  buildAssessmentExportRows,
-  buildExportRows,
-  rowsToCsv,
-} from "@/lib/utils/export";
+import { isAdminRequest } from "@/lib/utils/admin";
+import { EXPORT_BUILDERS, isExportType, toCsv } from "@/lib/utils/export";
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const password = searchParams.get("password");
-  const type = searchParams.get("type");
-  const adminPassword = process.env.ADMIN_PASSWORD ?? "research-admin";
-
-  if (password !== adminPassword) {
+  if (!isAdminRequest(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const type = new URL(request.url).searchParams.get("type") ?? "scenarios";
+  if (!isExportType(type)) {
+    return NextResponse.json({ error: "Unknown export type" }, { status: 400 });
+  }
+
   try {
-    if (type === "assessments") {
-      const rows = await buildAssessmentExportRows();
-      const csv = assessmentRowsToCsv(rows);
-      return new NextResponse(csv, {
-        headers: {
-          "Content-Type": "text/csv",
-          "Content-Disposition": `attachment; filename="assessments-export-${Date.now()}.csv"`,
-        },
-      });
-    }
-
-    const rows = await buildExportRows();
-    const csv = rowsToCsv(rows);
-
-    return new NextResponse(csv, {
+    const { columns, rows } = await EXPORT_BUILDERS[type]();
+    return new NextResponse(toCsv(columns, rows), {
       headers: {
         "Content-Type": "text/csv",
-        "Content-Disposition": `attachment; filename="research-export-${Date.now()}.csv"`,
+        "Content-Disposition": `attachment; filename="${type}-export-${Date.now()}.csv"`,
       },
     });
   } catch (error) {

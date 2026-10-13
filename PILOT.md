@@ -34,7 +34,7 @@ Use this checklist before running your full dissertation study.
 
 ### After each scenario
 
-- Confirm survey ratings are submitted
+- Confirm **every** student submitted their own rating (not only the one who submitted the answer)
 - Check that data appears in CSV export
 
 ## What to tune after pilot
@@ -55,17 +55,20 @@ npm run pilot:test
 
 Expected output: `Pilot test PASSED`
 
-This validates: session creation, join, consent, discussion sync, scaffolding, final answer, survey, and CSV export.
+This validates: session creation, join, consent, group chat (names, colours, before/after AI split), scaffolding, final answer, survey, and CSV export.
 
 ## Data to verify in export
 
 After a pilot group completes at least one scenario, export CSV and confirm:
 
 - `session_code` matches room code
-- `scaffolding_type` matches what the group chose
-- `discussion_text` and `final_answer` are populated
+- `scaffolding_type` and `help_reason` match what the group chose
+- `discussion_before_ai` contains the chat up to the AI request, and `final_answer` is populated
+- The chat log export shows every message, with `sent_before_ai` set to yes or no
 - `time_before_ai_seconds` is calculated
-- Survey ratings appear when submitted
+- The ratings export has one row per student per scenario
+- The contributions export shows every student, including those who typed nothing
+- Delete `data/research.db` after piloting so test sessions don't mix with study data
 
 ## Recommended pilot sample
 

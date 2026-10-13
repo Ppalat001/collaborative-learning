@@ -2,10 +2,14 @@
   "name": "collaborative-learning",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20.9.0"
+  },
   "scripts": {
     "dev": "npm run db:push && tsx watch server.ts",
     "build": "next build",
     "start": "npm run db:push && tsx server.ts",
+    "start:prod": "npm run db:push && NODE_ENV=production tsx server.ts",
     "lint": "eslint",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
@@ -14,6 +18,7 @@
   },
   "dependencies": {
     "better-sqlite3": "^12.10.0",
+    "drizzle-kit": "^0.31.10",
     "drizzle-orm": "^0.45.2",
     "nanoid": "^5.1.11",
     "next": "16.2.7",
@@ -23,6 +28,7 @@
     "react-dom": "19.2.4",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
+    "tsx": "^4.22.4",
     "uuid": "^14.0.0"
   },
   "devDependencies": {
@@ -32,11 +38,9 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/uuid": "^10.0.0",
-    "drizzle-kit": "^0.31.10",
     "eslint": "^9",
     "eslint-config-next": "16.2.7",
     "tailwindcss": "^4",
-    "tsx": "^4.22.4",
     "typescript": "^5"
   }
 }

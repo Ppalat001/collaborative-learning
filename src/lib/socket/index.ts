@@ -1,22 +1,33 @@
 import type { Server as SocketServer } from "socket.io";
 
+import { isSharedField, type SharedField } from "@/lib/instruments";
 import type { ScaffoldingType } from "@/lib/types";
 
-export interface RoomDiscussionState {
-  discussionText: string;
-  draftAnswer: string;
+/**
+ * Only holds fields edited since the server started. Fields missing here are
+ * left to the client's database copy, so a restart cannot blank them out.
+ */
+export interface RoomFieldState {
+  fields: Partial<Record<SharedField, string>>;
   updatedAt: string;
   updatedBy?: string;
 }
 
 export interface RoomScaffoldingState {
   scaffoldingType: ScaffoldingType;
+  helpReason: string;
   aiResponse: string;
   requestedBy: string;
   updatedAt: string;
 }
 
-const roomState = new Map<string, RoomDiscussionState>();
+export interface RoomSubmissionState {
+  finalAnswer: string;
+  ownWordsExplanation: string;
+  submittedBy: string;
+}
+
+const roomState = new Map<string, RoomFieldState>();
 const scaffoldingState = new Map<string, RoomScaffoldingState>();
 
 function roomKey(sessionCode: string, scenarioOrder: number): string {
@@ -26,28 +37,23 @@ function roomKey(sessionCode: string, scenarioOrder: number): string {
 export function getRoomState(
   sessionCode: string,
   scenarioOrder: number
-): RoomDiscussionState {
-  const key = roomKey(sessionCode, scenarioOrder);
-  return (
-    roomState.get(key) ?? {
-      discussionText: "",
-      draftAnswer: "",
-      updatedAt: new Date().toISOString(),
-    }
-  );
+): RoomFieldState | null {
+  return roomState.get(roomKey(sessionCode, scenarioOrder)) ?? null;
 }
 
-export function setRoomState(
+function setRoomField(
   sessionCode: string,
   scenarioOrder: number,
-  state: Partial<RoomDiscussionState>
+  field: SharedField,
+  value: string,
+  updatedBy: string
 ) {
   const key = roomKey(sessionCode, scenarioOrder);
-  const current = getRoomState(sessionCode, scenarioOrder);
+  const current = roomState.get(key);
   roomState.set(key, {
-    ...current,
-    ...state,
+    fields: { ...current?.fields, [field]: value },
     updatedAt: new Date().toISOString(),
+    updatedBy,
   });
 }
 
@@ -56,14 +62,6 @@ export function getScaffoldingState(
   scenarioOrder: number
 ): RoomScaffoldingState | null {
   return scaffoldingState.get(roomKey(sessionCode, scenarioOrder)) ?? null;
-}
-
-export function setScaffoldingState(
-  sessionCode: string,
-  scenarioOrder: number,
-  state: RoomScaffoldingState
-) {
-  scaffoldingState.set(roomKey(sessionCode, scenarioOrder), state);
 }
 
 export function initSocketHandlers(io: SocketServer) {
@@ -83,12 +81,37 @@ export function initSocketHandlers(io: SocketServer) {
           participantCount: io.sockets.adapter.rooms.get(room)?.size ?? 1,
         });
 
-        socket.emit("discussion:state", getRoomState(sessionCode, scenarioOrder));
+        const state = getRoomState(sessionCode, scenarioOrder);
+        if (state) socket.emit("room:state", state);
 
         const scaffold = getScaffoldingState(sessionCode, scenarioOrder);
-        if (scaffold) {
-          socket.emit("scaffolding:state", scaffold);
-        }
+        if (scaffold) socket.emit("scaffolding:state", scaffold);
+      }
+    );
+
+    socket.on(
+      "field:update",
+      (payload: {
+        sessionCode: string;
+        scenarioOrder: number;
+        field: string;
+        value: string;
+        updatedBy: string;
+      }) => {
+        const { sessionCode, scenarioOrder, field, value, updatedBy } = payload;
+        if (!isSharedField(field) || typeof value !== "string") return;
+        setRoomField(sessionCode, scenarioOrder, field, value, updatedBy);
+        socket
+          .to(roomKey(sessionCode, scenarioOrder))
+          .emit("field:state", { field, value, updatedBy });
+      }
+    );
+
+    socket.on(
+      "chat:message",
+      (payload: { sessionCode: string; scenarioOrder: number; message: unknown }) => {
+        const { sessionCode, scenarioOrder, message } = payload;
+        socket.to(roomKey(sessionCode, scenarioOrder)).emit("chat:message", message);
       }
     );
 
@@ -98,43 +121,25 @@ export function initSocketHandlers(io: SocketServer) {
         sessionCode: string;
         scenarioOrder: number;
         scaffoldingType: ScaffoldingType;
+        helpReason: string;
         aiResponse: string;
         requestedBy: string;
       }) => {
-        const { sessionCode, scenarioOrder, scaffoldingType, aiResponse, requestedBy } =
-          payload;
-        const room = roomKey(sessionCode, scenarioOrder);
+        const { sessionCode, scenarioOrder, ...rest } = payload;
         const state: RoomScaffoldingState = {
-          scaffoldingType,
-          aiResponse,
-          requestedBy,
+          ...rest,
           updatedAt: new Date().toISOString(),
         };
-        setScaffoldingState(sessionCode, scenarioOrder, state);
-        socket.to(room).emit("scaffolding:state", state);
+        scaffoldingState.set(roomKey(sessionCode, scenarioOrder), state);
+        socket.to(roomKey(sessionCode, scenarioOrder)).emit("scaffolding:state", state);
       }
     );
 
     socket.on(
-      "discussion:update",
-      (payload: {
-        sessionCode: string;
-        scenarioOrder: number;
-        discussionText: string;
-        draftAnswer: string;
-        updatedBy: string;
-      }) => {
-        const { sessionCode, scenarioOrder, discussionText, draftAnswer, updatedBy } =
-          payload;
-        const room = roomKey(sessionCode, scenarioOrder);
-        const state: RoomDiscussionState = {
-          discussionText,
-          draftAnswer,
-          updatedAt: new Date().toISOString(),
-          updatedBy,
-        };
-        setRoomState(sessionCode, scenarioOrder, state);
-        socket.to(room).emit("discussion:state", state);
+      "scenario:submitted",
+      (payload: RoomSubmissionState & { sessionCode: string; scenarioOrder: number }) => {
+        const { sessionCode, scenarioOrder, ...submission } = payload;
+        socket.to(roomKey(sessionCode, scenarioOrder)).emit("scenario:submitted", submission);
       }
     );
 

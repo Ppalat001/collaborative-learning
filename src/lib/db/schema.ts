@@ -31,15 +31,27 @@ export const scenarioAttempts = sqliteTable("scenario_attempts", {
     .references(() => sessions.id, { onDelete: "cascade" }),
   scenarioId: text("scenario_id").notNull(),
   scenarioOrder: integer("scenario_order").notNull(),
+  /** Chat transcript as sent to the AI, captured at the moment support was requested. */
   discussionText: text("discussion_text").notNull().default(""),
+  /** No longer collected; kept so existing databases don't need a destructive migration. */
   draftAnswer: text("draft_answer").notNull().default(""),
+  helpReason: text("help_reason"),
   scaffoldingType: text("scaffolding_type"),
+  scaffoldingRequestedBy: text("scaffolding_requested_by").references(
+    () => participants.id,
+    { onDelete: "set null" }
+  ),
   aiResponse: text("ai_response"),
   aiPromptSystem: text("ai_prompt_system"),
   aiPromptUser: text("ai_prompt_user"),
   aiModel: text("ai_model"),
   aiLatencyMs: integer("ai_latency_ms"),
+  /** Required only after a full answer, so the group restates it in their own words. */
+  ownWordsExplanation: text("own_words_explanation").notNull().default(""),
   finalAnswer: text("final_answer").notNull().default(""),
+  submittedBy: text("submitted_by").references(() => participants.id, {
+    onDelete: "set null",
+  }),
   discussionStartedAt: text("discussion_started_at"),
   scaffoldingRequestedAt: text("scaffolding_requested_at"),
   aiResponseAt: text("ai_response_at"),
@@ -62,18 +74,92 @@ export const researchEvents = sqliteTable("research_events", {
   createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
 });
 
+/** One row per participant per scenario. AI-specific items are null when no AI was used. */
 export const surveys = sqliteTable("surveys", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   sessionId: text("session_id")
     .notNull()
     .references(() => sessions.id, { onDelete: "cascade" }),
+  participantId: text("participant_id").references(() => participants.id, {
+    onDelete: "set null",
+  }),
   scenarioId: text("scenario_id").notNull(),
-  autonomyRating: integer("autonomy_rating"),
-  satisfactionRating: integer("satisfaction_rating"),
-  collaborationRating: integer("collaboration_rating"),
   perceivedHelpfulness: integer("perceived_helpfulness"),
+  supportAmount: text("support_amount"),
+  aiHelpedDiscussion: integer("ai_helped_discussion"),
+  aiHelpedFocus: integer("ai_helped_focus"),
+  aiHelpedInclusion: integer("ai_helped_inclusion"),
+  aiHelpedDisagreement: integer("ai_helped_disagreement"),
+  collaborationRating: integer("collaboration_rating"),
+  sharedAnswerRating: integer("shared_answer_rating"),
+  autonomyRating: integer("autonomy_rating"),
+  aiHelpedThinking: integer("ai_helped_thinking"),
+  overRelianceRating: integer("over_reliance_rating"),
+  couldAnswerWithoutAi: integer("could_answer_without_ai"),
+  satisfactionRating: integer("satisfaction_rating"),
   openReflection: text("open_reflection"),
   createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+export const discussionMessages = sqliteTable("discussion_messages", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  sessionId: text("session_id")
+    .notNull()
+    .references(() => sessions.id, { onDelete: "cascade" }),
+  participantId: text("participant_id").references(() => participants.id, {
+    onDelete: "set null",
+  }),
+  scenarioOrder: integer("scenario_order").notNull(),
+  text: text("text").notNull(),
+  createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+/** Each batch of typing by one participant in one shared box. */
+export const editEvents = sqliteTable("edit_events", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  sessionId: text("session_id")
+    .notNull()
+    .references(() => sessions.id, { onDelete: "cascade" }),
+  participantId: text("participant_id").references(() => participants.id, {
+    onDelete: "set null",
+  }),
+  scenarioOrder: integer("scenario_order").notNull(),
+  field: text("field").notNull(),
+  charsAdded: integer("chars_added").notNull(),
+  charsRemoved: integer("chars_removed").notNull(),
+  insertedText: text("inserted_text").notNull().default(""),
+  createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+export const finalReflections = sqliteTable("final_reflections", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  sessionId: text("session_id")
+    .notNull()
+    .references(() => sessions.id, { onDelete: "cascade" }),
+  participantId: text("participant_id").references(() => participants.id, {
+    onDelete: "set null",
+  }),
+  answers: text("answers", { mode: "json" }).$type<Record<string, string>>(),
+  createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+/** Researcher-scored quality of a group's final answer. */
+export const rubricScores = sqliteTable("rubric_scores", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  attemptId: text("attempt_id")
+    .notNull()
+    .references(() => scenarioAttempts.id, { onDelete: "cascade" }),
+  answerType: text("answer_type").notNull(),
+  rater: text("rater").notNull(),
+  correctness: integer("correctness").notNull(),
+  clarity: integer("clarity").notNull(),
+  reasoning: integer("reasoning").notNull(),
+  completeness: integer("completeness").notNull(),
+  useOfExamples: integer("use_of_examples").notNull(),
+  depth: integer("depth").notNull(),
+  notes: text("notes"),
+  createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
+  updatedAt: text("updated_at").notNull().$defaultFn(() => new Date().toISOString()),
 });
 
 export const assessments = sqliteTable("assessments", {

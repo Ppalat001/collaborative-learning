@@ -55,19 +55,31 @@ Open [http://localhost:3000](http://localhost:3000)
 4. Each participant completes the **pre-test** individually
 5. For each scenario:
    - Read the task
-   - Discuss together (live sync)
-   - Choose one scaffolding type
+   - Discuss together in a live group chat (each message shows the student's name, time and their own colour, and is logged under their anonymous ID)
+   - If the group wants AI help: say why the group needs help, then choose one scaffolding type
    - Review AI response (synced to all devices)
-   - Submit final group answer
-   - Complete brief survey with optional open reflection
-6. Each participant completes the **post-test**
-7. Researcher exports CSV from `/admin` (scenario data + pre/post scores)
+   - After a full answer only: explain the AI answer in their own words (15+ words)
+   - Write and submit the shared final answer
+   - **Every** student completes the scenario rating on their own device
+6. Each participant completes the **post-test** and short end-of-study open questions
+7. Researcher scores the final answers with the rubric and exports CSVs from `/admin`
 
 ## Research data export
 
-Visit `/admin`, enter the admin password (default: `research-admin`), and download CSV.
+Visit `/admin` and enter the admin password (`ADMIN_PASSWORD`; locally defaults to `research-admin`, required in production). Exports:
 
-Columns include: session code, scenario, scaffolding type, discussion text, AI response, final answer, timing metrics, and survey ratings.
+| Export | One row per |
+|---|---|
+| Group answers per scenario | group × scenario (chat before and after AI, help reason, support level, final answer, overlap with AI text, participation balance, rubric mean) |
+| Individual scenario ratings | student × scenario |
+| Individual contributions | student × scenario |
+| Discussion chat log | chat message (marked as sent before or after the AI request) |
+| Raw edit log | batch of typing |
+| End-of-study open answers | student |
+| Rubric scores | answer × rater |
+| Pre/post-test scores | student × test |
+
+Research instruments (help reasons, survey items, end-of-study questions, rubric criteria) are defined in `src/lib/instruments.ts`.
 
 ## Pilot testing
 
@@ -102,6 +114,19 @@ src/
 server.ts             # Custom server with WebSocket support
 ```
 
-## Deployment notes
+## Deployment (Railway)
 
-Deploy to Railway, Render, or similar (requires persistent PostgreSQL and a Node process for WebSocket support). Vercel serverless alone does not support the integrated Socket.io server — use a platform that runs `server.ts`.
+The app needs a long-running Node process (for Socket.io) and a persistent disk (for SQLite), so serverless hosts like Vercel or Netlify will not work. `railway.json` configures the build (`npm run build`) and start (`npm run start:prod`) commands.
+
+1. Push the repo to GitHub, then in Railway: **New Project → Deploy from GitHub repo**.
+2. Add a **Volume** to the service, mounted at `/data`.
+3. Set **Variables**:
+   - `DATABASE_URL=file:/data/research.db`
+   - `ADMIN_PASSWORD=<strong password>` (admin exports are disabled in production without it)
+   - `OPENAI_API_KEY=<key>` (optional; mock AI otherwise)
+4. **Settings → Networking**: generate a Railway domain or add your custom domain and create the DNS record Railway shows.
+5. Keep the service at **1 replica**: live room state and Socket.io rooms are held in memory.
+
+Avoid redeploying during a live study session: connected clients reconnect automatically and saved data is kept, but in-progress live state is reset.
+
+Locally nothing changes: `npm run dev` (or `npm run build && npm start`) uses `./data/research.db` and binds to `127.0.0.1:3000`.
