@@ -124,6 +124,8 @@ The app needs a long-running Node process (for Socket.io) and a persistent disk 
    - `DATABASE_URL=file:/data/research.db`
    - `ADMIN_PASSWORD=<strong password>` (admin exports are disabled in production without it)
    - `OPENAI_API_KEY=<key>` (optional; mock AI otherwise)
+   - `OPENAI_MODEL=<model>` (optional; defaults to `gpt-4o-mini`)
+   - `OPENAI_BASE_URL=<url>` (optional; for OpenAI-compatible providers such as OpenRouter or Groq)
 4. **Settings → Networking**: generate a Railway domain or add your custom domain and create the DNS record Railway shows.
 5. Keep the service at **1 replica**: live room state and Socket.io rooms are held in memory.
 

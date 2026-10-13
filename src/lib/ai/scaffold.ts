@@ -37,7 +37,7 @@ export async function generateScaffoldResponse(
     };
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
     return {
       response: getMockScaffoldResponse(scaffoldingType, scenario),
@@ -49,8 +49,10 @@ export async function generateScaffoldResponse(
     };
   }
 
-  const client = new OpenAI({ apiKey });
-  const model = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
+  // Any OpenAI-compatible provider (OpenRouter, Gemini, Groq) works via OPENAI_BASE_URL.
+  const baseURL = process.env.OPENAI_BASE_URL?.trim() || undefined;
+  const client = new OpenAI({ apiKey, baseURL });
+  const model = process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
   const start = Date.now();
 
   const completion = await client.chat.completions.create({
