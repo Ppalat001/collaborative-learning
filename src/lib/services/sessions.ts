@@ -5,7 +5,7 @@ import { nowIso } from "@/lib/utils/dates";
 import { getScenarioByOrder, getScenarios } from "@/lib/utils/scenarios";
 import { logResearchEvent } from "@/lib/utils/export";
 import type { SharedField, SurveyRatingKey } from "@/lib/instruments";
-import type { DiscussionMessage } from "@/lib/types";
+import type { DiscussionMessage, ScaffoldProposal, ScaffoldingType } from "@/lib/types";
 
 export async function createSession() {
   const code = generateSessionCode();
@@ -145,7 +145,7 @@ export async function getParticipantInSession(
   return participant ?? null;
 }
 
-async function getSessionMembers(sessionId: string) {
+export async function getSessionMembers(sessionId: string) {
   return db
     .select()
     .from(schema.participants)
@@ -207,6 +207,213 @@ export async function addDiscussionMessage(
     .returning();
 
   return toDiscussionMessage(message, await getSessionMembers(sessionId));
+}
+
+type Member = typeof schema.participants.$inferSelect;
+type ProposalRow = typeof schema.scaffoldProposals.$inferSelect;
+
+export function memberName(members: Member[], participantId: string | null): string {
+  return members.find((m) => m.id === participantId)?.displayName ?? "Unknown";
+}
+
+function toProposal(row: ProposalRow, members: Member[]): ScaffoldProposal {
+  return {
+    id: row.id,
+    proposedById: row.proposedBy,
+    proposedByName: memberName(members, row.proposedBy),
+    helpReason: row.helpReason,
+    scaffoldingType: row.scaffoldingType as ScaffoldingType,
+    createdAt: row.createdAt,
+  };
+}
+
+const pendingProposalWhere = (sessionId: string, scenarioOrder: number) =>
+  and(
+    eq(schema.scaffoldProposals.sessionId, sessionId),
+    eq(schema.scaffoldProposals.scenarioOrder, scenarioOrder),
+    eq(schema.scaffoldProposals.status, "pending")
+  );
+
+export async function getPendingProposal(
+  sessionId: string,
+  scenarioOrder: number
+): Promise<ScaffoldProposal | null> {
+  const [[row], members] = await Promise.all([
+    db
+      .select()
+      .from(schema.scaffoldProposals)
+      .where(pendingProposalWhere(sessionId, scenarioOrder))
+      .limit(1),
+    getSessionMembers(sessionId),
+  ]);
+  return row ? toProposal(row, members) : null;
+}
+
+type ProposalResult<T> = { ok: true; value: T } | { ok: false; error: string; status: number };
+
+/**
+ * The check-and-write blocks below run as synchronous better-sqlite3
+ * transactions, so two members clicking at the same moment cannot both win.
+ */
+export async function proposeScaffolding(
+  sessionId: string,
+  scenarioOrder: number,
+  participantId: string,
+  helpReason: string,
+  scaffoldingType: ScaffoldingType
+): Promise<ProposalResult<ScaffoldProposal>> {
+  const attempt = await getOrCreateAttempt(sessionId, scenarioOrder);
+  const members = await getSessionMembers(sessionId);
+
+  const result = db.transaction((tx): ProposalResult<ProposalRow> => {
+    const current = tx
+      .select()
+      .from(schema.scenarioAttempts)
+      .where(eq(schema.scenarioAttempts.id, attempt.id))
+      .get();
+    if (current?.scaffoldingType || current?.submitted) {
+      return { ok: false, error: "AI support was already chosen for this scenario", status: 409 };
+    }
+    const pending = tx
+      .select()
+      .from(schema.scaffoldProposals)
+      .where(pendingProposalWhere(sessionId, scenarioOrder))
+      .get();
+    if (pending) {
+      return {
+        ok: false,
+        error: "Another proposal is waiting. Agree to it or cancel it first.",
+        status: 409,
+      };
+    }
+    const row = tx
+      .insert(schema.scaffoldProposals)
+      .values({ sessionId, scenarioOrder, proposedBy: participantId, helpReason, scaffoldingType })
+      .returning()
+      .get();
+    return { ok: true, value: row };
+  });
+
+  if (!result.ok) return result;
+  await logResearchEvent(
+    sessionId,
+    "scaffolding_proposed",
+    { scenarioOrder, helpReason, scaffoldingType, proposalId: result.value.id },
+    participantId
+  );
+  return { ok: true, value: toProposal(result.value, members) };
+}
+
+export async function cancelProposal(
+  sessionId: string,
+  scenarioOrder: number,
+  proposalId: string,
+  participantId: string
+): Promise<ProposalResult<ProposalRow>> {
+  const resolved = db
+    .update(schema.scaffoldProposals)
+    .set({ status: "cancelled", resolvedBy: participantId, resolvedAt: nowIso() })
+    .where(
+      and(
+        eq(schema.scaffoldProposals.id, proposalId),
+        pendingProposalWhere(sessionId, scenarioOrder)
+      )
+    )
+    .returning()
+    .get();
+
+  if (!resolved) {
+    return { ok: false, error: "This proposal is no longer open", status: 409 };
+  }
+  await logResearchEvent(
+    sessionId,
+    "scaffolding_proposal_cancelled",
+    { scenarioOrder, proposalId },
+    participantId
+  );
+  return { ok: true, value: resolved };
+}
+
+/** Marks the proposal agreed and claims the scenario's single AI request. */
+export async function agreeToProposal(
+  sessionId: string,
+  scenarioOrder: number,
+  proposalId: string,
+  participantId: string
+): Promise<ProposalResult<{ proposal: ProposalRow; attemptId: string; requestedAt: string }>> {
+  const attempt = await getOrCreateAttempt(sessionId, scenarioOrder);
+  const members = await getSessionMembers(sessionId);
+  const requestedAt = nowIso();
+
+  return db.transaction((tx) => {
+    const proposal = tx
+      .select()
+      .from(schema.scaffoldProposals)
+      .where(
+        and(
+          eq(schema.scaffoldProposals.id, proposalId),
+          pendingProposalWhere(sessionId, scenarioOrder)
+        )
+      )
+      .get();
+    if (!proposal) {
+      return { ok: false as const, error: "This proposal is no longer open", status: 409 };
+    }
+    if (proposal.proposedBy === participantId && members.length > 1) {
+      return {
+        ok: false as const,
+        error: "Another group member needs to agree to your proposal",
+        status: 403,
+      };
+    }
+    const current = tx
+      .select()
+      .from(schema.scenarioAttempts)
+      .where(eq(schema.scenarioAttempts.id, attempt.id))
+      .get();
+    if (current?.scaffoldingType || current?.submitted) {
+      return { ok: false as const, error: "AI support was already chosen for this scenario", status: 409 };
+    }
+
+    tx.update(schema.scaffoldProposals)
+      .set({ status: "agreed", resolvedBy: participantId, resolvedAt: requestedAt })
+      .where(eq(schema.scaffoldProposals.id, proposal.id))
+      .run();
+    tx.update(schema.scenarioAttempts)
+      .set({
+        helpReason: proposal.helpReason,
+        scaffoldingType: proposal.scaffoldingType,
+        scaffoldingRequestedBy: proposal.proposedBy,
+        scaffoldingAgreedBy: participantId,
+        scaffoldingRequestedAt: requestedAt,
+        updatedAt: requestedAt,
+      })
+      .where(eq(schema.scenarioAttempts.id, attempt.id))
+      .run();
+
+    return { ok: true as const, value: { proposal, attemptId: attempt.id, requestedAt } };
+  });
+}
+
+/** Undoes agreeToProposal when the AI call fails, so the group can try again. */
+export function releaseAgreement(attemptId: string, proposalId: string) {
+  db.transaction((tx) => {
+    tx.update(schema.scaffoldProposals)
+      .set({ status: "pending", resolvedBy: null, resolvedAt: null })
+      .where(eq(schema.scaffoldProposals.id, proposalId))
+      .run();
+    tx.update(schema.scenarioAttempts)
+      .set({
+        helpReason: null,
+        scaffoldingType: null,
+        scaffoldingRequestedBy: null,
+        scaffoldingAgreedBy: null,
+        scaffoldingRequestedAt: null,
+        updatedAt: nowIso(),
+      })
+      .where(eq(schema.scenarioAttempts.id, attemptId))
+      .run();
+  });
 }
 
 export interface EditBatch {

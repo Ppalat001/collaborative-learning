@@ -1,60 +1,101 @@
 {
   "preTest": {
     "title": "Pre-study knowledge check",
-    "description": "Answer these questions individually before your group begins. There are no wrong answers — this helps measure learning gains.",
+    "description": "Answer these questions on your own before your group begins. This is not graded; it measures what you already know about collaborative learning and AI support.",
     "questions": [
       {
         "id": "pre-1",
-        "text": "What is collaborative learning?",
+        "concept": "definition",
+        "text": "Which description best fits collaborative learning?",
         "options": [
-          "Working alone on the same assignment",
-          "Learning through joint engagement and shared responsibility among group members",
-          "Having an AI complete tasks for the group",
-          "Competing against other groups for the highest score"
+          "Each member completes a separate part and the parts are joined at the end",
+          "Members build a shared understanding together and are jointly responsible for the result",
+          "The strongest member does the task while the others watch and learn",
+          "Members compete to produce the best individual answer"
         ],
         "correctIndex": 1
       },
       {
         "id": "pre-2",
-        "text": "In educational scaffolding, the AI agent should primarily:",
+        "concept": "interdependence",
+        "text": "A group task has \"positive interdependence\" when:",
         "options": [
-          "Provide final answers so the group can move on quickly",
-          "Replace group discussion when members disagree",
-          "Support the group's thinking without taking over the task",
-          "Grade the group's work automatically"
+          "Members can finish the task without talking to each other",
+          "One member is responsible for checking everyone else's work",
+          "The group is graded only on the speed of completion",
+          "The group can only succeed if every member contributes and members rely on each other"
+        ],
+        "correctIndex": 3
+      },
+      {
+        "id": "pre-3",
+        "concept": "accountability",
+        "text": "Why is individual accountability important in group work?",
+        "options": [
+          "It prevents members from relying on others and makes sure everyone learns",
+          "It lets the teacher identify the group leader",
+          "It allows members to work without discussing ideas",
+          "It makes group grades unnecessary"
+        ],
+        "correctIndex": 0
+      },
+      {
+        "id": "pre-4",
+        "concept": "scaffolding",
+        "text": "In education, \"scaffolding\" means:",
+        "options": [
+          "Giving students the complete solution so they can study it",
+          "Testing students before teaching them a topic",
+          "Giving temporary support that helps learners do what they cannot yet do alone",
+          "Dividing a class into groups of similar ability"
         ],
         "correctIndex": 2
       },
       {
-        "id": "pre-3",
-        "text": "A guiding question from an AI tutor is meant to:",
-        "options": [
-          "State the correct answer directly",
-          "Prompt the group to reason further without giving the solution",
-          "Summarize the entire discussion",
-          "Split tasks among group members"
-        ],
-        "correctIndex": 1
-      },
-      {
-        "id": "pre-4",
-        "text": "When a group receives AI feedback on a draft answer, they should:",
-        "options": [
-          "Copy the AI text as their final answer",
-          "Use the feedback to revise their own reasoning together",
-          "Ignore it and submit the draft unchanged",
-          "Ask the AI for a full answer instead"
-        ],
-        "correctIndex": 1
-      },
-      {
         "id": "pre-5",
-        "text": "Learner autonomy in AI-supported collaboration means:",
+        "concept": "choosing_support",
+        "text": "Two group members strongly disagree and the discussion has stopped. Which AI support fits best?",
         "options": [
-          "The AI decides what support the group needs",
-          "The group chooses when and what type of AI support to use",
-          "Students work without any group interaction",
-          "The researcher selects scaffolding for each scenario"
+          "Help with disagreement, so the group compares positions using shared criteria",
+          "A full expert answer, so the disagreement no longer matters",
+          "No support; the group should vote immediately",
+          "Splitting the task, so each member answers separately"
+        ],
+        "correctIndex": 0
+      },
+      {
+        "id": "pre-6",
+        "concept": "overreliance",
+        "text": "What is the main risk of a group regularly asking AI for complete answers?",
+        "options": [
+          "The answers are usually too short",
+          "The group finishes too early",
+          "AI answers are always incorrect",
+          "Members stop reasoning for themselves and depend on the AI"
+        ],
+        "correctIndex": 3
+      },
+      {
+        "id": "pre-7",
+        "concept": "group_agency",
+        "text": "In AI-supported group work, keeping the group's agency means that:",
+        "options": [
+          "The AI decides which step the group should do next",
+          "The teacher chooses all AI support in advance",
+          "The group decides when to ask for help and what kind of help it needs",
+          "Each member uses AI privately without telling the others"
+        ],
+        "correctIndex": 2
+      },
+      {
+        "id": "pre-8",
+        "concept": "disagreement",
+        "text": "When group members disagree about an answer, the most productive response is to:",
+        "options": [
+          "Accept the opinion of the most confident member",
+          "Explain the reasoning behind each view and look for evidence together",
+          "Avoid the topic to keep the group friendly",
+          "Submit both answers and let the teacher choose"
         ],
         "correctIndex": 1
       }
@@ -62,62 +103,103 @@
   },
   "postTest": {
     "title": "Post-study knowledge check",
-    "description": "Answer these questions individually after completing all scenarios. Your responses help measure what you learned during the activity.",
+    "description": "Answer these questions on your own after completing all scenarios. This is not graded; it measures what you learned during the activity.",
     "questions": [
       {
         "id": "post-1",
-        "text": "Which scaffolding type is best when a group has lost track of their discussion?",
+        "concept": "definition",
+        "text": "Which group is working collaboratively?",
         "options": [
-          "Full expert answer",
-          "Summary of discussion",
-          "Task splitting",
-          "No assistance"
+          "Each member writes one section at home and one member pastes them together",
+          "One member writes the answer and the others agree without comment",
+          "Members discuss ideas, question each other and agree on one answer they all understand",
+          "Members each submit their own answer and the best one is chosen"
         ],
-        "correctIndex": 1
+        "correctIndex": 2
       },
       {
         "id": "post-2",
-        "text": "Why might providing a full expert answer be risky in collaborative learning?",
+        "concept": "interdependence",
+        "text": "Which task design creates the strongest positive interdependence?",
         "options": [
-          "It takes too long to generate",
-          "It can reduce group reasoning and create over-reliance on AI",
-          "Groups cannot read long responses",
-          "It is never useful for comparison"
+          "Each member holds different information that the group needs to combine to solve the problem",
+          "Each member solves the whole problem alone and the answers are averaged",
+          "One member solves the problem and explains it to the others",
+          "Members choose whether to take part"
         ],
-        "correctIndex": 1
+        "correctIndex": 0
       },
       {
         "id": "post-3",
-        "text": "Conflict support scaffolding should help a group:",
+        "concept": "accountability",
+        "text": "Which practice best supports individual accountability in a group?",
         "options": [
-          "Pick the majority opinion automatically",
-          "Compare ideas respectfully using shared criteria",
-          "End the discussion immediately",
-          "Remove dissenting members from the task"
+          "Giving only one shared grade with no other checks",
+          "Letting the group leader report on behalf of everyone",
+          "Allowing members to stay silent if the group finishes on time",
+          "Asking each member to explain the group's answer or rate their own contribution"
         ],
-        "correctIndex": 1
+        "correctIndex": 3
       },
       {
         "id": "post-4",
-        "text": "Effective group collaboration with AI means:",
+        "concept": "scaffolding",
+        "text": "According to scaffolding theory, how much help should a learner receive?",
         "options": [
-          "Letting AI autopilot while members watch",
-          "Using AI to support discussion while the group retains agency",
-          "Avoiding all AI support",
-          "Each member requesting different scaffolding types"
+          "As much as possible, so mistakes are avoided",
+          "The least help needed to make progress, reduced as the learner improves",
+          "No help, because struggling is always beneficial",
+          "The same amount of help for every learner"
         ],
         "correctIndex": 1
       },
       {
         "id": "post-5",
-        "text": "After receiving a hint or guiding question, a group should:",
+        "concept": "choosing_support",
+        "text": "A group has discussed for a long time and lost track of what they agreed. Which AI support fits best?",
         "options": [
-          "Submit the AI text as their final answer",
-          "Build on the prompt through further discussion",
-          "Request full answer scaffolding next",
-          "Skip to the next scenario"
+          "A full expert answer",
+          "A small hint about the topic",
+          "Splitting the task among members",
+          "A summary of the discussion so far"
+        ],
+        "correctIndex": 3
+      },
+      {
+        "id": "post-6",
+        "concept": "overreliance",
+        "text": "After receiving a full answer from the AI, what should a group do to keep learning?",
+        "options": [
+          "Submit the AI answer unchanged, because it is correct",
+          "Explain the answer in their own words and check whether they agree with it",
+          "Ask the AI for a second full answer to compare",
+          "Move on to the next task immediately"
         ],
         "correctIndex": 1
+      },
+      {
+        "id": "post-7",
+        "concept": "group_agency",
+        "text": "Why should the whole group agree before asking an AI for help?",
+        "options": [
+          "So the request reflects what the group actually needs and everyone stays involved",
+          "Because the AI only works when several people press a button",
+          "So the teacher can see who is the leader",
+          "Because AI help is not allowed in group work"
+        ],
+        "correctIndex": 0
+      },
+      {
+        "id": "post-8",
+        "concept": "disagreement",
+        "text": "Why can disagreement in a group improve learning?",
+        "options": [
+          "It shows that the task is too difficult",
+          "It lets the most confident member take control",
+          "Explaining and defending different views pushes members to examine their reasoning more deeply",
+          "It reduces the time needed to finish the task"
+        ],
+        "correctIndex": 2
       }
     ]
   }

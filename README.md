@@ -56,7 +56,7 @@ Open [http://localhost:3000](http://localhost:3000)
 5. For each scenario:
    - Read the task
    - Discuss together in a live group chat (each message shows the student's name, time and their own colour, and is logged under their anonymous ID)
-   - If the group wants AI help: say why the group needs help, then choose one scaffolding type
+   - If the group wants AI help: one member **proposes** a help reason and a scaffolding type; the proposal appears on every device and the AI is only asked once **another member agrees** (anyone can cancel). In a one-member group the proposer confirms alone
    - Review AI response (synced to all devices)
    - After a full answer only: explain the AI answer in their own words (15+ words)
    - Write and submit the shared final answer
@@ -74,6 +74,7 @@ Visit `/admin` and enter the admin password (`ADMIN_PASSWORD`; locally defaults 
 | Individual scenario ratings | student × scenario |
 | Individual contributions | student × scenario |
 | Discussion chat log | chat message (marked as sent before or after the AI request) |
+| AI support proposals | proposal (who proposed, status agreed/cancelled, who resolved it, seconds to decision) |
 | Raw edit log | batch of typing |
 | End-of-study open answers | student |
 | Rubric scores | answer × rater |

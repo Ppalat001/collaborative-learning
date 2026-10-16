@@ -2,6 +2,8 @@ import assessmentData from "@/data/assessment.json";
 
 export interface AssessmentQuestion {
   id: string;
+  /** Pre and post items share a concept, so learning can be compared per concept. */
+  concept: string;
   text: string;
   options: string[];
   correctIndex: number;

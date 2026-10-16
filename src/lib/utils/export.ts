@@ -10,6 +10,7 @@ import {
 import { getScaffoldingOption, type ScaffoldingType } from "@/lib/types";
 import { secondsBetween, toIsoString } from "@/lib/utils/dates";
 import { getScenarioById } from "@/lib/utils/scenarios";
+import { getAssessment } from "@/lib/utils/assessment";
 
 export async function logResearchEvent(
   sessionId: string,
@@ -135,7 +136,7 @@ function rubricTotal(score: typeof schema.rubricScores.$inferSelect): number {
 }
 
 async function loadStudyData() {
-  const [sessions, participants, attempts, surveys, edits, messages, rubric] =
+  const [sessions, participants, attempts, surveys, edits, messages, proposals, rubric] =
     await Promise.all([
       db.select().from(schema.sessions),
       db.select().from(schema.participants),
@@ -143,6 +144,7 @@ async function loadStudyData() {
       db.select().from(schema.surveys),
       db.select().from(schema.editEvents),
       db.select().from(schema.discussionMessages),
+      db.select().from(schema.scaffoldProposals),
       db.select().from(schema.rubricScores),
     ]);
 
@@ -176,6 +178,7 @@ async function loadStudyData() {
     surveys,
     edits: edits.filter((e) => isCurrentField(e.field)),
     messages: messages.sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    proposals: proposals.sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
     rubric,
     sessionById,
     participantById,
@@ -196,6 +199,8 @@ export async function buildScenarioExport(): Promise<CsvExport> {
       row.sessionId === attempt.sessionId && row.scenarioOrder === attempt.scenarioOrder;
     const attemptMessages = data.messages.filter(inAttempt);
     const attemptEdits = data.edits.filter(inAttempt);
+    const attemptProposals = data.proposals.filter(inAttempt);
+    const agreedProposal = attemptProposals.find((p) => p.status === "agreed");
     const messagesBeforeAi = attemptMessages.filter(data.sentBeforeAi);
     const messagesAfterAi = attemptMessages.filter((m) => !data.sentBeforeAi(m));
     const discussionBeforeAi = data.transcript(messagesBeforeAi);
@@ -230,7 +235,13 @@ export async function buildScenarioExport(): Promise<CsvExport> {
       help_reason_label: getHelpReasonLabel(attempt.helpReason),
       scaffolding_type: attempt.scaffoldingType ?? "",
       ...supportInfo(attempt.scaffoldingType),
-      scaffolding_requested_by: data.anonymousId(attempt.scaffoldingRequestedBy),
+      scaffolding_proposed_by: data.anonymousId(attempt.scaffoldingRequestedBy),
+      scaffolding_agreed_by: data.anonymousId(attempt.scaffoldingAgreedBy),
+      proposals_made: attemptProposals.length,
+      proposals_cancelled: attemptProposals.filter((p) => p.status === "cancelled").length,
+      seconds_proposal_to_agreement: agreedProposal
+        ? secondsBetween(agreedProposal.createdAt, agreedProposal.resolvedAt)
+        : null,
       submitted_by: data.anonymousId(attempt.submittedBy),
       discussion_before_ai: discussionBeforeAi,
       discussion_after_ai: data.transcript(messagesAfterAi),
@@ -277,7 +288,9 @@ const SCENARIO_COLUMNS = [
   "session_code", "session_id", "group_size", "scenario_id", "scenario_order",
   "scenario_title", "task_type", "help_reason", "help_reason_label",
   "scaffolding_type", "support_category", "support_level",
-  "scaffolding_requested_by", "submitted_by", "discussion_before_ai",
+  "scaffolding_proposed_by", "scaffolding_agreed_by", "proposals_made",
+  "proposals_cancelled", "seconds_proposal_to_agreement", "submitted_by",
+  "discussion_before_ai",
   "discussion_after_ai", "messages_before_ai", "messages_after_ai", "ai_response",
   "own_words_explanation", "final_answer", "final_length", "final_overlap_with_ai",
   "final_overlap_with_discussion_before_ai", "own_words_overlap_with_ai",
@@ -343,6 +356,9 @@ export async function buildContributionsExport(): Promise<CsvExport> {
     ...Object.values(FIELD_COLUMNS).map((name) => `${name}_chars_added`),
     "total_chars",
     "share_of_group_chars",
+    "proposals_made",
+    "proposals_agreed_to",
+    "proposals_cancelled",
   ];
 
   const rows: CsvRow[] = [];
@@ -352,6 +368,7 @@ export async function buildContributionsExport(): Promise<CsvExport> {
       row.sessionId === attempt.sessionId && row.scenarioOrder === attempt.scenarioOrder;
     const attemptEdits = data.edits.filter(inAttempt);
     const attemptMessages = data.messages.filter(inAttempt);
+    const attemptProposals = data.proposals.filter(inAttempt);
     const groupChars =
       attemptEdits.reduce((sum, e) => sum + e.charsAdded, 0) +
       attemptMessages.reduce((sum, m) => sum + m.text.length, 0);
@@ -373,6 +390,13 @@ export async function buildContributionsExport(): Promise<CsvExport> {
         message_chars: messageChars,
         total_chars: total,
         share_of_group_chars: groupChars > 0 ? round(total / groupChars) : null,
+        proposals_made: attemptProposals.filter((p) => p.proposedBy === member.id).length,
+        proposals_agreed_to: attemptProposals.filter(
+          (p) => p.status === "agreed" && p.resolvedBy === member.id
+        ).length,
+        proposals_cancelled: attemptProposals.filter(
+          (p) => p.status === "cancelled" && p.resolvedBy === member.id
+        ).length,
       };
       for (const [field, name] of Object.entries(FIELD_COLUMNS)) {
         row[`${name}_chars_added`] = memberEdits
@@ -406,6 +430,39 @@ export async function buildMessagesExport(): Promise<CsvExport> {
       text: message.text,
       length: message.text.length,
       created_at: toIsoString(message.createdAt) ?? "",
+    })),
+  };
+}
+
+export async function buildProposalsExport(): Promise<CsvExport> {
+  const data = await loadStudyData();
+  return {
+    columns: [
+      "session_code",
+      "scenario_order",
+      "proposed_by",
+      "help_reason",
+      "scaffolding_type",
+      "support_category",
+      "support_level",
+      "status",
+      "resolved_by",
+      "seconds_to_decision",
+      "created_at",
+      "resolved_at",
+    ],
+    rows: data.proposals.map((proposal) => ({
+      session_code: data.sessionById.get(proposal.sessionId)?.code ?? "",
+      scenario_order: proposal.scenarioOrder,
+      proposed_by: data.anonymousId(proposal.proposedBy),
+      help_reason: proposal.helpReason,
+      scaffolding_type: proposal.scaffoldingType,
+      ...supportInfo(proposal.scaffoldingType),
+      status: proposal.status,
+      resolved_by: data.anonymousId(proposal.resolvedBy),
+      seconds_to_decision: secondsBetween(proposal.createdAt, proposal.resolvedAt),
+      created_at: toIsoString(proposal.createdAt) ?? "",
+      resolved_at: toIsoString(proposal.resolvedAt) ?? "",
     })),
   };
 }
@@ -521,6 +578,8 @@ export async function buildAssessmentExport(): Promise<CsvExport> {
       eq(schema.assessments.participantId, schema.participants.id)
     );
 
+  const concepts = [...new Set(getAssessment("pre").questions.map((q) => q.concept))];
+
   return {
     columns: [
       "session_code",
@@ -528,16 +587,25 @@ export async function buildAssessmentExport(): Promise<CsvExport> {
       "assessment_type",
       "score",
       "max_score",
+      ...concepts.map((concept) => `correct_${concept}`),
       "completed_at",
     ],
-    rows: rows.map(({ assessment, session, participant }) => ({
-      session_code: session.code,
-      anonymous_id: participant?.anonymousId ?? "",
-      assessment_type: assessment.assessmentType,
-      score: assessment.score,
-      max_score: assessment.maxScore,
-      completed_at: toIsoString(assessment.completedAt) ?? "",
-    })),
+    rows: rows.map(({ assessment, session, participant }) => {
+      const type = assessment.assessmentType === "post" ? "post" : "pre";
+      const answers = assessment.answers ?? {};
+      const row: CsvRow = {
+        session_code: session.code,
+        anonymous_id: participant?.anonymousId ?? "",
+        assessment_type: assessment.assessmentType,
+        score: assessment.score,
+        max_score: assessment.maxScore,
+        completed_at: toIsoString(assessment.completedAt) ?? "",
+      };
+      for (const question of getAssessment(type).questions) {
+        row[`correct_${question.concept}`] = answers[question.id] === question.correctIndex ? 1 : 0;
+      }
+      return row;
+    }),
   };
 }
 
@@ -546,6 +614,7 @@ export const EXPORT_BUILDERS = {
   ratings: buildRatingsExport,
   contributions: buildContributionsExport,
   messages: buildMessagesExport,
+  proposals: buildProposalsExport,
   edits: buildEditsExport,
   reflections: buildReflectionsExport,
   rubric: buildRubricExport,

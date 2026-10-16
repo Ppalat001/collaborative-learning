@@ -37,7 +37,13 @@ export const scenarioAttempts = sqliteTable("scenario_attempts", {
   draftAnswer: text("draft_answer").notNull().default(""),
   helpReason: text("help_reason"),
   scaffoldingType: text("scaffolding_type"),
+  /** The member who proposed the support that was used. */
   scaffoldingRequestedBy: text("scaffolding_requested_by").references(
+    () => participants.id,
+    { onDelete: "set null" }
+  ),
+  /** The member who agreed to the proposal; equals the proposer only in a one-member group. */
+  scaffoldingAgreedBy: text("scaffolding_agreed_by").references(
     () => participants.id,
     { onDelete: "set null" }
   ),
@@ -112,6 +118,27 @@ export const discussionMessages = sqliteTable("discussion_messages", {
   scenarioOrder: integer("scenario_order").notNull(),
   text: text("text").notNull(),
   createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+/** A member's proposal for AI support; at most one is pending per scenario. */
+export const scaffoldProposals = sqliteTable("scaffold_proposals", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  sessionId: text("session_id")
+    .notNull()
+    .references(() => sessions.id, { onDelete: "cascade" }),
+  scenarioOrder: integer("scenario_order").notNull(),
+  proposedBy: text("proposed_by").references(() => participants.id, {
+    onDelete: "set null",
+  }),
+  helpReason: text("help_reason").notNull(),
+  scaffoldingType: text("scaffolding_type").notNull(),
+  /** "pending" | "agreed" | "cancelled" */
+  status: text("status").notNull().default("pending"),
+  resolvedBy: text("resolved_by").references(() => participants.id, {
+    onDelete: "set null",
+  }),
+  createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
+  resolvedAt: text("resolved_at"),
 });
 
 /** Each batch of typing by one participant in one shared box. */

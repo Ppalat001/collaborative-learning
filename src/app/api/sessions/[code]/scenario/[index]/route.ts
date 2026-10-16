@@ -4,7 +4,10 @@ import {
   getOrCreateAttempt,
   getParticipantInSession,
   getParticipantSurvey,
+  getPendingProposal,
   getSessionByCode,
+  getSessionMembers,
+  memberName,
   submitFinalAnswer,
 } from "@/lib/services/sessions";
 import { OWN_WORDS_MIN_WORDS, countWords } from "@/lib/instruments";
@@ -31,20 +34,30 @@ export async function GET(
 
     const attempt = await getOrCreateAttempt(session.id, scenarioOrder);
     const participant = await getParticipantInSession(session.id, participantId);
-    const [survey, messages] = await Promise.all([
+    const [survey, messages, proposal, members] = await Promise.all([
       participant
         ? getParticipantSurvey(session.id, scenario.id, participant.id)
         : null,
       getDiscussionMessages(session.id, scenarioOrder),
+      getPendingProposal(session.id, scenarioOrder),
+      getSessionMembers(session.id),
     ]);
 
     return NextResponse.json({
       scenario,
       messages,
+      proposal,
+      memberCount: members.length,
       attempt: {
         helpReason: attempt.helpReason,
         scaffoldingType: attempt.scaffoldingType,
         aiResponse: attempt.aiResponse,
+        proposedByName: attempt.scaffoldingRequestedBy
+          ? memberName(members, attempt.scaffoldingRequestedBy)
+          : null,
+        agreedByName: attempt.scaffoldingAgreedBy
+          ? memberName(members, attempt.scaffoldingAgreedBy)
+          : null,
         ownWordsExplanation: attempt.ownWordsExplanation,
         finalAnswer: attempt.finalAnswer,
         submitted: attempt.submitted,

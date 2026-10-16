@@ -27,6 +27,12 @@ const EXPORTS = [
     description: "Every chat message, with anonymous ID, time and whether it was before AI",
   },
   {
+    type: "proposals",
+    label: "AI support proposals",
+    description:
+      "Every proposal for AI support: who proposed it, who agreed or cancelled, and how long the decision took",
+  },
+  {
     type: "edits",
     label: "Raw edit log",
     description: "Every batch of typing, with anonymous ID and timestamp",

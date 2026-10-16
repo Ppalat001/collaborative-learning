@@ -5,8 +5,8 @@
     "title": "Explaining a Concept",
     "taskType": "explain",
     "expectedDiscussionMinutes": 8,
-    "description": "Your group has been asked to explain how photosynthesis works to a younger student who only knows that plants are green. Work together to produce a clear explanation that avoids jargon but remains accurate.",
-    "promptForGroup": "Discuss how you would explain photosynthesis. What analogy or example might help? What details are essential vs. optional?"
+    "description": "A first-year student says: \"Group work just means splitting the assignment into parts.\" Your group must explain to this student what makes group work truly collaborative, in clear everyday language.",
+    "promptForGroup": "What is the difference between dividing work and learning together? What example from your own experience would make the difference clear?"
   },
   {
     "id": "scenario-02",
@@ -14,8 +14,8 @@
     "title": "Improving a Weak Answer",
     "taskType": "expand_answer",
     "expectedDiscussionMinutes": 7,
-    "description": "A student wrote: \"The Industrial Revolution happened because of steam engines.\" Your group must discuss what is incomplete or misleading about this answer and how to improve it.",
-    "promptForGroup": "Identify gaps in the answer. What causes, effects, or context are missing? Agree on how you would revise it."
+    "description": "A student wrote: \"Group work is useful because the work gets done faster when you split it up.\" Your group must discuss what is incomplete or misleading about this answer and how to improve it.",
+    "promptForGroup": "What benefits of collaborative learning are missing? Are there situations where splitting the work actually reduces learning? Agree on how you would revise the answer."
   },
   {
     "id": "scenario-03",
@@ -23,8 +23,8 @@
     "title": "Short Case Study",
     "taskType": "case_study",
     "expectedDiscussionMinutes": 10,
-    "description": "A local clinic wants to reduce missed appointments. They are considering reminder texts, a small cancellation fee, or longer booking windows. Your group must analyze the trade-offs and recommend one approach with justification.",
-    "promptForGroup": "Compare the three options. Who benefits and who might be harmed by each? What evidence or assumptions are you using?"
+    "description": "In a four-person project group, one student does almost nothing while another takes over every decision. The teacher is considering three changes: peer assessment of contributions, assigned roles (facilitator, recorder, critic, presenter), or a short individual quiz on the group's work. Analyse the trade-offs and recommend one approach.",
+    "promptForGroup": "How would each option affect participation, fairness and learning? Who benefits and who might be harmed? What assumptions are you making?"
   },
   {
     "id": "scenario-04",
@@ -32,8 +32,8 @@
     "title": "Making a Judgment Call",
     "taskType": "judgment",
     "expectedDiscussionMinutes": 8,
-    "description": "A team leader must decide whether to publish preliminary research findings before peer review because a competitor may release similar results soon. Discuss whether early publication is justified and under what conditions.",
-    "promptForGroup": "Weigh scientific integrity, competitive pressure, and public benefit. What criteria should guide the decision?"
+    "description": "A group project is due tomorrow. One member suggests asking an AI for a complete answer, submitting it, and \"reading it properly later\". Discuss whether this is acceptable and under what conditions using a full AI answer in group work could be justified.",
+    "promptForGroup": "Weigh learning, honesty, fairness to the group and time pressure. What criteria should guide the group's decision?"
   },
   {
     "id": "scenario-05",
@@ -41,8 +41,8 @@
     "title": "Choosing Among Solutions",
     "taskType": "solutions",
     "expectedDiscussionMinutes": 9,
-    "description": "Your school has budget for one sustainability project: solar panels, a community garden, or a bike-share program. Choose one project and explain why it should be prioritized over the others.",
-    "promptForGroup": "Define what \"best\" means for your group (cost, impact, equity, etc.). Compare options using those criteria."
+    "description": "A teacher can introduce one support for group work next term: a shared online document with edit history, structured group roles, or an AI assistant that groups can ask for hints and feedback. Choose one and explain why it should be prioritised over the others.",
+    "promptForGroup": "Define what \"best\" means for your group (learning, participation, fairness, effort). Compare the options using those criteria."
   },
   {
     "id": "scenario-06",
@@ -59,8 +59,8 @@
     "title": "Ethical Dilemma",
     "taskType": "judgment",
     "expectedDiscussionMinutes": 10,
-    "description": "An AI writing tool can help students draft essays faster, but some students use it to avoid learning writing skills. Should your institution allow unrestricted use, restrict it, or ban it? Defend your group's position.",
-    "promptForGroup": "Consider fairness, learning outcomes, and enforcement. Where do you draw the line between support and substitution?"
+    "description": "An AI tool can write a group's project report in minutes, but some groups use it so that no member engages with the topic. Should your institution allow unrestricted AI use in group projects, restrict it, or ban it? Defend your group's position.",
+    "promptForGroup": "Consider fairness, learning outcomes, each member's contribution and enforcement. Where do you draw the line between support and substitution?"
   },
   {
     "id": "scenario-08",
@@ -68,8 +68,8 @@
     "title": "Data Interpretation",
     "taskType": "case_study",
     "expectedDiscussionMinutes": 8,
-    "description": "A survey shows 70% of students prefer online lectures, but only 40% pass the final exam in the online cohort vs. 65% in person. Your group must interpret these results and suggest what the data does and does not show.",
-    "promptForGroup": "Avoid jumping to conclusions. What alternative explanations exist? What additional data would you want?"
+    "description": "A course compared students who studied in small groups with students who studied alone. The group students scored 12% higher on the final exam, but 45% of them said the workload in their group was unfair. Your group must interpret these results and explain what the data does and does not show.",
+    "promptForGroup": "Avoid jumping to conclusions. What alternative explanations exist (for example, who chose to join groups)? What additional data would you want?"
   },
   {
     "id": "scenario-09",

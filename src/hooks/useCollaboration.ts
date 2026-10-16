@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
 import { SHARED_FIELDS, type SharedField } from "@/lib/instruments";
-import type { DiscussionMessage, ScaffoldingType } from "@/lib/types";
+import type { DiscussionMessage, ProposalEvent, ScaffoldingType } from "@/lib/types";
 
 export type SharedFields = Record<SharedField, string>;
 
@@ -11,7 +11,8 @@ export interface RoomScaffoldingState {
   scaffoldingType: ScaffoldingType;
   helpReason: string;
   aiResponse: string;
-  requestedBy: string;
+  proposedBy: string;
+  agreedBy: string;
   updatedAt: string;
 }
 
@@ -36,6 +37,7 @@ interface UseCollaborationOptions {
   initialFields: SharedFields | null;
   initialMessages: DiscussionMessage[] | null;
   onScaffoldingUpdate?: (state: RoomScaffoldingState) => void;
+  onProposalUpdate?: (event: ProposalEvent) => void;
   onSubmitted?: (state: RoomSubmissionState) => void;
 }
 
@@ -85,6 +87,7 @@ export function useCollaboration({
   initialFields,
   initialMessages,
   onScaffoldingUpdate,
+  onProposalUpdate,
   onSubmitted,
 }: UseCollaborationOptions) {
   const [fields, setFields] = useState<SharedFields>(EMPTY_FIELDS);
@@ -99,11 +102,11 @@ export function useCollaboration({
   const dirtyFieldsRef = useRef(new Set<SharedField>());
   const pendingEditsRef = useRef<Partial<Record<SharedField, PendingEdit>>>({});
   const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const callbacksRef = useRef({ onScaffoldingUpdate, onSubmitted });
+  const callbacksRef = useRef({ onScaffoldingUpdate, onProposalUpdate, onSubmitted });
 
   useEffect(() => {
-    callbacksRef.current = { onScaffoldingUpdate, onSubmitted };
-  }, [onScaffoldingUpdate, onSubmitted]);
+    callbacksRef.current = { onScaffoldingUpdate, onProposalUpdate, onSubmitted };
+  }, [onScaffoldingUpdate, onProposalUpdate, onSubmitted]);
 
   const applyFields = useCallback((updates: Partial<SharedFields>) => {
     fieldsRef.current = { ...fieldsRef.current, ...updates };
@@ -218,6 +221,10 @@ export function useCollaboration({
       callbacksRef.current.onScaffoldingUpdate?.(state);
     });
 
+    socket.on("proposal:update", (event: ProposalEvent) => {
+      callbacksRef.current.onProposalUpdate?.(event);
+    });
+
     socket.on("scenario:submitted", (state: RoomSubmissionState) => {
       applyLiveFields({
         finalAnswer: state.finalAnswer,
@@ -288,18 +295,13 @@ export function useCollaboration({
   };
 
   const broadcastScaffolding = (
-    scaffoldingType: ScaffoldingType,
-    helpReason: string,
-    aiResponse: string
+    state: Omit<RoomScaffoldingState, "updatedAt">
   ) => {
-    socketRef.current?.emit("scaffolding:update", {
-      sessionCode,
-      scenarioOrder,
-      scaffoldingType,
-      helpReason,
-      aiResponse,
-      requestedBy: participantName,
-    });
+    socketRef.current?.emit("scaffolding:update", { sessionCode, scenarioOrder, ...state });
+  };
+
+  const broadcastProposal = (event: ProposalEvent) => {
+    socketRef.current?.emit("proposal:update", { sessionCode, scenarioOrder, event });
   };
 
   const broadcastSubmitted = (finalAnswer: string, ownWordsExplanation: string) => {
@@ -322,6 +324,7 @@ export function useCollaboration({
     participantCount,
     lastUpdatedBy,
     broadcastScaffolding,
+    broadcastProposal,
     broadcastSubmitted,
   };
 }

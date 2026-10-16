@@ -51,8 +51,8 @@ export function ScaffoldingSelector({
   return (
     <div className="space-y-4">
       <p className="text-sm text-slate-600">
-        Choose one type of AI support for this scenario. Options are grouped
-        from least to most direct help. You can only request scaffolding once
+        Choosing an option sends it to your group as a proposal. Options are
+        grouped from least to most direct help. Your group gets one AI request
         per scenario.
       </p>
       {OPTION_GROUPS.map((group) => {

@@ -16,7 +16,14 @@ import {
   countWords,
   getHelpReasonLabel,
 } from "@/lib/instruments";
-import type { DiscussionMessage, Scenario, ScaffoldingType } from "@/lib/types";
+import {
+  getScaffoldingOption,
+  type DiscussionMessage,
+  type ProposalEvent,
+  type ScaffoldProposal,
+  type Scenario,
+  type ScaffoldingType,
+} from "@/lib/types";
 
 interface ScenarioViewProps {
   sessionCode: string;
@@ -30,7 +37,77 @@ interface AttemptState {
   helpReason: string | null;
   scaffoldingType: ScaffoldingType | null;
   aiResponse: string | null;
+  proposedByName: string | null;
+  agreedByName: string | null;
   submitted: boolean;
+}
+
+type ProposalAction = "propose" | "agree" | "cancel";
+
+function supportLabel(type: ScaffoldingType): string {
+  const option = getScaffoldingOption(type);
+  if (!option) return type;
+  return option.supportLevel === null
+    ? option.label
+    : `${option.label} (Level ${option.supportLevel})`;
+}
+
+function ProposalPanel({
+  proposal,
+  participantId,
+  memberCount,
+  busy,
+  onAgree,
+  onCancel,
+}: {
+  proposal: ScaffoldProposal;
+  participantId: string | null;
+  memberCount: number;
+  busy: ProposalAction | null;
+  onAgree: () => void;
+  onCancel: () => void;
+}) {
+  const isMine = proposal.proposedById === participantId;
+  const alone = memberCount <= 1;
+  const canAgree = !!participantId && (!isMine || alone);
+
+  return (
+    <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+      <p className="text-sm font-semibold text-amber-900">Proposal waiting for agreement</p>
+      <p className="mt-2 text-sm text-slate-800">
+        <span className="font-medium">{isMine ? "You" : proposal.proposedByName}</span>{" "}
+        proposed <span className="font-medium">{supportLabel(proposal.scaffoldingType)}</span>{" "}
+        because: <span className="italic">“{getHelpReasonLabel(proposal.helpReason)}”</span>
+      </p>
+      <p className="mt-2 text-sm text-slate-600">
+        {isMine
+          ? alone
+            ? "You are the only member of this group, so you can confirm it yourself."
+            : "Waiting for another group member to agree. Talk about it in the chat."
+          : "Do you agree? If you're not sure, discuss it in the chat first."}
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {canAgree && (
+          <button
+            type="button"
+            onClick={onAgree}
+            disabled={busy !== null}
+            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white hover:bg-indigo-700 disabled:opacity-50"
+          >
+            {busy === "agree" ? "Asking the AI..." : isMine ? "Confirm and ask the AI" : "Agree and ask the AI"}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={busy !== null || !participantId}
+          className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+        >
+          {busy === "cancel" ? "Cancelling..." : isMine ? "Withdraw proposal" : "Cancel proposal"}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function Step({
@@ -67,31 +144,50 @@ export function ScenarioView({
   const [initialMessages, setInitialMessages] = useState<DiscussionMessage[] | null>(null);
   const [surveyCompleted, setSurveyCompleted] = useState(false);
   const [helpReason, setHelpReason] = useState<string | null>(null);
+  const [proposal, setProposal] = useState<ScaffoldProposal | null>(null);
+  const [memberCount, setMemberCount] = useState(1);
+  const [proposalNotice, setProposalNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState<ProposalAction | null>(null);
   const [loading, setLoading] = useState(true);
-  const [scaffoldingLoading, setScaffoldingLoading] = useState(false);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const fetchScenario = useCallback(async () => {
+    const query = participantId ? `?participantId=${encodeURIComponent(participantId)}` : "";
+    const res = await fetch(`/api/sessions/${sessionCode}/scenario/${scenarioOrder}${query}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error ?? "Failed to load scenario");
+    return data;
+  }, [sessionCode, scenarioOrder, participantId]);
+
+  const applyDecisionState = useCallback(
+    (data: {
+      proposal: ScaffoldProposal | null;
+      memberCount: number;
+      attempt: AttemptState;
+    }) => {
+      setProposal(data.proposal);
+      setMemberCount(data.memberCount);
+      setAttempt((prev) => ({
+        helpReason: data.attempt.helpReason,
+        scaffoldingType: data.attempt.scaffoldingType,
+        aiResponse: data.attempt.aiResponse,
+        proposedByName: data.attempt.proposedByName,
+        agreedByName: data.attempt.agreedByName,
+        submitted: prev?.submitted || data.attempt.submitted,
+      }));
+    },
+    []
+  );
 
   useEffect(() => {
     async function load() {
       setLoading(true);
       setError(null);
       try {
-        const query = participantId
-          ? `?participantId=${encodeURIComponent(participantId)}`
-          : "";
-        const res = await fetch(
-          `/api/sessions/${sessionCode}/scenario/${scenarioOrder}${query}`
-        );
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "Failed to load scenario");
+        const data = await fetchScenario();
         setScenario(data.scenario);
-        setAttempt({
-          helpReason: data.attempt.helpReason,
-          scaffoldingType: data.attempt.scaffoldingType,
-          aiResponse: data.attempt.aiResponse,
-          submitted: data.attempt.submitted,
-        });
+        applyDecisionState(data);
         setInitialFields({
           ownWordsExplanation: data.attempt.ownWordsExplanation ?? "",
           finalAnswer: data.attempt.finalAnswer ?? "",
@@ -105,9 +201,11 @@ export function ScenarioView({
       }
     }
     load();
-  }, [sessionCode, scenarioOrder, participantId]);
+  }, [fetchScenario, applyDecisionState]);
 
   const onScaffoldingUpdate = useCallback((state: RoomScaffoldingState) => {
+    setProposal(null);
+    setProposalNotice(null);
     setAttempt((prev) =>
       prev
         ? {
@@ -115,8 +213,22 @@ export function ScenarioView({
             helpReason: state.helpReason,
             scaffoldingType: state.scaffoldingType,
             aiResponse: state.aiResponse,
+            proposedByName: state.proposedBy,
+            agreedByName: state.agreedBy,
           }
         : prev
+    );
+  }, []);
+
+  const onProposalUpdate = useCallback((event: ProposalEvent) => {
+    if (event.type === "proposed") {
+      setProposal(event.proposal);
+      setProposalNotice(null);
+      return;
+    }
+    setProposal(null);
+    setProposalNotice(
+      `${event.byName} cancelled the proposal for ${supportLabel(event.proposal.scaffoldingType)}.`
     );
   }, []);
 
@@ -132,6 +244,7 @@ export function ScenarioView({
     initialFields,
     initialMessages,
     onScaffoldingUpdate,
+    onProposalUpdate,
     onSubmitted,
   });
   const { fields } = collaboration;
@@ -144,38 +257,69 @@ export function ScenarioView({
     }
   };
 
-  const requestScaffolding = async (scaffoldingType: ScaffoldingType) => {
-    if (!helpReason) return;
-    setScaffoldingLoading(true);
+  const runProposalAction = async (
+    action: ProposalAction,
+    extra: Record<string, unknown>,
+    onSuccess: (data: Record<string, unknown>) => void
+  ) => {
+    setBusy(action);
     setError(null);
     try {
       const res = await fetch(`/api/sessions/${sessionCode}/scaffold`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scenarioOrder, scaffoldingType, helpReason, participantId }),
+        body: JSON.stringify({ action, scenarioOrder, participantId, ...extra }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Scaffolding failed");
-      setAttempt((prev) =>
-        prev
-          ? {
-              ...prev,
-              helpReason: data.helpReason,
-              scaffoldingType: data.scaffoldingType,
-              aiResponse: data.aiResponse,
-            }
-          : prev
-      );
-      collaboration.broadcastScaffolding(
-        data.scaffoldingType,
-        data.helpReason,
-        data.aiResponse
-      );
+      if (!res.ok) {
+        setError(data.error ?? "Something went wrong");
+        // Someone else may have acted first; show the group's current state.
+        applyDecisionState(await fetchScenario());
+        return;
+      }
+      onSuccess(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Scaffolding failed");
+      setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
-      setScaffoldingLoading(false);
+      setBusy(null);
     }
+  };
+
+  const proposeSupport = (scaffoldingType: ScaffoldingType) =>
+    runProposalAction("propose", { scaffoldingType, helpReason }, (data) => {
+      const created = data.proposal as ScaffoldProposal;
+      setProposal(created);
+      setProposalNotice(null);
+      collaboration.broadcastProposal({ type: "proposed", proposal: created });
+    });
+
+  const cancelSupport = () => {
+    if (!proposal) return;
+    const cancelled = proposal;
+    return runProposalAction("cancel", { proposalId: cancelled.id }, () => {
+      setProposal(null);
+      setProposalNotice("You cancelled the proposal. Anyone can now propose again.");
+      collaboration.broadcastProposal({
+        type: "cancelled",
+        proposal: cancelled,
+        byName: participantName,
+      });
+    });
+  };
+
+  const agreeToSupport = () => {
+    if (!proposal) return;
+    return runProposalAction("agree", { proposalId: proposal.id }, (data) => {
+      const state = {
+        scaffoldingType: data.scaffoldingType as ScaffoldingType,
+        helpReason: data.helpReason as string,
+        aiResponse: data.aiResponse as string,
+        proposedBy: data.proposedByName as string,
+        agreedBy: data.agreedByName as string,
+      };
+      onScaffoldingUpdate({ ...state, updatedAt: new Date().toISOString() });
+      collaboration.broadcastScaffolding(state);
+    });
   };
 
   const submitFinalAnswer = async () => {
@@ -283,7 +427,26 @@ export function ScenarioView({
       </Step>
 
       <Step number={2} title="AI support">
-        {!scaffoldChosen && (
+        <p className="mt-1 text-sm text-slate-600">
+          AI support is a group decision. One member proposes a reason and a type of
+          support; the AI is only asked once another member agrees.
+        </p>
+        {!scaffoldChosen && proposal && (
+          <ProposalPanel
+            proposal={proposal}
+            participantId={participantId}
+            memberCount={memberCount}
+            busy={busy}
+            onAgree={agreeToSupport}
+            onCancel={cancelSupport}
+          />
+        )}
+        {!scaffoldChosen && proposalNotice && !proposal && (
+          <p className="mt-3 rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-700">
+            {proposalNotice}
+          </p>
+        )}
+        {!scaffoldChosen && !proposal && (
           <fieldset className="mt-3">
             <legend className="text-sm font-medium text-slate-900">
               Why does your group need help at this point?
@@ -304,7 +467,7 @@ export function ScenarioView({
                     value={reason.id}
                     checked={helpReason === reason.id}
                     onChange={() => setHelpReason(reason.id)}
-                    disabled={scaffoldingLoading || attempt.submitted}
+                    disabled={busy !== null || attempt.submitted}
                   />
                   {reason.label}
                 </label>
@@ -312,25 +475,47 @@ export function ScenarioView({
             </div>
           </fieldset>
         )}
-        {scaffoldChosen && attempt.helpReason && (
-          <p className="mt-2 text-sm text-slate-600">
-            Your group said: <span className="font-medium">{getHelpReasonLabel(attempt.helpReason)}</span>
-          </p>
+        {scaffoldChosen && (
+          <div className="mt-3 space-y-1 text-sm text-slate-600">
+            {attempt.helpReason && (
+              <p>
+                Your group said:{" "}
+                <span className="font-medium">{getHelpReasonLabel(attempt.helpReason)}</span>
+              </p>
+            )}
+            {attempt.proposedByName && (
+              <p>
+                Proposed by <span className="font-medium">{attempt.proposedByName}</span>
+                {attempt.agreedByName && attempt.agreedByName !== attempt.proposedByName && (
+                  <>
+                    {" "}· agreed by <span className="font-medium">{attempt.agreedByName}</span>
+                  </>
+                )}
+              </p>
+            )}
+          </div>
         )}
         <div className="mt-4">
           <ScaffoldingSelector
-            selected={attempt.scaffoldingType}
+            selected={attempt.scaffoldingType ?? proposal?.scaffoldingType ?? null}
             disabled={
-              scaffoldingLoading ||
+              busy !== null ||
               attempt.submitted ||
               scaffoldChosen ||
-              !helpReason
+              !!proposal ||
+              !helpReason ||
+              !participantId
             }
-            onSelect={requestScaffolding}
+            onSelect={proposeSupport}
           />
         </div>
-        {scaffoldingLoading && (
-          <p className="mt-3 text-sm text-indigo-600">Generating AI support...</p>
+        {busy === "agree" && (
+          <p className="mt-3 text-sm text-indigo-600">Asking the AI...</p>
+        )}
+        {scaffoldChosen && !attempt.aiResponse && busy !== "agree" && (
+          <p className="mt-3 text-sm text-indigo-600">
+            Your group agreed. The AI is responding...
+          </p>
         )}
         {attempt.aiResponse && (
           <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50 p-4">

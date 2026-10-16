@@ -62,6 +62,20 @@ export interface ScenarioAttemptState {
   submitted: boolean;
 }
 
+export interface ScaffoldProposal {
+  id: string;
+  proposedById: string | null;
+  proposedByName: string;
+  helpReason: string;
+  scaffoldingType: ScaffoldingType;
+  createdAt: string;
+}
+
+/** Agreement is announced through the scaffolding broadcast once the AI has answered. */
+export type ProposalEvent =
+  | { type: "proposed"; proposal: ScaffoldProposal }
+  | { type: "cancelled"; proposal: ScaffoldProposal; byName: string };
+
 /**
  * "content" options sit on a single directness scale (supportLevel 0–3).
  * "process" options support collaboration rather than the answer itself,

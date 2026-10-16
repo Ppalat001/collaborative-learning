@@ -1,7 +1,7 @@
 import type { Server as SocketServer } from "socket.io";
 
 import { isSharedField, type SharedField } from "@/lib/instruments";
-import type { ScaffoldingType } from "@/lib/types";
+import type { ProposalEvent, ScaffoldingType } from "@/lib/types";
 
 /**
  * Only holds fields edited since the server started. Fields missing here are
@@ -17,7 +17,8 @@ export interface RoomScaffoldingState {
   scaffoldingType: ScaffoldingType;
   helpReason: string;
   aiResponse: string;
-  requestedBy: string;
+  proposedBy: string;
+  agreedBy: string;
   updatedAt: string;
 }
 
@@ -123,7 +124,8 @@ export function initSocketHandlers(io: SocketServer) {
         scaffoldingType: ScaffoldingType;
         helpReason: string;
         aiResponse: string;
-        requestedBy: string;
+        proposedBy: string;
+        agreedBy: string;
       }) => {
         const { sessionCode, scenarioOrder, ...rest } = payload;
         const state: RoomScaffoldingState = {
@@ -132,6 +134,14 @@ export function initSocketHandlers(io: SocketServer) {
         };
         scaffoldingState.set(roomKey(sessionCode, scenarioOrder), state);
         socket.to(roomKey(sessionCode, scenarioOrder)).emit("scaffolding:state", state);
+      }
+    );
+
+    socket.on(
+      "proposal:update",
+      (payload: { sessionCode: string; scenarioOrder: number; event: ProposalEvent }) => {
+        const { sessionCode, scenarioOrder, event } = payload;
+        socket.to(roomKey(sessionCode, scenarioOrder)).emit("proposal:update", event);
       }
     );
 

@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI-Supported Collaborative Learning — How the Website Works</title>
+<style>
+  :root {
+    --ink: #1e293b;
+    --muted: #475569;
+    --line: #e2e8f0;
+    --accent: #4f46e5;
+    --accent-soft: #eef2ff;
+    --green-soft: #ecfdf5;
+    --amber-soft: #fffbeb;
+    --rose-soft: #fff1f2;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    color: var(--ink);
+    background: #f8fafc;
+    line-height: 1.6;
+  }
+  .layout { display: flex; max-width: 1200px; margin: 0 auto; }
+  nav {
+    position: sticky; top: 0; align-self: flex-start;
+    width: 260px; height: 100vh; overflow-y: auto;
+    padding: 32px 20px; border-right: 1px solid var(--line); background: #fff;
+  }
+  nav h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 12px; }
+  nav ol { margin: 0; padding-left: 20px; }
+  nav li { margin: 6px 0; font-size: 0.92rem; }
+  nav a { color: var(--ink); text-decoration: none; }
+  nav a:hover { color: var(--accent); }
+  main { flex: 1; padding: 40px 48px 80px; max-width: 900px; }
+  header.hero {
+    background: linear-gradient(135deg, #4f46e5, #7c3aed);
+    color: #fff; border-radius: 16px; padding: 32px; margin-bottom: 32px;
+  }
+  header.hero p.kicker { margin: 0; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.85; }
+  header.hero h1 { margin: 8px 0 12px; font-size: 2rem; line-height: 1.2; }
+  header.hero p { margin: 0; opacity: 0.95; }
+  section {
+    background: #fff; border: 1px solid var(--line); border-radius: 14px;
+    padding: 28px 32px; margin-bottom: 24px;
+  }
+  h2.section-title { margin-top: 0; font-size: 1.45rem; }
+  h2.section-title span { color: var(--accent); margin-right: 6px; }
+  h3 { margin: 24px 0 8px; font-size: 1.1rem; }
+  h4 { margin: 18px 0 6px; font-size: 1rem; color: var(--accent); }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 8px; font-size: 0.93rem; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: #f1f5f9; font-weight: 600; }
+  tr:last-child td { border-bottom: none; }
+  .callout {
+    border-left: 4px solid var(--accent); background: var(--accent-soft);
+    padding: 14px 18px; border-radius: 8px; margin: 14px 0;
+  }
+  .callout.green { border-color: #059669; background: var(--green-soft); }
+  .callout.amber { border-color: #d97706; background: var(--amber-soft); }
+  .callout.rose { border-color: #e11d48; background: var(--rose-soft); }
+  .steps { counter-reset: step; list-style: none; padding: 0; }
+  .steps > li {
+    position: relative; padding: 14px 16px 14px 56px; margin: 10px 0;
+    border: 1px solid var(--line); border-radius: 10px; background: #fff;
+  }
+  .steps > li::before {
+    counter-increment: step; content: counter(step);
+    position: absolute; left: 16px; top: 14px;
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--accent); color: #fff; font-weight: 600;
+    display: flex; align-items: center; justify-content: center; font-size: 0.9rem;
+  }
+  .badge {
+    display: inline-block; padding: 1px 8px; border-radius: 999px;
+    font-size: 0.78rem; font-weight: 600; background: var(--accent-soft); color: var(--accent);
+  }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin: 14px 0; }
+  .card { border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; background: #fcfcfd; }
+  .card h4 { margin-top: 0; }
+  code { background: #f1f5f9; padding: 1px 6px; border-radius: 4px; font-size: 0.88em; }
+  .summary-box {
+    background: #0f172a; color: #e2e8f0; border-radius: 12px; padding: 22px 26px;
+  }
+  .summary-box p { margin: 8px 0; }
+  .summary-box strong { color: #a5b4fc; }
+  footer { color: var(--muted); font-size: 0.85rem; text-align: center; margin-top: 32px; }
+  @media (max-width: 900px) {
+    nav { display: none; }
+    main { padding: 24px 16px 60px; }
+    section { padding: 22px 18px; }
+  }
+  @media print {
+    nav { display: none; }
+    body { background: #fff; }
+    main { padding: 0; max-width: none; }
+    section { break-inside: avoid; border: none; padding: 12px 0; }
+    header.hero { background: none; color: var(--ink); border: 2px solid var(--accent); }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+<nav>
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#pitch">The one-minute version</a></li>
+    <li><a href="#purpose">Purpose of the study</a></li>
+    <li><a href="#how">How the website works</a></li>
+    <li><a href="#helper">AI as helper, not doer</a></li>
+    <li><a href="#evaluation">How evaluation happens</a></li>
+    <li><a href="#metrics">Metrics</a></li>
+    <li><a href="#analysis">Analysis methods</a></li>
+    <li><a href="#validity">Why the measurements are valid</a></li>
+    <li><a href="#limitations">Limitations</a></li>
+    <li><a href="#summary">Summary slide</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<header class="hero">
+  <p class="kicker">Master's dissertation · Research system</p>
+  <h1>AI-Supported Collaborative Learning</h1>
+  <p>A plain-English guide to how the website works, what it measures, and why the measurements are valid.</p>
+</header>
+
+<!-- 1 -->
+<section id="pitch">
+  <h2 class="section-title"><span>1.</span>The one-minute version</h2>
+  <div class="callout">
+    “I built a website where small groups of students (2–4) solve 10 short tasks together. They discuss in a group chat,
+    and if they get stuck they can ask an AI for <strong>one type of help</strong>, such as a hint, a guiding question, an example
+    or feedback. The AI is designed to <strong>support their thinking, not do the work for them</strong>. The site records what the
+    group writes, what help they asked for and why, who contributed, and how each student felt. At the end, I measure
+    <strong>learning, answer quality, collaboration and dependence on AI</strong>.”
+  </div>
+</section>
+
+<!-- 2 -->
+<section id="purpose">
+  <h2 class="section-title"><span>2.</span>Purpose of the study</h2>
+  <p><strong>Main question:</strong> <em>How does AI support, chosen by the group itself, affect how students learn and work together,
+    without the AI taking over the task?</em></p>
+
+  <h3>Sub-questions</h3>
+  <table>
+    <tr><th>#</th><th>Topic</th><th>Question</th></tr>
+    <tr><td>1</td><td>Learning</td><td>Do students know more after the activity?</td></tr>
+    <tr><td>2</td><td>Quality</td><td>How good are the group answers, and does that relate to the type of AI help used?</td></tr>
+    <tr><td>3</td><td>Help-seeking</td><td>What help do groups choose, and why do they ask for it?</td></tr>
+    <tr><td>4</td><td>Collaboration</td><td>Does AI help groups discuss, stay focused, include everyone and resolve disagreement?</td></tr>
+    <tr><td>5</td><td>Autonomy and overdependence</td><td>Do students stay in control, or do they lean on the AI and copy it?</td></tr>
+  </table>
+
+  <div class="callout green">
+    <strong>Why it matters:</strong> AI tools like ChatGPT can easily give full answers, which may stop students from thinking.
+    This study tests whether <strong>graded, student-chosen support</strong> (giving the least help needed) keeps students active and learning.
+  </div>
+</section>
+
+<!-- 3 -->
+<section id="how">
+  <h2 class="section-title"><span>3.</span>How the website works, step by step</h2>
+
+  <h3>Start</h3>
+  <ol class="steps">
+    <li>The <strong>researcher creates a session</strong> and gets a code (for example <code>GROUP-RBKF</code>).</li>
+    <li><strong>Students join</strong> on their own devices with the code and their name. Each student is given a hidden <strong>anonymous ID</strong> for the data.</li>
+    <li>The group gives <strong>consent</strong>.</li>
+    <li><strong>Each student takes a pre-test</strong> (8 questions on collaborative learning and AI support) on their own.</li>
+  </ol>
+
+  <h3>For each of the 10 scenarios</h3>
+  <table>
+    <tr><th>#</th><th>Scenario</th><th>Type of thinking</th></tr>
+    <tr><td>1</td><td>Explaining a Concept</td><td>Explain</td></tr>
+    <tr><td>2</td><td>Improving a Weak Answer</td><td>Expand an answer</td></tr>
+    <tr><td>3</td><td>Short Case Study</td><td>Case study</td></tr>
+    <tr><td>4</td><td>Making a Judgment Call</td><td>Judgment</td></tr>
+    <tr><td>5</td><td>Choosing Among Solutions</td><td>Compare solutions</td></tr>
+    <tr><td>6</td><td>Reflecting on Learning</td><td>Reflection</td></tr>
+    <tr><td>7</td><td>Ethical Dilemma</td><td>Judgment</td></tr>
+    <tr><td>8</td><td>Data Interpretation</td><td>Case study</td></tr>
+    <tr><td>9</td><td>Designing a Process</td><td>Compare solutions</td></tr>
+    <tr><td>10</td><td>Synthesis and Recommendation</td><td>Reflection</td></tr>
+  </table>
+
+  <h4>Step 1 — Discuss (group chat)</h4>
+  <ul>
+    <li>Students talk in a live chat.</li>
+    <li>Each message shows the <strong>name, the time and a colour per student</strong>, so it's clear who said what.</li>
+  </ul>
+
+  <h4>Step 2 — AI help (optional, once per scenario, shared by the whole group)</h4>
+  <ol>
+    <li>The group says <strong>why</strong> it needs help: stuck / not sure if correct / need an example / disagree / need a better explanation / want feedback / no help needed.</li>
+    <li>The group picks <strong>one type of help</strong>:</li>
+  </ol>
+  <table>
+    <tr><th>Level</th><th>Type of help</th><th>Meaning</th></tr>
+    <tr><td><span class="badge">0</span></td><td>No assistance</td><td>Work alone</td></tr>
+    <tr><td><span class="badge">1 · minimal</span></td><td>Hint, guiding question</td><td>A small push</td></tr>
+    <tr><td><span class="badge">2 · moderate</span></td><td>Explanation, example, feedback</td><td>More guidance</td></tr>
+    <tr><td><span class="badge">3 · direct</span></td><td>Full expert answer</td><td>The complete answer, with extra conditions (see below)</td></tr>
+    <tr><td><span class="badge">—</span></td><td>Summary, task splitting, conflict help</td><td>Helps the teamwork, not the content</td></tr>
+  </table>
+  <ol start="3">
+    <li><strong>The choice is a proposal, not a decision.</strong> It appears on every member's screen as “Maria proposed Small hint (Level 1) because: We are stuck”.</li>
+    <li><strong>Another member must agree.</strong> Any other member clicks <em>Agree and ask the AI</em>, or anyone clicks <em>Cancel</em> so the group can choose again. The proposer cannot agree to their own proposal (except in a one-person group).</li>
+    <li>Only after agreement, the AI reads the chat and replies. Everyone sees the same response, labelled “Proposed by Maria · agreed by John”.</li>
+  </ol>
+
+  <h4>Example: how agreement works</h4>
+  <table>
+    <tr><th>Moment</th><th>Maria's screen</th><th>John's screen</th></tr>
+    <tr><td>1. Chat</td><td colspan="2">“Should we ask for a hint?” — “Yes, a hint sounds good.”</td></tr>
+    <tr><td>2. Maria proposes</td><td>Picks “We are stuck” + “Small hint”. Sees <em>Waiting for another group member to agree</em> and a <em>Withdraw</em> button.</td><td>Instantly sees the yellow box: <em>Maria proposed Small hint… Do you agree?</em> with <em>Agree</em> and <em>Cancel</em>.</td></tr>
+    <tr><td>3a. John agrees</td><td colspan="2">The AI is asked once. Both screens show the hint, “Proposed by Maria · agreed by John”, and the final-answer step unlocks.</td></tr>
+    <tr><td>3b. John cancels instead</td><td colspan="2">Both screens show “John cancelled the proposal”. Anyone can now propose something else.</td></tr>
+  </table>
+
+  <h4>Step 3 — Own words (only after a full expert answer)</h4>
+  <ul><li>The group must explain the AI's answer <strong>in their own words</strong> (at least 15 words). This prevents copying.</li></ul>
+
+  <h4>Final answer</h4>
+  <ul><li>The group writes <strong>one shared answer</strong> together, with live co-editing.</li></ul>
+
+  <h4>Individual rating</h4>
+  <ul><li><strong>Each student rates the scenario separately</strong>: whether the help was useful, whether it was too little, about right or too much, how the teamwork went, and whether they felt in control.</li></ul>
+
+  <h3>End</h3>
+  <ol class="steps">
+    <li><strong>Each student takes a post-test</strong> (8 questions, matched one-to-one with the pre-test concepts).</li>
+    <li><strong>Each student answers 6 open questions</strong> about their experience.</li>
+    <li>The <strong>researcher scores the answers</strong> with a rubric (blind) and <strong>downloads the data</strong> as spreadsheets.</li>
+  </ol>
+</section>
+
+<!-- 4 -->
+<section id="helper">
+  <h2 class="section-title"><span>4.</span>How the AI is kept as a “helper, not a doer”</h2>
+  <p>This is a key design argument for your professor:</p>
+  <div class="grid">
+    <div class="card"><h4>One request per scenario</h4>The AI can't be used again and again.</div>
+    <div class="card"><h4>Propose and agree</h4>No single student can call the AI alone. A second member must agree, so asking for help is a real group decision.</div>
+    <div class="card"><h4>Strict instructions per help type</h4>For example, a “hint” must never contain the answer.</div>
+    <div class="card"><h4>Required help reason</h4>The group must give a reason before asking, which makes them think about what they actually need.</div>
+    <div class="card"><h4>Own-words explanation</h4>After a full answer, students have to process it in their own words.</div>
+    <div class="card"><h4>Least help first</h4>Lower levels come first in the list, nudging groups toward the least help needed.</div>
+  </div>
+</section>
+
+<!-- 5 -->
+<section id="evaluation">
+  <h2 class="section-title"><span>5.</span>How the evaluation will happen</h2>
+  <p>Data is collected at <strong>three levels</strong>:</p>
+  <table>
+    <tr><th>Level</th><th>What is collected</th><th>When</th></tr>
+    <tr><td><strong>Student</strong></td><td>Pre/post tests, ratings per scenario, open questions, individual contributions</td><td>Start, after each scenario, end</td></tr>
+    <tr><td><strong>Group × scenario</strong></td><td>Chat, help reason, help type and level, AI response, final answer, timings</td><td>During each scenario</td></tr>
+    <tr><td><strong>Researcher</strong></td><td>Rubric scores of the final answers</td><td>After the study</td></tr>
+  </table>
+
+  <h3>Evaluation process</h3>
+  <ol class="steps">
+    <li><strong>Run a pilot</strong> with 1–2 groups to fix problems, then delete the pilot data.</li>
+    <li><strong>Run the study</strong> with several groups.</li>
+    <li><strong>Score the final answers</strong> blind, ideally with two raters on a sample.</li>
+    <li><strong>Download the CSV files</strong> from <code>/admin</code>.</li>
+    <li><strong>Analyse</strong> the numbers (statistics) and the open answers (themes).</li>
+    <li><strong>Compare and combine:</strong> check whether what students <em>said</em> matches what they <em>did</em>.</li>
+  </ol>
+</section>
+
+<!-- 6 -->
+<section id="metrics">
+  <h2 class="section-title"><span>6.</span>Metrics you can use</h2>
+
+  <h3>A. Learning</h3>
+  <table>
+    <tr><th>Metric</th><th>How it is calculated</th><th>What it tells you</th></tr>
+    <tr><td><strong>Pre-test score</strong></td><td>Correct answers out of 8</td><td>Starting knowledge</td></tr>
+    <tr><td><strong>Post-test score</strong></td><td>Correct answers out of 8</td><td>Knowledge after the activity</td></tr>
+    <tr><td><strong>Per-concept gain</strong></td><td>Correct (1) or not (0) per concept, before vs after</td><td>Which ideas students learned: definition, interdependence, accountability, scaffolding, choosing support, overreliance, group agency, disagreement</td></tr>
+    <tr><td><strong>Learning gain</strong></td><td>Post minus pre</td><td>Did they learn?</td></tr>
+  </table>
+
+  <h3>B. Quality of answers</h3>
+  <table>
+    <tr><th>Metric</th><th>How it is calculated</th><th>What it tells you</th></tr>
+    <tr><td><strong>Rubric score</strong></td><td>6 criteria, each 1–4: correctness, clarity, reasoning, completeness, use of examples, depth</td><td>How good the group's answer is</td></tr>
+    <tr><td><strong>Rubric mean per scenario</strong></td><td>Average across raters</td><td>Compare quality across help types and levels</td></tr>
+  </table>
+
+  <h3>C. AI help usage</h3>
+  <table>
+    <tr><th>Metric</th><th>What it tells you</th></tr>
+    <tr><td><strong>Help type chosen</strong> (frequency)</td><td>Which help groups prefer</td></tr>
+    <tr><td><strong>Support level (0–3)</strong></td><td>How direct the help was</td></tr>
+    <tr><td><strong>Help reason</strong> (frequency)</td><td>Why groups seek help</td></tr>
+    <tr><td><strong>Perceived helpfulness</strong> (1–5)</td><td>Was it useful?</td></tr>
+    <tr><td><strong>Amount of help:</strong> too little / about right / too much</td><td>Was the level appropriate?</td></tr>
+    <tr><td><strong>Proposed by / agreed by</strong></td><td>Who initiated help-seeking and who confirmed it</td></tr>
+    <tr><td><strong>Proposals cancelled</strong></td><td>How often the group disagreed about what help to ask for</td></tr>
+    <tr><td><strong>Seconds from proposal to agreement</strong></td><td>How quickly the group reached a shared decision</td></tr>
+  </table>
+
+  <h3>D. Collaboration</h3>
+  <table>
+    <tr><th>Metric</th><th>How it is calculated</th><th>What it tells you</th></tr>
+    <tr><td><strong>Messages per student</strong></td><td>Count of chat messages</td><td>Who talked</td></tr>
+    <tr><td><strong>Characters per student</strong></td><td>Chat text plus typing in the shared answer</td><td>Who contributed</td></tr>
+    <tr><td><strong>Share of group work</strong></td><td>Student's characters ÷ group total</td><td>Each person's contribution</td></tr>
+    <tr><td><strong>Participation balance (0–1)</strong></td><td>1 = everyone contributed equally, 0 = one person did everything</td><td>Fairness of participation</td></tr>
+    <tr><td><strong>Collaboration ratings</strong> (1–5)</td><td>Likert items: discussed better, stayed focused, included everyone, resolved disagreement, worked well, shared answer</td><td>Perceived teamwork</td></tr>
+  </table>
+
+  <h3>E. Autonomy and overdependence</h3>
+  <table>
+    <tr><th>Metric</th><th>How it is calculated</th><th>What it tells you</th></tr>
+    <tr><td><strong>Overlap with AI (0–1)</strong></td><td>How much of the final answer's wording matches the AI text</td><td>Did they copy?</td></tr>
+    <tr><td><strong>Overlap with own discussion (0–1)</strong></td><td>How much the answer reuses the group's chat from before AI</td><td>Did they build on their own ideas?</td></tr>
+    <tr><td><strong>Own-words overlap with AI</strong></td><td>Same idea, for the own-words explanation</td><td>Did they really rephrase it?</td></tr>
+    <tr><td><strong>Autonomy ratings</strong> (1–5)</td><td>“I felt in control”, “the AI helped me think rather than thinking for me”, “we relied too much on AI”, “we could have answered without AI”</td><td>Perceived independence</td></tr>
+    <tr><td><strong>Time before and after AI</strong></td><td>Seconds</td><td>Did groups think first, or ask straight away?</td></tr>
+  </table>
+
+  <h3>F. Qualitative</h3>
+  <table>
+    <tr><th>Metric</th><th>What it tells you</th></tr>
+    <tr><td><strong>6 open-ended answers</strong></td><td>The why behind the numbers: experience, problems, suggestions</td></tr>
+    <tr><td><strong>Chat transcripts</strong></td><td>How the discussion changed after the AI response</td></tr>
+  </table>
+</section>
+
+<!-- 7 -->
+<section id="analysis">
+  <h2 class="section-title"><span>7.</span>Suggested analysis methods (simple to explain)</h2>
+  <table>
+    <tr><th>Question</th><th>Method</th></tr>
+    <tr><td>Did students learn?</td><td><strong>Paired t-test</strong> (or Wilcoxon if the sample is small): pre vs post</td></tr>
+    <tr><td>Does help level relate to answer quality?</td><td><strong>Spearman correlation</strong> or <strong>Kruskal-Wallis</strong> across levels</td></tr>
+    <tr><td>Does help level relate to copying or overreliance?</td><td>Correlate support level with AI overlap and the overreliance rating</td></tr>
+    <tr><td>What do groups choose?</td><td><strong>Descriptive statistics:</strong> frequencies and percentages</td></tr>
+    <tr><td>Are the questionnaire scales consistent?</td><td><strong>Cronbach's alpha</strong> for the collaboration items and the autonomy items</td></tr>
+    <tr><td>Do the raters agree?</td><td><strong>ICC</strong> or <strong>Cohen's kappa</strong> between two raters</td></tr>
+    <tr><td>What do students say?</td><td><strong>Thematic analysis</strong> (Braun &amp; Clarke) of the open answers</td></tr>
+    <tr><td>Do words match actions?</td><td>Compare self-reported reliance with the actual AI overlap</td></tr>
+  </table>
+  <div class="callout amber">
+    <strong>Note:</strong> “We relied too much on AI” is negatively worded, so reverse it when you combine it with the other autonomy items.
+  </div>
+</section>
+
+<!-- 8 -->
+<section id="validity">
+  <h2 class="section-title"><span>8.</span>Why the measurements are valid</h2>
+  <p>You can make five simple arguments to your professor:</p>
+
+  <h4>1. Triangulation</h4>
+  <p>Each key concept is measured in at least two ways:</p>
+  <ul>
+    <li><em>Overdependence</em> = what students say (rating) + what they did (AI overlap) + the result (rubric).</li>
+    <li><em>Collaboration</em> = what students say (rating) + what they did (contribution logs).</li>
+  </ul>
+  <p>When the sources agree, the conclusion is strong.</p>
+
+  <h4>2. Objective behaviour data</h4>
+  <p>Messages, typing, timings and text overlap are recorded automatically, so they don't rely on memory or honesty.</p>
+
+  <h4>3. Individual and group data are separated</h4>
+  <p>Tests, ratings and contributions are recorded <strong>per student</strong>, not assumed from the group answer.</p>
+
+  <h4>4. Reduced bias</h4>
+  <ul>
+    <li><strong>Blind rubric scoring:</strong> the rater doesn't know which help was used.</li>
+    <li><strong>Anonymous IDs</strong> encourage honest answers.</li>
+    <li>AI questions are <strong>skipped</strong> when no AI was used, and “Not applicable” is offered where it fits.</li>
+  </ul>
+
+  <h4>5. Standard, recognised instruments</h4>
+  <ul>
+    <li>Pre/post testing, Likert scales and analytic rubrics are common in education research.</li>
+    <li>The support levels follow <strong>scaffolding theory</strong> (Wood, Bruner &amp; Ross; Vygotsky's Zone of Proximal Development): give the minimum help needed.</li>
+    <li><strong>Aligned content:</strong> the pre-test, the 10 scenarios and the post-test all focus on collaborative learning and AI support, so the tests measure what students actually practised.</li>
+    <li><strong>Matched test forms:</strong> each pre-test question has a post-test partner on the same concept. Correct answers are spread evenly across A–D, so guessing one letter doesn't inflate scores.</li>
+  </ul>
+
+  <div class="callout green">
+    <strong>Consistency:</strong> every group gets the same 10 scenarios, options and steps. Only their choices differ, and those choices are what you study.
+  </div>
+</section>
+
+<!-- 9 -->
+<section id="limitations">
+  <h2 class="section-title"><span>9.</span>Limitations (say these before your professor asks)</h2>
+  <div class="callout rose">
+    <ul style="margin:0; padding-left:20px;">
+      <li><strong>Groups choose their own help,</strong> so this is not a randomised experiment. You can show <strong>relationships</strong>, not strict cause and effect.</li>
+      <li><strong>The pre/post tests are short</strong> (8 questions each). The two versions are matched by concept but use different wording, so they may not be exactly equal in difficulty. Pilot them first and check item difficulty.</li>
+      <li><strong>Text overlap detects copied wording, not copied ideas.</strong></li>
+      <li><strong>If groups sit together and talk out loud,</strong> the chat misses that discussion. Ask them to use the chat as the main channel.</li>
+      <li><strong>A small sample</strong> means the results are mainly descriptive and exploratory.</li>
+      <li><strong>AI responses can vary.</strong> Note the model used (<code>gpt-4o-mini</code>), which is recorded in the data.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 10 -->
+<section id="summary">
+  <h2 class="section-title"><span>10.</span>Summary slide</h2>
+  <div class="summary-box">
+    <p><strong>Purpose:</strong> Study how group-chosen AI scaffolding affects learning, collaboration and autonomy.</p>
+    <p><strong>Design:</strong> Groups of 2–4 students, 10 scenarios, each with chat → optional AI help (10 types, levels 0–3) → shared answer → individual rating. Pre-test before, post-test and open questions after.</p>
+    <p><strong>Safeguards:</strong> One AI request per scenario, a required help reason, strict AI rules, an own-words explanation after full answers.</p>
+    <p><strong>Metrics:</strong> Learning gain, rubric quality, help type, level and reason, helpfulness, participation balance, collaboration ratings, AI overlap, autonomy ratings, open answers.</p>
+    <p><strong>Validity:</strong> Triangulation of self-report and behaviour, automatic logs, individual-level data, blind scoring, standard instruments.</p>
+    <p><strong>Limitations:</strong> Not randomised, short tests, small sample. Findings are exploratory associations.</p>
+  </div>
+</section>
+
+<footer>AI-Supported Collaborative Learning · Dissertation research system</footer>
+
+</main>
+</div>
+</body>
+</html>

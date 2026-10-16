@@ -47,6 +47,16 @@ const RATINGS = {
   satisfactionRating: 5,
 };
 
+// Pre-test: 6 of 8 correct (pre-1 and pre-6 wrong). Post-test: all 8 correct.
+const PRE_ANSWERS = {
+  "pre-1": 0, "pre-2": 3, "pre-3": 0, "pre-4": 2,
+  "pre-5": 0, "pre-6": 0, "pre-7": 2, "pre-8": 1,
+};
+const POST_ANSWERS = {
+  "post-1": 2, "post-2": 0, "post-3": 3, "post-4": 1,
+  "post-5": 3, "post-6": 1, "post-7": 0, "post-8": 2,
+};
+
 async function exportCsv(type) {
   const res = await fetch(`${BASE}/api/admin/export?type=${type}`, {
     headers: { "x-admin-password": ADMIN_PASSWORD },
@@ -74,7 +84,7 @@ async function main() {
       `/api/sessions/${code}/assessment`,
       post({
         assessmentType: "pre",
-        answers: { "pre-1": 1, "pre-2": 2, "pre-3": 1, "pre-4": 1, "pre-5": 1 },
+        answers: PRE_ANSWERS,
         participantId,
       })
     );
@@ -101,21 +111,57 @@ async function main() {
   );
   console.log("Chat messages from both students saved with names and colours");
 
-  const scaffoldBody = {
-    scenarioOrder: 1,
+  const scaffold = (body) => post({ scenarioOrder: 1, ...body });
+  const scaffoldPath = `/api/sessions/${code}/scaffold`;
+  const proposeBody = {
+    action: "propose",
     scaffoldingType: "guiding_question",
     participantId: studentA,
   };
+  await expectRejected(scaffoldPath, scaffold(proposeBody), "proposal without a help reason");
+
+  const firstProposal = await request(scaffoldPath, scaffold({ ...proposeBody, helpReason: "stuck" }));
   await expectRejected(
-    `/api/sessions/${code}/scaffold`,
-    post(scaffoldBody),
-    "AI support without a help reason"
+    scaffoldPath,
+    scaffold({ action: "agree", proposalId: firstProposal.proposal.id, participantId: studentA }),
+    "agreeing to your own proposal"
   );
-  const scaffold = await request(
-    `/api/sessions/${code}/scaffold`,
-    post({ ...scaffoldBody, helpReason: "stuck" })
+  await expectRejected(
+    scaffoldPath,
+    scaffold({ ...proposeBody, participantId: studentB, helpReason: "want_feedback" }),
+    "a second proposal while one is pending"
   );
-  console.log("Scaffolding response:", scaffold.aiResponse.slice(0, 80) + "...");
+  await request(
+    scaffoldPath,
+    scaffold({ action: "cancel", proposalId: firstProposal.proposal.id, participantId: studentB })
+  );
+  console.log("Proposal cancelled by the other student");
+
+  const secondProposal = await request(
+    scaffoldPath,
+    scaffold({ ...proposeBody, scaffoldingType: "hint", helpReason: "stuck" })
+  );
+  if (secondProposal.proposal.proposedByName !== "Pilot-A") {
+    throw new Error("Proposal missing proposer name");
+  }
+  const agreeBody = scaffold({
+    action: "agree",
+    proposalId: secondProposal.proposal.id,
+    participantId: studentB,
+  });
+  const [agreeOne, agreeTwo] = await Promise.all([
+    fetch(`${BASE}${scaffoldPath}`, agreeBody),
+    fetch(`${BASE}${scaffoldPath}`, agreeBody),
+  ]);
+  if ([agreeOne.ok, agreeTwo.ok].filter(Boolean).length !== 1) {
+    throw new Error("Two simultaneous agreements should produce exactly one AI request");
+  }
+  const agreed = await (agreeOne.ok ? agreeOne : agreeTwo).json();
+  if (agreed.proposedByName !== "Pilot-A" || agreed.agreedByName !== "Pilot-B") {
+    throw new Error("Agreement missing proposer or agreer");
+  }
+  console.log("Simultaneous agreements produced one AI request");
+  console.log("Scaffolding response:", agreed.aiResponse.slice(0, 80) + "...");
 
   await sendMessage(1, studentB, "So the AI is asking where the energy comes from.");
   await request(
@@ -165,13 +211,23 @@ async function main() {
   // Scenario 2: full answer requires an own-words explanation
   await request(`/api/sessions/${code}/scenario/2`);
   await sendMessage(2, studentB, "We think steam engines were not the only cause.");
-  await request(
+  const fullAnswerProposal = await request(
     `/api/sessions/${code}/scaffold`,
     post({
+      action: "propose",
       scenarioOrder: 2,
       scaffoldingType: "full_answer",
       helpReason: "unsure_correct",
       participantId: studentB,
+    })
+  );
+  await request(
+    `/api/sessions/${code}/scaffold`,
+    post({
+      action: "agree",
+      scenarioOrder: 2,
+      proposalId: fullAnswerProposal.proposal.id,
+      participantId: studentA,
     })
   );
   const finalAnswer = {
@@ -202,7 +258,7 @@ async function main() {
       `/api/sessions/${code}/assessment`,
       post({
         assessmentType: "post",
-        answers: { "post-1": 1, "post-2": 1, "post-3": 1, "post-4": 1, "post-5": 1 },
+        answers: POST_ANSWERS,
         participantId,
       })
     );
@@ -240,7 +296,7 @@ async function main() {
   const header = scenarios[0].split(",");
   const row = scenarios.find((line) => line.startsWith(code) && line.includes("scenario-01"));
   if (!row) throw new Error("Scenario export missing pilot row");
-  for (const column of ["help_reason", "discussion_before_ai", "messages_before_ai", "messages_after_ai", "final_answer", "participation_balance", "final_rubric_mean"]) {
+  for (const column of ["help_reason", "scaffolding_proposed_by", "scaffolding_agreed_by", "proposals_cancelled", "discussion_before_ai", "messages_before_ai", "messages_after_ai", "final_answer", "participation_balance", "final_rubric_mean"]) {
     if (!header.includes(column)) throw new Error(`Scenario export missing column ${column}`);
   }
 
@@ -253,6 +309,16 @@ async function main() {
     throw new Error(`Expected 2 chat messages before AI and 1 after, got ${before} and ${after}`);
   }
   console.log("Chat export splits messages before and after AI correctly");
+
+  const proposals = await exportCsv("proposals");
+  const scenario1Proposals = proposals
+    .filter((line) => line.startsWith(code))
+    .filter((line) => line.split(",")[1] === "1");
+  const statuses = scenario1Proposals.map((line) => line.split(",")[7]).sort();
+  if (statuses.join(" ") !== "agreed cancelled") {
+    throw new Error(`Expected one cancelled and one agreed proposal, got: ${statuses.join(", ")}`);
+  }
+  console.log("Proposal export records the cancelled and the agreed proposal");
 
   const ratings = await exportCsv("ratings");
   const pilotRatings = ratings.filter((line) => line.startsWith(code));
@@ -269,6 +335,26 @@ async function main() {
   if (!scenario1Contributions.every((line) => Number(line.split(",")[messageCountColumn]) === 1)) {
     throw new Error("Each student should have 1 chat message before AI in scenario 1");
   }
+
+  const assessments = await exportCsv("assessments");
+  const assessmentHeader = assessments[0].split(",");
+  const column = (name) => assessmentHeader.indexOf(name);
+  const preRow = assessments
+    .find((line) => line.startsWith(code) && line.split(",")[2] === "pre")
+    ?.split(",");
+  const postRow = assessments
+    .find((line) => line.startsWith(code) && line.split(",")[2] === "post")
+    ?.split(",");
+  if (!preRow || preRow[column("score")] !== "6" || preRow[column("max_score")] !== "8") {
+    throw new Error("Pre-test should score 6 out of 8");
+  }
+  if (preRow[column("correct_definition")] !== "0" || preRow[column("correct_overreliance")] !== "0") {
+    throw new Error("Per-concept pre-test columns are wrong");
+  }
+  if (!postRow || postRow[column("score")] !== "8" || postRow[column("correct_definition")] !== "1") {
+    throw new Error("Post-test should score 8 out of 8 with per-concept columns");
+  }
+  console.log("Assessment export has scores and per-concept columns (pre 6/8, post 8/8)");
 
   for (const type of ["edits", "reflections", "rubric", "assessments"]) {
     const lines = await exportCsv(type);
