@@ -68,12 +68,56 @@ const POST_ANSWERS = {
   "post-5": 3, "post-6": 1, "post-7": 0, "post-8": 2,
 };
 
-async function exportCsv(type) {
-  const res = await fetch(`${BASE}/api/admin/export?type=${type}`, {
+const OPEN_ANSWERS = {
+  pre: {
+    open_collaboration: "Working on the same task together.",
+    open_ai_role: "Use it for hints only.",
+  },
+  post: {
+    open_collaboration: "Building one shared understanding where everyone is accountable.",
+    open_ai_role: "Ask for guiding questions, then discuss them as a group before writing.",
+  },
+};
+
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let field = "";
+  let quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (quoted) {
+      if (char === '"' && text[i + 1] === '"') {
+        field += '"';
+        i++;
+      } else if (char === '"') quoted = false;
+      else field += char;
+    } else if (char === '"') quoted = true;
+    else if (char === ",") {
+      row.push(field);
+      field = "";
+    } else if (char === "\n") {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = "";
+    } else field += char;
+  }
+  row.push(field);
+  rows.push(row);
+  return rows;
+}
+
+/** Rows of one group's export as objects keyed by column name. */
+async function exportCsv(type, code) {
+  const res = await fetch(`${BASE}/api/admin/export?type=${type}&session=${code}`, {
     headers: { "x-admin-password": ADMIN_PASSWORD },
   });
   if (!res.ok) throw new Error(`Export ${type} failed`);
-  return (await res.text()).split("\n");
+  const [header, ...lines] = parseCsv((await res.text()).replace(/^\uFEFF/, ""));
+  return lines
+    .filter((line) => line.length === header.length)
+    .map((line) => Object.fromEntries(header.map((name, i) => [name, line[i]])));
 }
 
 async function main() {
@@ -90,13 +134,18 @@ async function main() {
   console.log("Joined 2 participants");
 
   await request(`/api/sessions/${code}/consent`, { method: "POST" });
+  await expectRejected(
+    `/api/sessions/${code}/assessment`,
+    post({ assessmentType: "pre", answers: PRE_ANSWERS, participantId: studentA }),
+    "pre-test without the written answers"
+  );
   for (const participantId of [studentA, studentB]) {
     await request(
       `/api/sessions/${code}/assessment`,
-      post({ assessmentType: "pre", answers: PRE_ANSWERS, participantId })
+      post({ assessmentType: "pre", answers: PRE_ANSWERS, openAnswers: OPEN_ANSWERS.pre, participantId })
     );
   }
-  console.log("Consent and pre-tests recorded");
+  console.log("Consent and pre-tests (with written answers) recorded");
 
   const sendMessage = (scenarioOrder, participantId, text) =>
     request(`/api/sessions/${code}/messages`, post({ scenarioOrder, participantId, text }));
@@ -269,13 +318,16 @@ async function main() {
   for (const participantId of [studentA, studentB]) {
     await request(
       `/api/sessions/${code}/assessment`,
-      post({ assessmentType: "post", answers: POST_ANSWERS, participantId })
+      post({ assessmentType: "post", answers: POST_ANSWERS, openAnswers: OPEN_ANSWERS.post, participantId })
     );
     await request(
       `/api/sessions/${code}/reflection`,
       post({
         participantId,
-        answers: { ai_effect_on_collaboration: "It gave me questions to bring to the group." },
+        answers: {
+          ai_effect_on_collaboration: "It gave me questions to bring to the group.",
+          private_vs_shared_ai: "Private, so I could think first.",
+        },
       })
     );
   }
@@ -305,77 +357,115 @@ async function main() {
   });
   console.log("Rubric score saved for final answer");
 
-  const scenarios = await exportCsv("scenarios");
-  const header = scenarios[0].split(",");
-  for (const column of ["members_using_ai", "ai_types_used", "highest_support_level_used", "discussion_before_ai", "messages_before_ai", "final_answer", "final_overlap_with_ai", "final_authorship_balance", "participation_balance", "final_rubric_mean"]) {
-    assert(header.includes(column), `Scenario export missing column ${column}`);
-  }
-
-  const aiSupport = await exportCsv("ai_support");
-  const aiHeader = aiSupport[0].split(",");
-  const aiRows = aiSupport.filter((line) => line.startsWith(code)).map((line) => line.split(","));
-  assert(aiRows.length === 4, `Expected 4 individual AI requests, got ${aiRows.length}`);
-  const hintRow = aiRows.find((r) => r[aiHeader.indexOf("scaffolding_type")] === "hint");
-  assert(
-    hintRow[aiHeader.indexOf("times_selected")] === "2" &&
-      hintRow[aiHeader.indexOf("times_unselected")] === "1" &&
-      hintRow[aiHeader.indexOf("selected_at_end")] === "yes",
-    "AI support export should count selections and unselections"
+  await expectRejected(
+    `/api/admin/export?type=scenarios`,
+    { headers: { "x-admin-password": ADMIN_PASSWORD } },
+    "export without choosing a group"
   );
-  console.log("AI support export has one row per student and option, with toggle counts");
 
-  const messages = await exportCsv("messages");
-  const scenario1Messages = messages
-    .filter((line) => line.startsWith(code))
-    .filter((line) => line.split(",")[2] === "1");
-  const before = scenario1Messages.filter((line) => line.split(",")[3] === "yes").length;
-  const after = scenario1Messages.filter((line) => line.split(",")[3] === "no").length;
+  const groupAnswers = await exportCsv("scenarios", code);
+  assert(groupAnswers.length === 2, `Expected 2 group answers, got ${groupAnswers.length}`);
+  const answer1 = groupAnswers.find((r) => r.scenario_number === "1");
+  const answer2Row = groupAnswers.find((r) => r.scenario_number === "2");
+  assert(answer1.group_members === "Pilot-A, Pilot-B", "Group answers should list member names");
+  assert(
+    answer1.answer_written_by.includes("Pilot-A") && answer1.answer_written_by.includes("Pilot-B"),
+    `Answer authorship should name both students, got ${answer1.answer_written_by}`
+  );
+  assert(
+    answer1.ai_help_used_by_each_student.startsWith("Pilot-A: ") &&
+      answer1.ai_help_used_by_each_student.includes("| Pilot-B: "),
+    "Group answers should show the AI help per student"
+  );
+  assert(answer1.rubric_total_6_to_24 === "17", "Rubric total should be 17");
+  assert(answer2Row.students_who_saw_full_answer === "Pilot-A", "Full-answer use should be named");
+  console.log("Group answers export is per scenario, with names and readable AI use");
+
+  const chat = await exportCsv("messages", code);
+  const chat1 = chat.filter((r) => r.scenario_number === "1");
+  const before = chat1.filter((r) => r.before_or_after_ai === "before AI").length;
+  const after = chat1.filter((r) => r.before_or_after_ai === "after AI").length;
   assert(before === 2 && after === 1, `Expected 2 chat messages before AI and 1 after, got ${before} and ${after}`);
-  console.log("Chat export splits messages before and after the first AI request");
+  assert(chat1[0].student === "Pilot-A", "Chat log should show the student name");
+  console.log("Chat log shows names and splits messages before/after the first AI request");
 
-  const ratings = await exportCsv("ratings");
-  const ratingsHeader = ratings[0].split(",");
-  const pilotRatings = ratings.filter((line) => line.startsWith(code)).map((l) => l.split(","));
-  assert(pilotRatings.length === 4, `Expected 4 individual ratings, got ${pilotRatings.length}`);
-  const noAiRating = pilotRatings.find(
-    (r) => r[ratingsHeader.indexOf("scenario_order")] === "2" && r[ratingsHeader.indexOf("ai_used")] === "no"
-  );
-  assert(noAiRating, "Ratings export should mark the student who used no AI");
-
-  const contributions = await exportCsv("contributions");
-  const cHeader = contributions[0].split(",");
-  const scenario1Contributions = contributions
-    .filter((line) => line.startsWith(code))
-    .map((line) => line.split(","))
-    .filter((r) => r[cHeader.indexOf("scenario_order")] === "1");
-  const shares = scenario1Contributions.map((r) => Number(r[cHeader.indexOf("final_answer_share")]));
+  const aiSupport = await exportCsv("ai_support", code);
+  assert(aiSupport.length === 4, `Expected 4 individual AI requests, got ${aiSupport.length}`);
+  const hintRow = aiSupport.find((r) => r.times_shown === "2");
   assert(
-    shares.length === 2 && Math.abs(shares[0] + shares[1] - 1) < 0.01 && shares.every((s) => s > 0),
+    hintRow?.student === "Pilot-A" &&
+      hintRow.times_hidden === "1" &&
+      hintRow.still_shown_at_end === "yes" &&
+      hintRow.help_level.startsWith("Level 1"),
+    "AI support export should count how often a help was shown and hidden"
+  );
+  console.log("AI support export lists what each student selected");
+
+  const ratings = await exportCsv("ratings", code);
+  assert(ratings.length === 4, `Expected 4 individual ratings, got ${ratings.length}`);
+  assert(
+    ratings.some((r) => r.scenario_number === "2" && r.student === "Pilot-B" && r.used_ai === "no"),
+    "Ratings export should mark the student who used no AI"
+  );
+
+  const contributions = await exportCsv("contributions", code);
+  const shares = contributions
+    .filter((r) => r.scenario_number === "1")
+    .map((r) => Number(r.share_of_final_answer_percent));
+  assert(
+    shares.length === 2 && Math.abs(shares[0] + shares[1] - 100) <= 1 && shares.every((s) => s > 0),
     `Both students should share authorship of the scenario 1 answer, got ${shares.join(", ")}`
   );
   console.log("Contributions export shows each student's share of the final answer");
 
-  const assessments = await exportCsv("assessments");
-  const assessmentHeader = assessments[0].split(",");
-  const column = (name) => assessmentHeader.indexOf(name);
-  const preRow = assessments
-    .find((line) => line.startsWith(code) && line.split(",")[2] === "pre")
-    ?.split(",");
-  const postRow = assessments
-    .find((line) => line.startsWith(code) && line.split(",")[2] === "post")
-    ?.split(",");
-  assert(preRow && preRow[column("score")] === "6" && preRow[column("max_score")] === "8", "Pre-test should score 6 out of 8");
+  const tests = await exportCsv("assessments", code);
+  assert(tests.length === 2, `Expected one test row per student, got ${tests.length}`);
+  const testA = tests.find((r) => r.student === "Pilot-A");
   assert(
-    preRow[column("correct_definition")] === "0" && preRow[column("correct_overreliance")] === "0",
-    "Per-concept pre-test columns are wrong"
+    testA.pre_score === "6" && testA.post_score === "8" && testA.score_change === "2",
+    "Pre/post scores should be 6 and 8 in the same row"
   );
-  assert(postRow && postRow[column("score")] === "8" && postRow[column("correct_definition")] === "1", "Post-test should score 8 out of 8");
-  console.log("Assessment export has scores and per-concept columns (pre 6/8, post 8/8)");
+  assert(
+    testA.pre_definition === "0" && testA.post_definition === "1",
+    "Per-concept pre and post columns are wrong"
+  );
+  assert(
+    testA.pre_open_ai_role === OPEN_ANSWERS.pre.open_ai_role &&
+      testA.post_open_ai_role === OPEN_ANSWERS.post.open_ai_role,
+    "Written pre and post answers should sit side by side"
+  );
+  console.log("Pre/post comparison export has scores, concepts and written answers side by side");
 
-  for (const type of ["edits", "reflections", "rubric"]) {
-    const lines = await exportCsv(type);
-    console.log(`Export ${type}: ${lines.filter((line) => line.startsWith(code)).length} pilot rows`);
-  }
+  const questionnaire = await exportCsv("reflections", code);
+  assert(
+    questionnaire.length === 2 &&
+      questionnaire[0].private_vs_shared_ai === "Private, so I could think first.",
+    "Questionnaire answers missing"
+  );
+
+  const rubricRows = await exportCsv("rubric", code);
+  assert(
+    rubricRows.length === 1 &&
+      rubricRows[0].total_6_to_24 === "17" &&
+      rubricRows[0].average_1_to_4 === "2.83",
+    "Rubric export should have the total and average"
+  );
+  console.log("Questionnaire and rubric exports recorded");
+
+  const throwaway = await request("/api/sessions", { method: "POST" });
+  const adminDelete = (query, confirm) =>
+    fetch(`${BASE}/api/admin/sessions?${query}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json", "x-admin-password": ADMIN_PASSWORD },
+      body: JSON.stringify({ confirm }),
+    });
+  assert(!(await adminDelete(`session=${throwaway.code}`, "WRONG")).ok, "Delete needs the code typed");
+  assert((await adminDelete(`session=${throwaway.code}`, throwaway.code)).ok, "Delete group failed");
+  const gone = await fetch(`${BASE}/api/admin/export?type=scenarios&session=${throwaway.code}`, {
+    headers: { "x-admin-password": ADMIN_PASSWORD },
+  });
+  assert(gone.status === 404, "Deleted group should no longer exist");
+  console.log("Deleting a group removes it after typing its code");
 
   console.log("Pilot test PASSED");
 }

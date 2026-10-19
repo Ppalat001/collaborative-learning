@@ -241,6 +241,7 @@ export const assessments = sqliteTable("assessments", {
   }),
   assessmentType: text("assessment_type").notNull(),
   answers: text("answers", { mode: "json" }).$type<Record<string, number>>(),
+  openAnswers: text("open_answers", { mode: "json" }).$type<Record<string, string>>(),
   score: integer("score").notNull(),
   maxScore: integer("max_score").notNull(),
   completedAt: text("completed_at").notNull().$defaultFn(() => new Date().toISOString()),

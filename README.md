@@ -65,19 +65,22 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ## Research data export
 
-Visit `/admin` and enter the admin password (`ADMIN_PASSWORD`; locally defaults to `research-admin`, required in production). Exports:
+Visit `/admin`, enter the admin password (`ADMIN_PASSWORD`; locally defaults to `research-admin`, required in production), click **Load groups** and choose a group. Every export is for one group (`/api/admin/export?type=…&session=GROUP-XXXX`; without `session` it is rejected). Students are shown by nickname plus their anonymous `student_id`, times are UTC, and percentages are 0–100.
 
 | Export | One row per |
 |---|---|
-| Group answers per scenario | group × scenario (chat before and after the first AI request, members using AI, AI types and highest level used, final answer, overlap with AI text, who wrote the answer, participation balance, rubric mean) |
-| Individual scenario ratings | student × scenario (with that student's own AI use) |
-| Individual contributions | student × scenario (chat, AI use, share of the final answer they typed) |
-| Individual AI support | student × scenario × AI option (level, times selected/unselected, AI response) |
-| Discussion chat log | chat message (marked as sent before or after the group's first AI request) |
-| Raw edit log | batch of typing |
-| End-of-study open answers | student |
-| Rubric scores | answer × rater |
-| Pre/post-test scores | student × test |
+| Group answers per scenario | scenario (members, final answer, who wrote what share, AI help each student used, highest AI level, % of the answer copied from AI, chat before/after AI, minutes, rubric total) |
+| Discussion chat log | chat message (student, time, before or after the group's first AI request) |
+| Individual AI support | student × scenario × AI option (level, times shown/hidden, the AI reply) |
+| Individual contributions | student × scenario (chat messages and words, characters typed, share of the final answer) |
+| Individual scenario ratings | student × scenario (1–5 ratings, amount of AI help, comment) |
+| Pre/post-test comparison | student (pre and post score, each concept and the two written answers side by side) |
+| End questionnaire | student (answers to the questions after the post-test) |
+| Rubric scores | scenario × rater (6 criteria scored 1–4, total 6–24, average) |
+
+### Cleaning the database
+
+On `/admin` after loading the groups, **Delete group** removes the chosen group and everything recorded for it (type its code to confirm), and **Delete all groups** empties the study data (type `DELETE ALL`). Locally you can instead stop the server and delete `data/research.db`, `data/research.db-wal` and `data/research.db-shm`; the next `npm run dev` creates a fresh database.
 
 Research instruments (survey items, end-of-study questions, rubric criteria) are defined in `src/lib/instruments.ts`.
 

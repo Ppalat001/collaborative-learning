@@ -181,7 +181,7 @@ export const FINAL_REFLECTION_QUESTIONS = [
   },
   {
     id: "most_useful_support",
-    text: "Which type of AI support was most useful for your group, and why?",
+    text: "Which type of AI support was most useful for you, and why?",
   },
   {
     id: "unhelpful_or_too_much",
@@ -192,8 +192,24 @@ export const FINAL_REFLECTION_QUESTIONS = [
     text: "Did you ever feel the AI was doing the thinking for your group? When?",
   },
   {
+    id: "ai_into_group_answer",
+    text: "Did you bring ideas from your private AI support into the group discussion or answer? How?",
+  },
+  {
+    id: "private_vs_shared_ai",
+    text: "Would you prefer AI support to be private (only you see it) or shared with the whole group? Why?",
+  },
+  {
     id: "participation",
     text: "Did everyone in your group contribute fairly? What affected this?",
+  },
+  {
+    id: "agreement_on_answer",
+    text: "When you clicked \"I am good\", did you really agree with the group answer? Why or why not?",
+  },
+  {
+    id: "learned_most",
+    text: "What is the most important thing you learned from this activity?",
   },
   {
     id: "suggested_changes",

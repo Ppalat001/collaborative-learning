@@ -4,12 +4,18 @@ import { charsByAuthor } from "@/lib/authorship";
 import {
   FINAL_REFLECTION_QUESTIONS,
   RUBRIC_CRITERIA,
+  SUPPORT_AMOUNTS,
   SURVEY_ITEMS,
   countWords,
   type SurveyRatingKey,
 } from "@/lib/instruments";
-import { getScaffoldingOption, type ScaffoldingType } from "@/lib/types";
-import { secondsBetween, toIsoString } from "@/lib/utils/dates";
+import {
+  SUPPORT_LEVEL_LABELS,
+  getScaffoldingOption,
+  type ScaffoldingType,
+  type SupportLevel,
+} from "@/lib/types";
+import { secondsBetween } from "@/lib/utils/dates";
 import { getScenarioById } from "@/lib/utils/scenarios";
 import { getAssessment } from "@/lib/utils/assessment";
 
@@ -67,7 +73,7 @@ export function textOverlap(text: string, source: string): number | null {
   const sourceGrams = trigrams(source);
   let shared = 0;
   for (const gram of textGrams) if (sourceGrams.has(gram)) shared++;
-  return Math.round((shared / textGrams.size) * 1000) / 1000;
+  return shared / textGrams.size;
 }
 
 /** Normalised Shannon entropy of contribution shares: 1 = perfectly even, 0 = one person. */
@@ -80,18 +86,36 @@ function participationBalance(amounts: number[]): number | null {
       const share = value / total;
       return sum - share * Math.log(share);
     }, 0);
-  return Math.round((entropy / Math.log(amounts.length)) * 1000) / 1000;
+  return round(entropy / Math.log(amounts.length), 2);
 }
 
-function round(value: number | null, digits = 3): number | null {
+function round(value: number | null, digits = 2): number | null {
   if (value === null) return null;
   const factor = 10 ** digits;
   return Math.round(value * factor) / factor;
 }
 
+function percent(value: number | null): number | null {
+  return value === null ? null : Math.round(value * 100);
+}
+
 function mean(values: number[]): number | null {
   if (values.length === 0) return null;
   return round(values.reduce((sum, value) => sum + value, 0) / values.length);
+}
+
+function minutesBetween(start: string | null, end: string | null): number | null {
+  const seconds = secondsBetween(start, end);
+  return seconds === null ? null : round(seconds / 60, 1);
+}
+
+/** "2026-10-19 14:35:02" in UTC. */
+function readableTime(iso: string | null | undefined): string {
+  return iso ? iso.slice(0, 19).replace("T", " ") : "";
+}
+
+function yesNo(value: boolean): string {
+  return value ? "yes" : "no";
 }
 
 const RATING_COLUMNS: Record<SurveyRatingKey, string> = {
@@ -109,380 +133,335 @@ const RATING_COLUMNS: Record<SurveyRatingKey, string> = {
   satisfactionRating: "satisfied",
 };
 
-const FIELD_COLUMNS = {
-  finalAnswer: "final",
-} as const;
-
-function isCurrentField(field: string): field is keyof typeof FIELD_COLUMNS {
-  return field in FIELD_COLUMNS;
+function supportLabel(type: string): string {
+  return getScaffoldingOption(type as ScaffoldingType)?.label ?? type;
 }
 
-function supportInfo(scaffoldingType: string | null) {
-  const option = scaffoldingType
-    ? getScaffoldingOption(scaffoldingType as ScaffoldingType)
-    : undefined;
-  return {
-    support_category: option?.category ?? "",
-    support_level: option?.supportLevel ?? null,
-  };
+function levelText(level: number): string {
+  return `${level} - ${SUPPORT_LEVEL_LABELS[level as SupportLevel] ?? ""}`;
+}
+
+/** "Level 2 - Moderate" for answer help, "Collaboration support" for process help. */
+function supportKind(type: string): string {
+  const option = getScaffoldingOption(type as ScaffoldingType);
+  if (!option) return "";
+  if (option.category === "process") return "Collaboration support";
+  return option.supportLevel === null ? "" : `Level ${levelText(option.supportLevel)}`;
 }
 
 type ScaffoldRow = typeof schema.individualScaffolds.$inferSelect;
 
-/** Summary of a set of individual AI requests (one participant's, or a whole group's). */
-function aiUseSummary(scaffolds: ScaffoldRow[]) {
-  const types = [...new Set(scaffolds.map((s) => s.scaffoldingType))];
-  const levels = types.flatMap((type) => {
-    const level = supportInfo(type).support_level;
-    return level === null ? [] : [level];
+function highestLevel(scaffolds: ScaffoldRow[]): string {
+  if (scaffolds.length === 0) return "none";
+  const levels = scaffolds.flatMap((s) => {
+    const level = getScaffoldingOption(s.scaffoldingType as ScaffoldingType)?.supportLevel;
+    return level === null || level === undefined ? [] : [level];
   });
-  const firstAt: string | null = scaffolds.map((s) => s.createdAt).sort()[0] ?? null;
-  return {
-    ai_used: scaffolds.length > 0 ? "yes" : "no",
-    ai_types_used: types.join(";"),
-    ai_requests: scaffolds.length,
-    highest_support_level_used: levels.length > 0 ? Math.max(...levels) : null,
-    used_full_answer: types.includes("full_answer") ? "yes" : "no",
-    used_process_support: types.some((t) => supportInfo(t).support_category === "process")
-      ? "yes"
-      : "no",
-    first_ai_request_at: firstAt,
-  };
+  return levels.length > 0 ? levelText(Math.max(...levels)) : "collaboration support only";
 }
 
-function snakeCase(key: string): string {
-  return key.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
+function helpList(scaffolds: ScaffoldRow[]): string {
+  return [...new Set(scaffolds.map((s) => supportLabel(s.scaffoldingType)))].join(", ");
 }
 
 function rubricTotal(score: typeof schema.rubricScores.$inferSelect): number {
   return RUBRIC_CRITERIA.reduce((sum, criterion) => sum + score[criterion.key], 0);
 }
 
-async function loadStudyData() {
-  const [sessions, participants, attempts, surveys, edits, messages, scaffolds, rubric] =
+function snakeCase(key: string): string {
+  return key.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
+}
+
+/** Everything recorded for one group (session), ready to turn into CSV rows. */
+async function loadGroupData(sessionId: string) {
+  const [session] = await db
+    .select()
+    .from(schema.sessions)
+    .where(eq(schema.sessions.id, sessionId));
+  const [participants, attempts, surveys, edits, messages, scaffolds, reflections, tests] =
     await Promise.all([
-      db.select().from(schema.sessions),
-      db.select().from(schema.participants),
-      db.select().from(schema.scenarioAttempts),
-      db.select().from(schema.surveys),
-      db.select().from(schema.editEvents),
-      db.select().from(schema.discussionMessages),
-      db.select().from(schema.individualScaffolds),
-      db.select().from(schema.rubricScores),
+      db.select().from(schema.participants).where(eq(schema.participants.sessionId, sessionId)),
+      db
+        .select()
+        .from(schema.scenarioAttempts)
+        .where(eq(schema.scenarioAttempts.sessionId, sessionId)),
+      db.select().from(schema.surveys).where(eq(schema.surveys.sessionId, sessionId)),
+      db.select().from(schema.editEvents).where(eq(schema.editEvents.sessionId, sessionId)),
+      db
+        .select()
+        .from(schema.discussionMessages)
+        .where(eq(schema.discussionMessages.sessionId, sessionId)),
+      db
+        .select()
+        .from(schema.individualScaffolds)
+        .where(eq(schema.individualScaffolds.sessionId, sessionId)),
+      db
+        .select()
+        .from(schema.finalReflections)
+        .where(eq(schema.finalReflections.sessionId, sessionId)),
+      db.select().from(schema.assessments).where(eq(schema.assessments.sessionId, sessionId)),
     ]);
 
-  const sessionById = new Map(sessions.map((s) => [s.id, s]));
-  const participantById = new Map(participants.map((p) => [p.id, p]));
-  const anonymousId = (id: string | null) =>
-    (id && participantById.get(id)?.anonymousId) || "";
-  const attemptKey = (sessionId: string, scenarioOrder: number) =>
-    `${sessionId}:${scenarioOrder}`;
+  const attemptIds = new Set(attempts.map((a) => a.id));
+  const rubric = (await db.select().from(schema.rubricScores)).filter((r) =>
+    attemptIds.has(r.attemptId)
+  );
+
+  const members = participants.sort((a, b) => a.joinedAt.localeCompare(b.joinedAt));
+  const participantById = new Map(members.map((p) => [p.id, p]));
+  const nameOf = (id: string | null) =>
+    (id && participantById.get(id)?.displayName) || "unknown";
+  const studentIdOf = (id: string | null) => (id && participantById.get(id)?.anonymousId) || "";
 
   const sortedScaffolds = scaffolds.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-  const firstAiAt = new Map<string, string>();
+  const firstAiAt = new Map<number, string>();
   for (const scaffold of sortedScaffolds) {
-    const key = attemptKey(scaffold.sessionId, scaffold.scenarioOrder);
-    if (!firstAiAt.has(key)) firstAiAt.set(key, scaffold.createdAt);
+    if (!firstAiAt.has(scaffold.scenarioOrder)) {
+      firstAiAt.set(scaffold.scenarioOrder, scaffold.createdAt);
+    }
   }
 
   /** Messages sent before any member of the group first asked the AI count as "before AI". */
   const sentBeforeAi = (message: (typeof messages)[number]) => {
-    const requestedAt = firstAiAt.get(attemptKey(message.sessionId, message.scenarioOrder));
+    const requestedAt = firstAiAt.get(message.scenarioOrder);
     return !requestedAt || message.createdAt < requestedAt;
   };
 
-  const transcript = (list: typeof messages) =>
-    list.map((m) => `${anonymousId(m.participantId) || "unknown"}: ${m.text}`).join("\n");
-
   return {
-    sessions,
-    participants,
-    attempts: attempts.sort(
-      (a, b) => a.sessionId.localeCompare(b.sessionId) || a.scenarioOrder - b.scenarioOrder
-    ),
+    code: session?.code ?? "",
+    members,
+    attempts: attempts.sort((a, b) => a.scenarioOrder - b.scenarioOrder),
     surveys,
-    edits: edits.filter((e) => isCurrentField(e.field)),
+    edits: edits.filter((e) => e.field === "finalAnswer"),
     messages: messages.sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
     scaffolds: sortedScaffolds,
+    reflections,
+    tests,
     rubric,
-    sessionById,
-    participantById,
-    anonymousId,
+    nameOf,
+    studentIdOf,
+    firstAiAt,
     sentBeforeAi,
-    transcript,
   };
 }
 
-export async function buildScenarioExport(): Promise<CsvExport> {
-  const data = await loadStudyData();
+type GroupData = Awaited<ReturnType<typeof loadGroupData>>;
+
+function buildGroupAnswersExport(data: GroupData): CsvExport {
+  const columns = [
+    "group",
+    "scenario_number",
+    "scenario_title",
+    "group_members",
+    "finished",
+    "final_answer",
+    "answer_words",
+    "answer_written_by",
+    "ai_help_used_by_each_student",
+    "highest_ai_level_used",
+    "students_who_saw_full_answer",
+    "answer_copied_from_ai_percent",
+    "answer_matches_chat_before_ai_percent",
+    "chat_messages_before_ai",
+    "chat_messages_after_ai",
+    "participation_balance_0_to_1",
+    "minutes_before_first_ai",
+    "minutes_total",
+    "rubric_total_6_to_24",
+    "finished_at_utc",
+  ];
 
   const rows = data.attempts.map((attempt) => {
-    const session = data.sessionById.get(attempt.sessionId);
-    const scenario = getScenarioById(attempt.scenarioId);
-    const members = data.participants.filter((p) => p.sessionId === attempt.sessionId);
-    const inAttempt = (row: { sessionId: string; scenarioOrder: number }) =>
-      row.sessionId === attempt.sessionId && row.scenarioOrder === attempt.scenarioOrder;
-    const attemptMessages = data.messages.filter(inAttempt);
-    const attemptEdits = data.edits.filter(inAttempt);
-    const attemptScaffolds = data.scaffolds.filter(inAttempt);
-    const aiUse = aiUseSummary(attemptScaffolds);
-    const messagesBeforeAi = attemptMessages.filter(data.sentBeforeAi);
-    const messagesAfterAi = attemptMessages.filter((m) => !data.sentBeforeAi(m));
-    const discussionBeforeAi = data.transcript(messagesBeforeAi);
-    const allAiText = attemptScaffolds.map((s) => s.aiResponse).join("\n");
-    const fullAnswerText = attemptScaffolds
-      .filter((s) => s.scaffoldingType === "full_answer")
-      .map((s) => s.aiResponse)
-      .join("\n");
+    const order = attempt.scenarioOrder;
+    const messages = data.messages.filter((m) => m.scenarioOrder === order);
+    const edits = data.edits.filter((e) => e.scenarioOrder === order);
+    const scaffolds = data.scaffolds.filter((s) => s.scenarioOrder === order);
+    const before = messages.filter(data.sentBeforeAi);
+    const chatBeforeAi = before.map((m) => m.text).join("\n");
+    const aiText = scaffolds.map((s) => s.aiResponse).join("\n");
 
-    const charsByMember = members.map(
+    const authored = charsByAuthor(attempt.finalAnswerAuthorship);
+    const authoredTotal = [...authored.values()].reduce((sum, value) => sum + value, 0);
+    const writtenBy = data.members
+      .map((m) => ({ name: m.displayName, chars: authored.get(m.id) ?? 0 }))
+      .filter((m) => m.chars > 0)
+      .map((m) => `${m.name} ${Math.round((m.chars / authoredTotal) * 100)}%`)
+      .join(", ");
+
+    const activity = data.members.map(
       (member) =>
-        attemptMessages
+        messages
           .filter((m) => m.participantId === member.id)
           .reduce((sum, m) => sum + m.text.length, 0) +
-        attemptEdits
+        edits
           .filter((e) => e.participantId === member.id)
           .reduce((sum, e) => sum + e.charsAdded, 0)
     );
-    const totalChars = charsByMember.reduce((sum, value) => sum + value, 0);
 
-    const authored = charsByAuthor(attempt.finalAnswerAuthorship);
-    const authoredByMember = members.map((m) => authored.get(m.id) ?? 0);
-    const authoredTotal = authoredByMember.reduce((sum, value) => sum + value, 0);
+    const helpByStudent = data.members
+      .map((member) => {
+        const own = scaffolds.filter((s) => s.participantId === member.id);
+        return `${member.displayName}: ${own.length > 0 ? helpList(own) : "none"}`;
+      })
+      .join(" | ");
 
-    const ratings = data.surveys.filter(
-      (s) => s.sessionId === attempt.sessionId && s.scenarioId === attempt.scenarioId
-    );
-    const finalScores = data.rubric
+    const sawFullAnswer = [
+      ...new Set(
+        scaffolds
+          .filter((s) => s.scaffoldingType === "full_answer")
+          .map((s) => data.nameOf(s.participantId))
+      ),
+    ].join(", ");
+
+    const started = attempt.discussionStartedAt ?? attempt.createdAt;
+    const totals = data.rubric
       .filter((r) => r.attemptId === attempt.id && r.answerType === "final")
       .map(rubricTotal);
 
     return {
-      session_code: session?.code ?? "",
-      session_id: attempt.sessionId,
-      group_size: members.length,
-      scenario_id: attempt.scenarioId,
-      scenario_order: attempt.scenarioOrder,
-      scenario_title: scenario?.title ?? "",
-      task_type: scenario?.taskType ?? "",
-      members_using_ai: new Set(attemptScaffolds.map((s) => s.participantId)).size,
-      ai_types_used: aiUse.ai_types_used,
-      ai_requests: aiUse.ai_requests,
-      highest_support_level_used: aiUse.highest_support_level_used,
-      used_full_answer: aiUse.used_full_answer,
-      used_process_support: aiUse.used_process_support,
-      discussion_before_ai: discussionBeforeAi,
-      discussion_after_ai: data.transcript(messagesAfterAi),
-      messages_before_ai: messagesBeforeAi.length,
-      messages_after_ai: messagesAfterAi.length,
+      group: data.code,
+      scenario_number: order,
+      scenario_title: getScenarioById(attempt.scenarioId)?.title ?? "",
+      group_members: data.members.map((m) => m.displayName).join(", "),
+      finished: yesNo(attempt.submitted),
       final_answer: attempt.finalAnswer,
-      final_words: countWords(attempt.finalAnswer),
-      final_overlap_with_ai: allAiText ? textOverlap(attempt.finalAnswer, allAiText) : null,
-      final_overlap_with_full_answer: fullAnswerText
-        ? textOverlap(attempt.finalAnswer, fullAnswerText)
+      answer_words: countWords(attempt.finalAnswer),
+      answer_written_by: writtenBy,
+      ai_help_used_by_each_student: helpByStudent,
+      highest_ai_level_used: highestLevel(scaffolds),
+      students_who_saw_full_answer: sawFullAnswer,
+      answer_copied_from_ai_percent: aiText
+        ? percent(textOverlap(attempt.finalAnswer, aiText))
         : null,
-      final_overlap_with_discussion_before_ai: textOverlap(
-        attempt.finalAnswer,
-        discussionBeforeAi
+      answer_matches_chat_before_ai_percent: percent(
+        textOverlap(attempt.finalAnswer, chatBeforeAi)
       ),
-      final_authors_count: authoredByMember.filter((value) => value > 0).length,
-      final_top_author_share:
-        authoredTotal > 0 ? round(Math.max(...authoredByMember) / authoredTotal) : null,
-      final_authorship_balance: participationBalance(authoredByMember),
-      final_rubric_mean: mean(finalScores),
-      contributors_count: charsByMember.filter((value) => value > 0).length,
-      top_contributor_share:
-        totalChars > 0 ? round(Math.max(...charsByMember) / totalChars) : null,
-      participation_balance: participationBalance(charsByMember),
-      ratings_count: ratings.length,
-      submitted_by_last_ready: data.anonymousId(attempt.submittedBy),
-      time_before_first_ai_seconds: secondsBetween(
-        attempt.discussionStartedAt ?? attempt.createdAt,
-        aiUse.first_ai_request_at
-      ),
-      time_total_seconds: secondsBetween(
-        attempt.discussionStartedAt ?? attempt.createdAt,
-        attempt.finalAnswerAt
-      ),
-      first_ai_request_at: toIsoString(aiUse.first_ai_request_at) ?? "",
-      final_answer_at: toIsoString(attempt.finalAnswerAt) ?? "",
+      chat_messages_before_ai: before.length,
+      chat_messages_after_ai: messages.length - before.length,
+      participation_balance_0_to_1: participationBalance(activity),
+      minutes_before_first_ai: minutesBetween(started, data.firstAiAt.get(order) ?? null),
+      minutes_total: minutesBetween(started, attempt.finalAnswerAt),
+      rubric_total_6_to_24: mean(totals),
+      finished_at_utc: readableTime(attempt.finalAnswerAt),
     };
-  });
-
-  return { columns: SCENARIO_COLUMNS, rows };
-}
-
-const SCENARIO_COLUMNS = [
-  "session_code", "session_id", "group_size", "scenario_id", "scenario_order",
-  "scenario_title", "task_type", "members_using_ai", "ai_types_used", "ai_requests",
-  "highest_support_level_used", "used_full_answer", "used_process_support",
-  "discussion_before_ai", "discussion_after_ai", "messages_before_ai", "messages_after_ai",
-  "final_answer", "final_words", "final_overlap_with_ai", "final_overlap_with_full_answer",
-  "final_overlap_with_discussion_before_ai", "final_authors_count",
-  "final_top_author_share", "final_authorship_balance", "final_rubric_mean",
-  "contributors_count", "top_contributor_share", "participation_balance", "ratings_count",
-  "submitted_by_last_ready", "time_before_first_ai_seconds", "time_total_seconds",
-  "first_ai_request_at", "final_answer_at",
-];
-
-export async function buildAiSupportExport(): Promise<CsvExport> {
-  const data = await loadStudyData();
-  const attemptFor = (sessionId: string, scenarioOrder: number) =>
-    data.attempts.find((a) => a.sessionId === sessionId && a.scenarioOrder === scenarioOrder);
-
-  return {
-    columns: [
-      "session_code",
-      "anonymous_id",
-      "scenario_order",
-      "scaffolding_type",
-      "support_category",
-      "support_level",
-      "selected_at_end",
-      "times_selected",
-      "times_unselected",
-      "group_messages_before_request",
-      "final_overlap_with_response",
-      "ai_model",
-      "ai_latency_ms",
-      "ai_response",
-      "requested_at",
-      "last_toggled_at",
-    ],
-    rows: data.scaffolds.map((scaffold) => {
-      const attempt = attemptFor(scaffold.sessionId, scaffold.scenarioOrder);
-      return {
-        session_code: data.sessionById.get(scaffold.sessionId)?.code ?? "",
-        anonymous_id: data.anonymousId(scaffold.participantId),
-        scenario_order: scaffold.scenarioOrder,
-        scaffolding_type: scaffold.scaffoldingType,
-        ...supportInfo(scaffold.scaffoldingType),
-        selected_at_end: scaffold.selected ? "yes" : "no",
-        times_selected: scaffold.timesSelected,
-        times_unselected: scaffold.timesUnselected,
-        group_messages_before_request: data.messages.filter(
-          (m) =>
-            m.sessionId === scaffold.sessionId &&
-            m.scenarioOrder === scaffold.scenarioOrder &&
-            m.createdAt < scaffold.createdAt
-        ).length,
-        final_overlap_with_response: attempt
-          ? textOverlap(attempt.finalAnswer, scaffold.aiResponse)
-          : null,
-        ai_model: scaffold.aiModel ?? "",
-        ai_latency_ms: scaffold.aiLatencyMs,
-        ai_response: scaffold.aiResponse,
-        requested_at: toIsoString(scaffold.createdAt) ?? "",
-        last_toggled_at: toIsoString(scaffold.lastToggledAt) ?? "",
-      };
-    }),
-  };
-}
-
-export async function buildRatingsExport(): Promise<CsvExport> {
-  const data = await loadStudyData();
-
-  const columns = [
-    "session_code",
-    "anonymous_id",
-    "scenario_id",
-    "scenario_order",
-    "ai_used",
-    "ai_types_used",
-    "highest_support_level_used",
-    "support_amount",
-    ...SURVEY_ITEMS.map((item) => RATING_COLUMNS[item.key]),
-    "open_reflection",
-    "created_at",
-  ];
-
-  const rows = data.surveys.map((survey) => {
-    const order = getScenarioById(survey.scenarioId)?.order;
-    const aiUse = aiUseSummary(
-      data.scaffolds.filter(
-        (s) =>
-          s.sessionId === survey.sessionId &&
-          s.participantId === survey.participantId &&
-          s.scenarioOrder === order
-      )
-    );
-    const row: CsvRow = {
-      session_code: data.sessionById.get(survey.sessionId)?.code ?? "",
-      anonymous_id: data.anonymousId(survey.participantId),
-      scenario_id: survey.scenarioId,
-      scenario_order: order,
-      ai_used: aiUse.ai_used,
-      ai_types_used: aiUse.ai_types_used,
-      highest_support_level_used: aiUse.highest_support_level_used,
-      support_amount: survey.supportAmount ?? "",
-      open_reflection: survey.openReflection ?? "",
-      created_at: toIsoString(survey.createdAt) ?? "",
-    };
-    for (const item of SURVEY_ITEMS) row[RATING_COLUMNS[item.key]] = survey[item.key];
-    return row;
   });
 
   return { columns, rows };
 }
 
-export async function buildContributionsExport(): Promise<CsvExport> {
-  const data = await loadStudyData();
+function buildMessagesExport(data: GroupData): CsvExport {
+  return {
+    columns: ["group", "scenario_number", "time_utc", "student", "message", "before_or_after_ai"],
+    rows: data.messages.map((message) => ({
+      group: data.code,
+      scenario_number: message.scenarioOrder,
+      time_utc: readableTime(message.createdAt),
+      student: data.nameOf(message.participantId),
+      message: message.text,
+      before_or_after_ai: data.sentBeforeAi(message) ? "before AI" : "after AI",
+    })),
+  };
+}
+
+function buildAiSupportExport(data: GroupData): CsvExport {
+  return {
+    columns: [
+      "group",
+      "scenario_number",
+      "student",
+      "student_id",
+      "ai_help_selected",
+      "help_level",
+      "still_shown_at_end",
+      "times_shown",
+      "times_hidden",
+      "group_chat_messages_before_request",
+      "answer_copied_from_this_help_percent",
+      "real_ai_response",
+      "ai_response",
+      "requested_at_utc",
+    ],
+    rows: data.scaffolds.map((scaffold) => {
+      const attempt = data.attempts.find((a) => a.scenarioOrder === scaffold.scenarioOrder);
+      return {
+        group: data.code,
+        scenario_number: scaffold.scenarioOrder,
+        student: data.nameOf(scaffold.participantId),
+        student_id: data.studentIdOf(scaffold.participantId),
+        ai_help_selected: supportLabel(scaffold.scaffoldingType),
+        help_level: supportKind(scaffold.scaffoldingType),
+        still_shown_at_end: yesNo(scaffold.selected),
+        times_shown: scaffold.timesSelected,
+        times_hidden: scaffold.timesUnselected,
+        group_chat_messages_before_request: data.messages.filter(
+          (m) => m.scenarioOrder === scaffold.scenarioOrder && m.createdAt < scaffold.createdAt
+        ).length,
+        answer_copied_from_this_help_percent: attempt
+          ? percent(textOverlap(attempt.finalAnswer, scaffold.aiResponse))
+          : null,
+        real_ai_response: yesNo(scaffold.aiModel !== "mock"),
+        ai_response: scaffold.aiResponse,
+        requested_at_utc: readableTime(scaffold.createdAt),
+      };
+    }),
+  };
+}
+
+function buildContributionsExport(data: GroupData): CsvExport {
   const columns = [
-    "session_code",
-    "anonymous_id",
-    "scenario_order",
-    "ai_used",
-    "ai_types_used",
-    "ai_requests",
-    "highest_support_level_used",
-    "messages_before_ai",
-    "messages_after_ai",
-    "message_chars",
-    "final_chars_added",
-    "final_chars_in_answer",
-    "final_answer_share",
-    "total_chars",
-    "share_of_group_chars",
+    "group",
+    "scenario_number",
+    "student",
+    "student_id",
+    "chat_messages",
+    "chat_messages_before_ai",
+    "chat_messages_after_ai",
+    "chat_words",
+    "characters_typed_in_answer",
+    "share_of_final_answer_percent",
+    "share_of_group_activity_percent",
+    "ai_help_used",
+    "clicked_i_am_good",
   ];
 
   const rows: CsvRow[] = [];
   for (const attempt of data.attempts) {
-    const members = data.participants.filter((p) => p.sessionId === attempt.sessionId);
-    const inAttempt = (row: { sessionId: string; scenarioOrder: number }) =>
-      row.sessionId === attempt.sessionId && row.scenarioOrder === attempt.scenarioOrder;
-    const attemptEdits = data.edits.filter(inAttempt);
-    const attemptMessages = data.messages.filter(inAttempt);
-    const attemptScaffolds = data.scaffolds.filter(inAttempt);
+    const order = attempt.scenarioOrder;
+    const messages = data.messages.filter((m) => m.scenarioOrder === order);
+    const edits = data.edits.filter((e) => e.scenarioOrder === order);
     const authored = charsByAuthor(attempt.finalAnswerAuthorship);
-    const groupChars =
-      attemptEdits.reduce((sum, e) => sum + e.charsAdded, 0) +
-      attemptMessages.reduce((sum, m) => sum + m.text.length, 0);
+    const groupActivity =
+      edits.reduce((sum, e) => sum + e.charsAdded, 0) +
+      messages.reduce((sum, m) => sum + m.text.length, 0);
+    const readyIds = new Set(attempt.readyParticipantIds ?? []);
 
-    for (const member of members) {
-      const memberEdits = attemptEdits.filter((e) => e.participantId === member.id);
-      const memberMessages = attemptMessages.filter((m) => m.participantId === member.id);
-      const messageChars = memberMessages.reduce((sum, m) => sum + m.text.length, 0);
-      const finalCharsAdded = memberEdits.reduce((sum, e) => sum + e.charsAdded, 0);
-      const inAnswer = authored.get(member.id) ?? 0;
-      const total = messageChars + finalCharsAdded;
-      const aiUse = aiUseSummary(attemptScaffolds.filter((s) => s.participantId === member.id));
+    for (const member of data.members) {
+      const own = messages.filter((m) => m.participantId === member.id);
+      const typed = edits
+        .filter((e) => e.participantId === member.id)
+        .reduce((sum, e) => sum + e.charsAdded, 0);
+      const activity = typed + own.reduce((sum, m) => sum + m.text.length, 0);
+      const scaffolds = data.scaffolds.filter(
+        (s) => s.scenarioOrder === order && s.participantId === member.id
+      );
       rows.push({
-        session_code: data.sessionById.get(attempt.sessionId)?.code ?? "",
-        anonymous_id: member.anonymousId,
-        scenario_order: attempt.scenarioOrder,
-        ai_used: aiUse.ai_used,
-        ai_types_used: aiUse.ai_types_used,
-        ai_requests: aiUse.ai_requests,
-        highest_support_level_used: aiUse.highest_support_level_used,
-        messages_before_ai: memberMessages.filter(data.sentBeforeAi).length,
-        messages_after_ai: memberMessages.filter((m) => !data.sentBeforeAi(m)).length,
-        message_chars: messageChars,
-        final_chars_added: finalCharsAdded,
-        final_chars_in_answer: inAnswer,
-        final_answer_share:
-          attempt.finalAnswer.length > 0 ? round(inAnswer / attempt.finalAnswer.length) : null,
-        total_chars: total,
-        share_of_group_chars: groupChars > 0 ? round(total / groupChars) : null,
+        group: data.code,
+        scenario_number: order,
+        student: member.displayName,
+        student_id: member.anonymousId,
+        chat_messages: own.length,
+        chat_messages_before_ai: own.filter(data.sentBeforeAi).length,
+        chat_messages_after_ai: own.filter((m) => !data.sentBeforeAi(m)).length,
+        chat_words: own.reduce((sum, m) => sum + countWords(m.text), 0),
+        characters_typed_in_answer: typed,
+        share_of_final_answer_percent:
+          attempt.finalAnswer.length > 0
+            ? percent((authored.get(member.id) ?? 0) / attempt.finalAnswer.length)
+            : null,
+        share_of_group_activity_percent:
+          groupActivity > 0 ? percent(activity / groupActivity) : null,
+        ai_help_used: scaffolds.length > 0 ? helpList(scaffolds) : "none",
+        clicked_i_am_good: yesNo(readyIds.has(member.id)),
       });
     }
   }
@@ -490,70 +469,114 @@ export async function buildContributionsExport(): Promise<CsvExport> {
   return { columns, rows };
 }
 
-export async function buildMessagesExport(): Promise<CsvExport> {
-  const data = await loadStudyData();
-  return {
-    columns: [
-      "session_code",
-      "anonymous_id",
-      "scenario_order",
-      "sent_before_ai",
-      "text",
-      "length",
-      "created_at",
-    ],
-    rows: data.messages.map((message) => ({
-      session_code: data.sessionById.get(message.sessionId)?.code ?? "",
-      anonymous_id: data.anonymousId(message.participantId),
-      scenario_order: message.scenarioOrder,
-      sent_before_ai: data.sentBeforeAi(message) ? "yes" : "no",
-      text: message.text,
-      length: message.text.length,
-      created_at: toIsoString(message.createdAt) ?? "",
-    })),
-  };
+function buildRatingsExport(data: GroupData): CsvExport {
+  const columns = [
+    "group",
+    "scenario_number",
+    "scenario_title",
+    "student",
+    "student_id",
+    "used_ai",
+    "ai_help_used",
+    "amount_of_ai_help",
+    ...SURVEY_ITEMS.map((item) => RATING_COLUMNS[item.key]),
+    "comment",
+  ];
+
+  const rows = data.surveys
+    .map((survey) => {
+      const scenario = getScenarioById(survey.scenarioId);
+      const order = scenario?.order ?? 0;
+      const scaffolds = data.scaffolds.filter(
+        (s) => s.scenarioOrder === order && s.participantId === survey.participantId
+      );
+      const row: CsvRow = {
+        group: data.code,
+        scenario_number: order,
+        scenario_title: scenario?.title ?? "",
+        student: data.nameOf(survey.participantId),
+        student_id: data.studentIdOf(survey.participantId),
+        used_ai: yesNo(scaffolds.length > 0),
+        ai_help_used: scaffolds.length > 0 ? helpList(scaffolds) : "none",
+        amount_of_ai_help:
+          SUPPORT_AMOUNTS.find((a) => a.id === survey.supportAmount)?.label ?? "",
+        comment: survey.openReflection ?? "",
+      };
+      for (const item of SURVEY_ITEMS) row[RATING_COLUMNS[item.key]] = survey[item.key];
+      return row;
+    })
+    .sort(
+      (a, b) =>
+        Number(a.scenario_number) - Number(b.scenario_number) ||
+        String(a.student).localeCompare(String(b.student))
+    );
+
+  return { columns, rows };
 }
 
-export async function buildEditsExport(): Promise<CsvExport> {
-  const data = await loadStudyData();
-  const rows = data.edits
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-    .map((edit) => ({
-      session_code: data.sessionById.get(edit.sessionId)?.code ?? "",
-      anonymous_id: data.anonymousId(edit.participantId),
-      scenario_order: edit.scenarioOrder,
-      field: isCurrentField(edit.field) ? FIELD_COLUMNS[edit.field] : edit.field,
-      chars_added: edit.charsAdded,
-      chars_removed: edit.charsRemoved,
-      inserted_text: edit.insertedText,
-      created_at: toIsoString(edit.createdAt) ?? "",
-    }));
+/** One row per student: pre and post side by side so they can be compared directly. */
+function buildTestsExport(data: GroupData): CsvExport {
+  const pre = getAssessment("pre");
+  const post = getAssessment("post");
+  const concepts = [...new Set(pre.questions.map((q) => q.concept))];
+  const openIds = pre.openQuestions.map((q) => q.id);
 
-  return {
-    columns: [
-      "session_code",
-      "anonymous_id",
-      "scenario_order",
-      "field",
-      "chars_added",
-      "chars_removed",
-      "inserted_text",
-      "created_at",
-    ],
-    rows,
-  };
-}
+  const columns = [
+    "group",
+    "student",
+    "student_id",
+    "pre_score",
+    "post_score",
+    "max_score",
+    "score_change",
+    ...concepts.flatMap((c) => [`pre_${c}`, `post_${c}`]),
+    ...openIds.flatMap((id) => [`pre_${id}`, `post_${id}`]),
+    "pre_completed_at_utc",
+    "post_completed_at_utc",
+  ];
 
-export async function buildReflectionsExport(): Promise<CsvExport> {
-  const [reflections, data] = await Promise.all([
-    db.select().from(schema.finalReflections),
-    loadStudyData(),
-  ]);
-  const rows = reflections.map((reflection) => {
+  const rows = data.members.map((member) => {
+    const find = (type: "pre" | "post") =>
+      data.tests.find((t) => t.participantId === member.id && t.assessmentType === type);
+    const preTest = find("pre");
+    const postTest = find("post");
     const row: CsvRow = {
-      session_code: data.sessionById.get(reflection.sessionId)?.code ?? "",
-      anonymous_id: data.anonymousId(reflection.participantId),
-      created_at: toIsoString(reflection.createdAt) ?? "",
+      group: data.code,
+      student: member.displayName,
+      student_id: member.anonymousId,
+      pre_score: preTest?.score ?? null,
+      post_score: postTest?.score ?? null,
+      max_score: pre.questions.length,
+      score_change: preTest && postTest ? postTest.score - preTest.score : null,
+      pre_completed_at_utc: readableTime(preTest?.completedAt),
+      post_completed_at_utc: readableTime(postTest?.completedAt),
+    };
+
+    for (const [prefix, test, assessment] of [
+      ["pre", preTest, pre],
+      ["post", postTest, post],
+    ] as const) {
+      if (!test) continue;
+      const answers = test.answers ?? {};
+      for (const question of assessment.questions) {
+        row[`${prefix}_${question.concept}`] =
+          answers[question.id] === question.correctIndex ? 1 : 0;
+      }
+      for (const id of openIds) row[`${prefix}_${id}`] = test.openAnswers?.[id] ?? "";
+    }
+    return row;
+  });
+
+  return { columns, rows };
+}
+
+function buildQuestionnaireExport(data: GroupData): CsvExport {
+  const rows = data.reflections.map((reflection) => {
+    const row: CsvRow = {
+      group: data.code,
+      student: data.nameOf(reflection.participantId),
+      student_id: data.studentIdOf(reflection.participantId),
+      submitted_at_utc: readableTime(reflection.createdAt),
     };
     for (const question of FINAL_REFLECTION_QUESTIONS) {
       row[question.id] = reflection.answers?.[question.id] ?? "";
@@ -563,120 +586,76 @@ export async function buildReflectionsExport(): Promise<CsvExport> {
 
   return {
     columns: [
-      "session_code",
-      "anonymous_id",
+      "group",
+      "student",
+      "student_id",
       ...FINAL_REFLECTION_QUESTIONS.map((q) => q.id),
-      "created_at",
+      "submitted_at_utc",
     ],
     rows,
   };
 }
 
-export async function buildRubricExport(): Promise<CsvExport> {
-  const data = await loadStudyData();
+function buildRubricExport(data: GroupData): CsvExport {
   const attemptById = new Map(data.attempts.map((a) => [a.id, a]));
-  const rows = data.rubric.map((score) => {
-    const attempt = attemptById.get(score.attemptId);
-    const aiUse = aiUseSummary(
-      attempt
-        ? data.scaffolds.filter(
-            (s) => s.sessionId === attempt.sessionId && s.scenarioOrder === attempt.scenarioOrder
-          )
-        : []
-    );
-    const row: CsvRow = {
-      session_code: attempt ? data.sessionById.get(attempt.sessionId)?.code ?? "" : "",
-      scenario_order: attempt?.scenarioOrder,
-      ai_types_used: aiUse.ai_types_used,
-      highest_support_level_used: aiUse.highest_support_level_used,
-      answer_type: score.answerType,
-      rater: score.rater,
-      total: rubricTotal(score),
-      notes: score.notes ?? "",
-      updated_at: toIsoString(score.updatedAt) ?? "",
-    };
-    for (const criterion of RUBRIC_CRITERIA) {
-      row[snakeCase(criterion.key)] = score[criterion.key];
-    }
-    return row;
-  });
-
-  return {
-    columns: [
-      "session_code",
-      "scenario_order",
-      "ai_types_used",
-      "highest_support_level_used",
-      "answer_type",
-      "rater",
-      ...RUBRIC_CRITERIA.map((c) => snakeCase(c.key)),
-      "total",
-      "notes",
-      "updated_at",
-    ],
-    rows,
-  };
-}
-
-export async function buildAssessmentExport(): Promise<CsvExport> {
-  const rows = await db
-    .select({
-      assessment: schema.assessments,
-      session: schema.sessions,
-      participant: schema.participants,
-    })
-    .from(schema.assessments)
-    .innerJoin(schema.sessions, eq(schema.assessments.sessionId, schema.sessions.id))
-    .leftJoin(
-      schema.participants,
-      eq(schema.assessments.participantId, schema.participants.id)
-    );
-
-  const concepts = [...new Set(getAssessment("pre").questions.map((q) => q.concept))];
-
-  return {
-    columns: [
-      "session_code",
-      "anonymous_id",
-      "assessment_type",
-      "score",
-      "max_score",
-      ...concepts.map((concept) => `correct_${concept}`),
-      "completed_at",
-    ],
-    rows: rows.map(({ assessment, session, participant }) => {
-      const type = assessment.assessmentType === "post" ? "post" : "pre";
-      const answers = assessment.answers ?? {};
+  const rows = data.rubric
+    .map((score) => {
+      const attempt = attemptById.get(score.attemptId);
+      const order = attempt?.scenarioOrder ?? 0;
+      const scaffolds = data.scaffolds.filter((s) => s.scenarioOrder === order);
+      const total = rubricTotal(score);
       const row: CsvRow = {
-        session_code: session.code,
-        anonymous_id: participant?.anonymousId ?? "",
-        assessment_type: assessment.assessmentType,
-        score: assessment.score,
-        max_score: assessment.maxScore,
-        completed_at: toIsoString(assessment.completedAt) ?? "",
+        group: data.code,
+        scenario_number: order,
+        scenario_title: attempt ? getScenarioById(attempt.scenarioId)?.title ?? "" : "",
+        rater: score.rater,
+        total_6_to_24: total,
+        average_1_to_4: round(total / RUBRIC_CRITERIA.length),
+        ai_help_used_in_group: scaffolds.length > 0 ? helpList(scaffolds) : "none",
+        highest_ai_level_used: highestLevel(scaffolds),
+        notes: score.notes ?? "",
       };
-      for (const question of getAssessment(type).questions) {
-        row[`correct_${question.concept}`] = answers[question.id] === question.correctIndex ? 1 : 0;
+      for (const criterion of RUBRIC_CRITERIA) {
+        row[snakeCase(criterion.key)] = score[criterion.key];
       }
       return row;
-    }),
+    })
+    .sort((a, b) => Number(a.scenario_number) - Number(b.scenario_number));
+
+  return {
+    columns: [
+      "group",
+      "scenario_number",
+      "scenario_title",
+      "rater",
+      ...RUBRIC_CRITERIA.map((c) => snakeCase(c.key)),
+      "total_6_to_24",
+      "average_1_to_4",
+      "ai_help_used_in_group",
+      "highest_ai_level_used",
+      "notes",
+    ],
+    rows,
   };
 }
 
 export const EXPORT_BUILDERS = {
-  scenarios: buildScenarioExport,
-  ratings: buildRatingsExport,
-  contributions: buildContributionsExport,
-  ai_support: buildAiSupportExport,
+  scenarios: buildGroupAnswersExport,
   messages: buildMessagesExport,
-  edits: buildEditsExport,
-  reflections: buildReflectionsExport,
+  ai_support: buildAiSupportExport,
+  contributions: buildContributionsExport,
+  ratings: buildRatingsExport,
+  assessments: buildTestsExport,
+  reflections: buildQuestionnaireExport,
   rubric: buildRubricExport,
-  assessments: buildAssessmentExport,
 } as const;
 
 export type ExportType = keyof typeof EXPORT_BUILDERS;
 
 export function isExportType(value: string): value is ExportType {
   return value in EXPORT_BUILDERS;
+}
+
+export async function buildGroupExport(type: ExportType, sessionId: string) {
+  return EXPORT_BUILDERS[type](await loadGroupData(sessionId));
 }

@@ -4,7 +4,11 @@ import {
   getSessionByCode,
   saveAssessment,
 } from "@/lib/services/sessions";
-import { scoreAssessment } from "@/lib/utils/assessment";
+import {
+  getAssessment,
+  parseOpenAnswers,
+  scoreAssessment,
+} from "@/lib/utils/assessment";
 
 export async function GET(
   request: Request,
@@ -58,11 +62,23 @@ export async function POST(
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
 
+    const openAnswers = parseOpenAnswers(assessmentType, body.openAnswers);
+    const missing = getAssessment(assessmentType).openQuestions.find(
+      (question) => !openAnswers[question.id]
+    );
+    if (missing) {
+      return NextResponse.json(
+        { error: "Please answer the written questions too" },
+        { status: 400 }
+      );
+    }
+
     const { score, maxScore } = scoreAssessment(assessmentType, answers);
     const assessment = await saveAssessment(
       session.id,
       assessmentType,
       answers,
+      openAnswers,
       score,
       maxScore,
       participantId

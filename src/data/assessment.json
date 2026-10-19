@@ -99,6 +99,16 @@
         ],
         "correctIndex": 1
       }
+    ],
+    "openQuestions": [
+      {
+        "id": "open_collaboration",
+        "text": "In your own words, what makes group work truly collaborative, rather than just dividing the work? Give an example."
+      },
+      {
+        "id": "open_ai_role",
+        "text": "How should AI support be used in group work so that the group still does the thinking?"
+      }
     ]
   },
   "postTest": {
@@ -200,6 +210,16 @@
           "It reduces the time needed to finish the task"
         ],
         "correctIndex": 2
+      }
+    ],
+    "openQuestions": [
+      {
+        "id": "open_collaboration",
+        "text": "In your own words, what makes group work truly collaborative, rather than just dividing the work? Give an example."
+      },
+      {
+        "id": "open_ai_role",
+        "text": "How should AI support be used in group work so that the group still does the thinking?"
       }
     ]
   }

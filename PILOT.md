@@ -60,17 +60,16 @@ This validates: session creation, join, consent, group chat (names, colours, bef
 
 ## Data to verify in export
 
-After a pilot group completes at least one scenario, export CSV and confirm:
+After a pilot group completes at least one scenario, choose the group in `/admin`, export the CSVs and confirm:
 
-- `session_code` matches room code
-- `ai_types_used` and `members_using_ai` match what the students selected
-- The AI support export has one row per student and option, with `times_selected` and `times_unselected`
-- `discussion_before_ai` contains the chat up to the first AI request, and `final_answer` is populated
-- The chat log export shows every message, with `sent_before_ai` set to yes or no
-- `final_answer_share` in the contributions export roughly matches the colours you saw
+- `group` matches the room code and `group_members` lists the nicknames
+- `ai_help_used_by_each_student` matches what each student selected
+- The AI support export has one row per student and option, with `times_shown` and `times_hidden`
+- The chat log shows every message with the student name and `before AI` / `after AI`
+- `answer_written_by` and `share_of_final_answer_percent` roughly match the colours you saw
 - The ratings export has one row per student per scenario
-- The contributions export shows every student, including those who typed nothing
-- Delete `data/research.db` after piloting so test sessions don't mix with study data
+- The pre/post comparison has one row per student with both scores and both written answers
+- Delete the pilot groups from `/admin` (or delete `data/research.db` locally) so test sessions don't mix with study data
 
 ## Recommended pilot sample
 

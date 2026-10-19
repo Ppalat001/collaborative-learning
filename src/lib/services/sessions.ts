@@ -550,6 +550,7 @@ export async function saveAssessment(
   sessionId: string,
   assessmentType: "pre" | "post",
   answers: Record<string, number>,
+  openAnswers: Record<string, string>,
   score: number,
   maxScore: number,
   participantId?: string
@@ -577,6 +578,7 @@ export async function saveAssessment(
       participantId: participantId ?? null,
       assessmentType,
       answers,
+      openAnswers,
       score,
       maxScore,
     })
@@ -610,4 +612,36 @@ export async function getParticipantAssessment(
     .limit(1);
 
   return assessment ?? null;
+}
+
+/** Every group with its members and progress, newest first, for the admin page. */
+export async function listSessionsForAdmin() {
+  const [sessions, participants, attempts] = await Promise.all([
+    db.select().from(schema.sessions),
+    db.select().from(schema.participants).orderBy(asc(schema.participants.joinedAt)),
+    db.select().from(schema.scenarioAttempts),
+  ]);
+  return sessions
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .map((session) => ({
+      code: session.code,
+      createdAt: session.createdAt,
+      completedAt: session.completedAt,
+      members: participants
+        .filter((p) => p.sessionId === session.id)
+        .map((p) => p.displayName),
+      scenariosFinished: attempts.filter((a) => a.sessionId === session.id && a.submitted)
+        .length,
+      totalScenarios: getScenarios().length,
+    }));
+}
+
+/** Deletes a group and, through cascading foreign keys, everything recorded for it. */
+export async function deleteSession(sessionId: string) {
+  await db.delete(schema.sessions).where(eq(schema.sessions.id, sessionId));
+}
+
+export async function deleteAllSessions() {
+  const deleted = await db.delete(schema.sessions).returning({ id: schema.sessions.id });
+  return deleted.length;
 }

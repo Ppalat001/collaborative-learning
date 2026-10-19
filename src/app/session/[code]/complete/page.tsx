@@ -58,8 +58,9 @@ export default function CompletePage() {
             title={postTest.title}
             description={postTest.description}
             questions={postTest.questions}
+            openQuestions={postTest.openQuestions}
             submitLabel="Submit post-test"
-            onSubmit={async (answers) => {
+            onSubmit={async (answers, openAnswers) => {
               const participantId = localStorage.getItem("participantId");
               const res = await fetch(`/api/sessions/${code}/assessment`, {
                 method: "POST",
@@ -67,14 +68,15 @@ export default function CompletePage() {
                 body: JSON.stringify({
                   assessmentType: "post",
                   answers,
+                  openAnswers,
                   participantId,
                 }),
               });
-              const data = await res.json();
-              if (res.ok) {
-                setPostTestCompleted(true);
-                setScore(data.score);
-              }
+              const data = await res.json().catch(() => ({}));
+              if (!res.ok) return data.error ?? "Failed to save the post-test";
+              setPostTestCompleted(true);
+              setScore(data.score);
+              return null;
             }}
           />
         </div>

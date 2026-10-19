@@ -149,8 +149,9 @@ export default function SessionLobbyPage() {
             title={preTest.title}
             description={preTest.description}
             questions={preTest.questions}
+            openQuestions={preTest.openQuestions}
             submitLabel="Submit pre-test"
-            onSubmit={async (answers) => {
+            onSubmit={async (answers, openAnswers) => {
               const id = participantId ?? localStorage.getItem("participantId");
               const res = await fetch(`/api/sessions/${code}/assessment`, {
                 method: "POST",
@@ -158,10 +159,16 @@ export default function SessionLobbyPage() {
                 body: JSON.stringify({
                   assessmentType: "pre",
                   answers,
+                  openAnswers,
                   participantId: id,
                 }),
               });
-              if (res.ok) setPreTestCompleted(true);
+              if (res.ok) {
+                setPreTestCompleted(true);
+                return null;
+              }
+              const data = await res.json().catch(() => ({}));
+              return data.error ?? "Failed to save the pre-test";
             }}
           />
         </section>
@@ -173,10 +180,9 @@ export default function SessionLobbyPage() {
           <li>Complete the pre-test individually</li>
           <li>Read each scenario together</li>
           <li>Discuss as a group</li>
-          <li>Choose one AI scaffolding type</li>
-          <li>Use the AI response to refine discussion</li>
-          <li>Submit a final joint answer</li>
-          <li>Complete a brief post-test after all scenarios</li>
+          <li>Optionally ask the AI for private support</li>
+          <li>Write one shared group answer and click &quot;I am good&quot;</li>
+          <li>Complete a brief post-test and questionnaire after all scenarios</li>
         </ol>
         {session.consentGiven && !preTestCompleted && (
           <p className="mt-4 text-sm text-amber-700">
