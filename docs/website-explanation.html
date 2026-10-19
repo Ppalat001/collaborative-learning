@@ -195,39 +195,42 @@
     <li>Each message shows the <strong>name, the time and a colour per student</strong>, so it's clear who said what.</li>
   </ul>
 
-  <h4>Step 2 — AI help (optional, once per scenario, shared by the whole group)</h4>
+  <h4>Step 2 — AI help (optional, individual: just for you)</h4>
   <ol>
-    <li>The group says <strong>why</strong> it needs help: stuck / not sure if correct / need an example / disagree / need a better explanation / want feedback / no help needed.</li>
-    <li>The group picks <strong>one type of help</strong>:</li>
+    <li>Each student sees the AI options <strong>on their own screen</strong>. Nobody else in the group sees what you choose or what the AI tells you.</li>
+    <li>You can <strong>select as many options as you like</strong> (or none at all):</li>
   </ol>
   <table>
     <tr><th>Level</th><th>Type of help</th><th>Meaning</th></tr>
-    <tr><td><span class="badge">0</span></td><td>No assistance</td><td>Work alone</td></tr>
     <tr><td><span class="badge">1 · minimal</span></td><td>Hint, guiding question</td><td>A small push</td></tr>
     <tr><td><span class="badge">2 · moderate</span></td><td>Explanation, example, feedback</td><td>More guidance</td></tr>
-    <tr><td><span class="badge">3 · direct</span></td><td>Full expert answer</td><td>The complete answer, with extra conditions (see below)</td></tr>
+    <tr><td><span class="badge">3 · direct</span></td><td>Full expert answer</td><td>The complete answer, to compare with</td></tr>
     <tr><td><span class="badge">—</span></td><td>Summary, task splitting, conflict help</td><td>Helps the teamwork, not the content</td></tr>
   </table>
   <ol start="3">
-    <li><strong>The choice is a proposal, not a decision.</strong> It appears on every member's screen as “Maria proposed Small hint (Level 1) because: We are stuck”.</li>
-    <li><strong>Another member must agree.</strong> Any other member clicks <em>Agree and ask the AI</em>, or anyone clicks <em>Cancel</em> so the group can choose again. The proposer cannot agree to their own proposal (except in a one-person group).</li>
-    <li>Only after agreement, the AI reads the chat and replies. Everyone sees the same response, labelled “Proposed by Maria · agreed by John”.</li>
+    <li>The first time you select an option, the AI reads the group chat and the answer written so far, and replies <strong>to you</strong>.</li>
+    <li>The reply is <strong>saved</strong>. If you unselect the option it is hidden; if you select it again, the same reply comes back. The AI is <strong>not asked again</strong>.</li>
+    <li>Selecting nothing simply means “no AI help” for you in this scenario.</li>
   </ol>
 
-  <h4>Example: how agreement works</h4>
+  <h4>Example: two students, different help</h4>
   <table>
     <tr><th>Moment</th><th>Maria's screen</th><th>John's screen</th></tr>
-    <tr><td>1. Chat</td><td colspan="2">“Should we ask for a hint?” — “Yes, a hint sounds good.”</td></tr>
-    <tr><td>2. Maria proposes</td><td>Picks “We are stuck” + “Small hint”. Sees <em>Waiting for another group member to agree</em> and a <em>Withdraw</em> button.</td><td>Instantly sees the yellow box: <em>Maria proposed Small hint… Do you agree?</em> with <em>Agree</em> and <em>Cancel</em>.</td></tr>
-    <tr><td>3a. John agrees</td><td colspan="2">The AI is asked once. Both screens show the hint, “Proposed by Maria · agreed by John”, and the final-answer step unlocks.</td></tr>
-    <tr><td>3b. John cancels instead</td><td colspan="2">Both screens show “John cancelled the proposal”. Anyone can now propose something else.</td></tr>
+    <tr><td>1. Chat</td><td colspan="2">Both discuss the task in the group chat.</td></tr>
+    <tr><td>2. AI help</td><td>Selects “Small hint” and “Feedback”. Sees both replies.</td><td>Selects nothing. Sees no AI replies, and doesn't see Maria's.</td></tr>
+    <tr><td>3. Changing her mind</td><td>Unselects “Feedback” (hidden), later selects it again: the same reply reappears instantly.</td><td>Nothing changes.</td></tr>
+    <tr><td>4. Group answer</td><td colspan="2">Both bring their ideas into the shared answer (Step 3).</td></tr>
   </table>
 
-  <h4>Step 3 — Own words (only after a full expert answer)</h4>
-  <ul><li>The group must explain the AI's answer <strong>in their own words</strong> (at least 15 words). This prevents copying.</li></ul>
-
-  <h4>Final answer</h4>
-  <ul><li>The group writes <strong>one shared answer</strong> together, with live co-editing.</li></ul>
+  <h4>Step 3 — Final group answer</h4>
+  <ul>
+    <li>A note above the box explains how it works.</li>
+    <li>Everyone types in <strong>one shared box</strong> at the same time (maximum <strong>500 words</strong>).</li>
+    <li>Each student's text is <strong>highlighted in their own colour</strong> (the same colour as in the chat).</li>
+    <li>A <strong>bar above the answer</strong> lists every member with their colour, the share of the text they wrote, and their status.</li>
+    <li>When a student is happy, they click <strong>“I am good”</strong>. Their typing is paused; clicking it again unselects it so they can edit.</li>
+    <li>The group moves to the next question <strong>only when every member</strong> has clicked “I am good”.</li>
+  </ul>
 
   <h4>Individual rating</h4>
   <ul><li><strong>Each student rates the scenario separately</strong>: whether the help was useful, whether it was too little, about right or too much, how the teamwork went, and whether they felt in control.</li></ul>
@@ -245,12 +248,11 @@
   <h2 class="section-title"><span>4.</span>How the AI is kept as a “helper, not a doer”</h2>
   <p>This is a key design argument for your professor:</p>
   <div class="grid">
-    <div class="card"><h4>One request per scenario</h4>The AI can't be used again and again.</div>
-    <div class="card"><h4>Propose and agree</h4>No single student can call the AI alone. A second member must agree, so asking for help is a real group decision.</div>
+    <div class="card"><h4>Private, student-chosen help</h4>Each student decides what help they need. The AI talks to one student, who must then bring the ideas back to the group in their own words.</div>
+    <div class="card"><h4>One reply per option</h4>Each option is answered once per student and scenario, so the AI can't be asked again and again for new answers.</div>
     <div class="card"><h4>Strict instructions per help type</h4>For example, a “hint” must never contain the answer.</div>
-    <div class="card"><h4>Required help reason</h4>The group must give a reason before asking, which makes them think about what they actually need.</div>
-    <div class="card"><h4>Own-words explanation</h4>After a full answer, students have to process it in their own words.</div>
-    <div class="card"><h4>Least help first</h4>Lower levels come first in the list, nudging groups toward the least help needed.</div>
+    <div class="card"><h4>The answer is written by the group</h4>The AI never writes into the shared answer. Colours show who typed each part, and everyone must agree (“I am good”) before moving on.</div>
+    <div class="card"><h4>Least help first</h4>Lower levels come first in the list, nudging students toward the least help needed.</div>
   </div>
 </section>
 
@@ -261,7 +263,8 @@
   <table>
     <tr><th>Level</th><th>What is collected</th><th>When</th></tr>
     <tr><td><strong>Student</strong></td><td>Pre/post tests, ratings per scenario, open questions, individual contributions</td><td>Start, after each scenario, end</td></tr>
-    <tr><td><strong>Group × scenario</strong></td><td>Chat, help reason, help type and level, AI response, final answer, timings</td><td>During each scenario</td></tr>
+    <tr><td><strong>Student × AI option</strong></td><td>Which AI options each student selected, the AI reply, how often they showed or hid it</td><td>During each scenario</td></tr>
+    <tr><td><strong>Group × scenario</strong></td><td>Chat, AI types used by members, final answer, who typed which part, timings</td><td>During each scenario</td></tr>
     <tr><td><strong>Researcher</strong></td><td>Rubric scores of the final answers</td><td>After the study</td></tr>
   </table>
 
@@ -299,14 +302,13 @@
   <h3>C. AI help usage</h3>
   <table>
     <tr><th>Metric</th><th>What it tells you</th></tr>
-    <tr><td><strong>Help type chosen</strong> (frequency)</td><td>Which help groups prefer</td></tr>
-    <tr><td><strong>Support level (0–3)</strong></td><td>How direct the help was</td></tr>
-    <tr><td><strong>Help reason</strong> (frequency)</td><td>Why groups seek help</td></tr>
+    <tr><td><strong>AI options selected</strong> (per student, frequency)</td><td>Which help students prefer</td></tr>
+    <tr><td><strong>Number of options per student</strong></td><td>How much help each student seeks</td></tr>
+    <tr><td><strong>Highest support level used (1–3)</strong></td><td>How direct the help was</td></tr>
+    <tr><td><strong>Members using AI</strong> (per group)</td><td>Whether help-seeking is spread across the group or done by one person</td></tr>
+    <tr><td><strong>Times selected / unselected</strong></td><td>How often a student went back to (or hid) a reply</td></tr>
     <tr><td><strong>Perceived helpfulness</strong> (1–5)</td><td>Was it useful?</td></tr>
     <tr><td><strong>Amount of help:</strong> too little / about right / too much</td><td>Was the level appropriate?</td></tr>
-    <tr><td><strong>Proposed by / agreed by</strong></td><td>Who initiated help-seeking and who confirmed it</td></tr>
-    <tr><td><strong>Proposals cancelled</strong></td><td>How often the group disagreed about what help to ask for</td></tr>
-    <tr><td><strong>Seconds from proposal to agreement</strong></td><td>How quickly the group reached a shared decision</td></tr>
   </table>
 
   <h3>D. Collaboration</h3>
@@ -314,6 +316,7 @@
     <tr><th>Metric</th><th>How it is calculated</th><th>What it tells you</th></tr>
     <tr><td><strong>Messages per student</strong></td><td>Count of chat messages</td><td>Who talked</td></tr>
     <tr><td><strong>Characters per student</strong></td><td>Chat text plus typing in the shared answer</td><td>Who contributed</td></tr>
+    <tr><td><strong>Share of the final answer</strong></td><td>Characters of the final text typed by each student (the colours)</td><td>Who actually wrote the group answer</td></tr>
     <tr><td><strong>Share of group work</strong></td><td>Student's characters ÷ group total</td><td>Each person's contribution</td></tr>
     <tr><td><strong>Participation balance (0–1)</strong></td><td>1 = everyone contributed equally, 0 = one person did everything</td><td>Fairness of participation</td></tr>
     <tr><td><strong>Collaboration ratings</strong> (1–5)</td><td>Likert items: discussed better, stayed focused, included everyone, resolved disagreement, worked well, shared answer</td><td>Perceived teamwork</td></tr>
@@ -324,9 +327,9 @@
     <tr><th>Metric</th><th>How it is calculated</th><th>What it tells you</th></tr>
     <tr><td><strong>Overlap with AI (0–1)</strong></td><td>How much of the final answer's wording matches the AI text</td><td>Did they copy?</td></tr>
     <tr><td><strong>Overlap with own discussion (0–1)</strong></td><td>How much the answer reuses the group's chat from before AI</td><td>Did they build on their own ideas?</td></tr>
-    <tr><td><strong>Own-words overlap with AI</strong></td><td>Same idea, for the own-words explanation</td><td>Did they really rephrase it?</td></tr>
+    <tr><td><strong>Overlap with the full expert answer</strong></td><td>Same idea, only against “Full expert answer” replies</td><td>Did they copy the complete answer?</td></tr>
     <tr><td><strong>Autonomy ratings</strong> (1–5)</td><td>“I felt in control”, “the AI helped me think rather than thinking for me”, “we relied too much on AI”, “we could have answered without AI”</td><td>Perceived independence</td></tr>
-    <tr><td><strong>Time before and after AI</strong></td><td>Seconds</td><td>Did groups think first, or ask straight away?</td></tr>
+    <tr><td><strong>Time before the first AI request</strong></td><td>Seconds from the start of the scenario</td><td>Did students think first, or ask straight away?</td></tr>
   </table>
 
   <h3>F. Qualitative</h3>
@@ -416,7 +419,7 @@
   <div class="summary-box">
     <p><strong>Purpose:</strong> Study how group-chosen AI scaffolding affects learning, collaboration and autonomy.</p>
     <p><strong>Design:</strong> Groups of 2–4 students, 10 scenarios, each with chat → optional AI help (10 types, levels 0–3) → shared answer → individual rating. Pre-test before, post-test and open questions after.</p>
-    <p><strong>Safeguards:</strong> One AI request per scenario, a required help reason, strict AI rules, an own-words explanation after full answers.</p>
+    <p><strong>Safeguards:</strong> AI replies go to one student and never into the shared answer, one reply per option, strict AI rules, colours that show who wrote what, and everyone must agree before moving on.</p>
     <p><strong>Metrics:</strong> Learning gain, rubric quality, help type, level and reason, helpfulness, participation balance, collaboration ratings, AI overlap, autonomy ratings, open answers.</p>
     <p><strong>Validity:</strong> Triangulation of self-report and behaviour, automatic logs, individual-level data, blind scoring, standard instruments.</p>
     <p><strong>Limitations:</strong> Not randomised, short tests, small sample. Findings are exploratory associations.</p>

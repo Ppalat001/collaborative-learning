@@ -2,24 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
+import { applyEdit, diffText, normalizeRuns } from "@/lib/authorship";
 import { SHARED_FIELDS, type SharedField } from "@/lib/instruments";
-import type { DiscussionMessage, ProposalEvent, ScaffoldingType } from "@/lib/types";
+import type { AuthorRun, DiscussionMessage } from "@/lib/types";
 
 export type SharedFields = Record<SharedField, string>;
+export type SharedAuthorship = Record<SharedField, AuthorRun[]>;
 
-export interface RoomScaffoldingState {
-  scaffoldingType: ScaffoldingType;
-  helpReason: string;
-  aiResponse: string;
-  proposedBy: string;
-  agreedBy: string;
-  updatedAt: string;
-}
-
-export interface RoomSubmissionState {
-  finalAnswer: string;
-  ownWordsExplanation: string;
-  submittedBy: string;
+export interface ReadyEvent {
+  readyIds: string[];
+  submitted: boolean;
 }
 
 interface PendingEdit {
@@ -35,18 +27,15 @@ interface UseCollaborationOptions {
   participantId: string | null;
   /** Database copy of the shared boxes; null until the scenario has loaded. */
   initialFields: SharedFields | null;
+  initialAuthorship: SharedAuthorship | null;
   initialMessages: DiscussionMessage[] | null;
-  onScaffoldingUpdate?: (state: RoomScaffoldingState) => void;
-  onProposalUpdate?: (event: ProposalEvent) => void;
-  onSubmitted?: (state: RoomSubmissionState) => void;
+  onReadyUpdate?: (event: ReadyEvent) => void;
 }
 
 const PERSIST_DELAY_MS = 800;
 
-export const EMPTY_FIELDS: SharedFields = {
-  ownWordsExplanation: "",
-  finalAnswer: "",
-};
+export const EMPTY_FIELDS: SharedFields = { finalAnswer: "" };
+const EMPTY_AUTHORSHIP: SharedAuthorship = { finalAnswer: [] };
 
 function mergeMessages(
   current: DiscussionMessage[],
@@ -57,40 +46,18 @@ function mergeMessages(
   return [...byId.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
-function diffText(previous: string, next: string): PendingEdit {
-  let prefix = 0;
-  const maxPrefix = Math.min(previous.length, next.length);
-  while (prefix < maxPrefix && previous[prefix] === next[prefix]) prefix++;
-
-  let suffix = 0;
-  const maxSuffix = Math.min(previous.length, next.length) - prefix;
-  while (
-    suffix < maxSuffix &&
-    previous[previous.length - 1 - suffix] === next[next.length - 1 - suffix]
-  ) {
-    suffix++;
-  }
-
-  const insertedText = next.slice(prefix, next.length - suffix);
-  return {
-    charsAdded: insertedText.length,
-    charsRemoved: previous.length - prefix - suffix,
-    insertedText,
-  };
-}
-
 export function useCollaboration({
   sessionCode,
   scenarioOrder,
   participantName,
   participantId,
   initialFields,
+  initialAuthorship,
   initialMessages,
-  onScaffoldingUpdate,
-  onProposalUpdate,
-  onSubmitted,
+  onReadyUpdate,
 }: UseCollaborationOptions) {
   const [fields, setFields] = useState<SharedFields>(EMPTY_FIELDS);
+  const [authorship, setAuthorship] = useState<SharedAuthorship>(EMPTY_AUTHORSHIP);
   const [messages, setMessages] = useState<DiscussionMessage[]>([]);
   const [connected, setConnected] = useState(false);
   const [participantCount, setParticipantCount] = useState(1);
@@ -98,27 +65,40 @@ export function useCollaboration({
 
   const socketRef = useRef<Socket | null>(null);
   const fieldsRef = useRef<SharedFields>(EMPTY_FIELDS);
+  const authorshipRef = useRef<SharedAuthorship>(EMPTY_AUTHORSHIP);
   const liveFieldsRef = useRef(new Set<SharedField>());
   const dirtyFieldsRef = useRef(new Set<SharedField>());
   const pendingEditsRef = useRef<Partial<Record<SharedField, PendingEdit>>>({});
   const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const callbacksRef = useRef({ onScaffoldingUpdate, onProposalUpdate, onSubmitted });
+  const callbacksRef = useRef({ onReadyUpdate });
 
   useEffect(() => {
-    callbacksRef.current = { onScaffoldingUpdate, onProposalUpdate, onSubmitted };
-  }, [onScaffoldingUpdate, onProposalUpdate, onSubmitted]);
+    callbacksRef.current = { onReadyUpdate };
+  }, [onReadyUpdate]);
 
-  const applyFields = useCallback((updates: Partial<SharedFields>) => {
-    fieldsRef.current = { ...fieldsRef.current, ...updates };
-    setFields(fieldsRef.current);
-  }, []);
+  const applyFields = useCallback(
+    (updates: Partial<SharedFields>, runs: Partial<SharedAuthorship> = {}) => {
+      fieldsRef.current = { ...fieldsRef.current, ...updates };
+      const nextAuthorship = { ...authorshipRef.current };
+      for (const field of Object.keys(updates) as SharedField[]) {
+        nextAuthorship[field] = normalizeRuns(
+          runs[field] ?? authorshipRef.current[field],
+          fieldsRef.current[field].length
+        );
+      }
+      authorshipRef.current = nextAuthorship;
+      setFields(fieldsRef.current);
+      setAuthorship(nextAuthorship);
+    },
+    []
+  );
 
   const applyLiveFields = useCallback(
-    (updates: Partial<SharedFields>) => {
+    (updates: Partial<SharedFields>, runs?: Partial<SharedAuthorship>) => {
       for (const field of Object.keys(updates) as SharedField[]) {
         liveFieldsRef.current.add(field);
       }
-      applyFields(updates);
+      applyFields(updates, runs);
     },
     [applyFields]
   );
@@ -130,25 +110,29 @@ export function useCollaboration({
   useEffect(() => {
     if (!initialFields) return;
     const updates: Partial<SharedFields> = {};
+    const runs: Partial<SharedAuthorship> = {};
     for (const field of SHARED_FIELDS) {
-      if (!liveFieldsRef.current.has(field)) updates[field] = initialFields[field];
+      if (liveFieldsRef.current.has(field)) continue;
+      updates[field] = initialFields[field];
+      runs[field] = initialAuthorship?.[field] ?? [];
     }
-    applyFields(updates);
-  }, [initialFields, applyFields]);
+    applyFields(updates, runs);
+  }, [initialFields, initialAuthorship, applyFields]);
 
   const allMessages = useMemo(
     () => mergeMessages(initialMessages ?? [], messages),
     [initialMessages, messages]
   );
 
+  /** Saves pending edits; resolves to an error message if the server rejected them. */
   const flush = useCallback(
-    async (options?: { keepalive?: boolean }) => {
+    async (options?: { keepalive?: boolean }): Promise<string | null> => {
       if (persistTimer.current) {
         clearTimeout(persistTimer.current);
         persistTimer.current = null;
       }
       const dirty = [...dirtyFieldsRef.current];
-      if (dirty.length === 0) return;
+      if (dirty.length === 0) return null;
 
       const changedFields: Partial<SharedFields> = {};
       for (const field of dirty) changedFields[field] = fieldsRef.current[field];
@@ -160,7 +144,7 @@ export function useCollaboration({
       pendingEditsRef.current = {};
 
       try {
-        await fetch(`/api/sessions/${sessionCode}/sync`, {
+        const res = await fetch(`/api/sessions/${sessionCode}/sync`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           keepalive: options?.keepalive,
@@ -168,11 +152,18 @@ export function useCollaboration({
             scenarioOrder,
             participantId,
             fields: changedFields,
+            authorship: authorshipRef.current.finalAnswer,
             edits,
           }),
         });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          return data.error ?? "Could not save the answer";
+        }
+        return null;
       } catch (error) {
         console.error(error);
+        return "Could not save the answer";
       }
     },
     [sessionCode, scenarioOrder, participantId]
@@ -203,34 +194,34 @@ export function useCollaboration({
 
     socket.on(
       "room:state",
-      (state: { fields: Partial<SharedFields>; updatedBy?: string }) => {
-        applyLiveFields(state.fields);
+      (state: {
+        fields: Partial<SharedFields>;
+        authorship?: Partial<SharedAuthorship>;
+        updatedBy?: string;
+      }) => {
+        applyLiveFields(state.fields, state.authorship);
         setLastUpdatedBy(state.updatedBy);
       }
     );
 
     socket.on(
       "field:state",
-      (payload: { field: SharedField; value: string; updatedBy: string }) => {
-        applyLiveFields({ [payload.field]: payload.value });
+      (payload: {
+        field: SharedField;
+        value: string;
+        authorship?: AuthorRun[];
+        updatedBy: string;
+      }) => {
+        applyLiveFields(
+          { [payload.field]: payload.value },
+          payload.authorship ? { [payload.field]: payload.authorship } : undefined
+        );
         setLastUpdatedBy(payload.updatedBy);
       }
     );
 
-    socket.on("scaffolding:state", (state: RoomScaffoldingState) => {
-      callbacksRef.current.onScaffoldingUpdate?.(state);
-    });
-
-    socket.on("proposal:update", (event: ProposalEvent) => {
-      callbacksRef.current.onProposalUpdate?.(event);
-    });
-
-    socket.on("scenario:submitted", (state: RoomSubmissionState) => {
-      applyLiveFields({
-        finalAnswer: state.finalAnswer,
-        ownWordsExplanation: state.ownWordsExplanation,
-      });
-      callbacksRef.current.onSubmitted?.(state);
+    socket.on("ready:update", (event: ReadyEvent) => {
+      callbacksRef.current.onReadyUpdate?.(event);
     });
 
     const onParticipantChange = (payload: { participantCount: number }) =>
@@ -251,26 +242,28 @@ export function useCollaboration({
 
   const setField = (field: SharedField, value: string) => {
     const edit = diffText(fieldsRef.current[field], value);
+    const runs = applyEdit(authorshipRef.current[field], edit, participantId);
     const pending = pendingEditsRef.current[field] ?? {
       charsAdded: 0,
       charsRemoved: 0,
       insertedText: "",
     };
     pendingEditsRef.current[field] = {
-      charsAdded: pending.charsAdded + edit.charsAdded,
-      charsRemoved: pending.charsRemoved + edit.charsRemoved,
+      charsAdded: pending.charsAdded + edit.insertedText.length,
+      charsRemoved: pending.charsRemoved + edit.removed,
       insertedText: pending.insertedText + edit.insertedText,
     };
 
     liveFieldsRef.current.add(field);
     dirtyFieldsRef.current.add(field);
-    applyFields({ [field]: value });
+    applyFields({ [field]: value }, { [field]: runs });
 
     socketRef.current?.emit("field:update", {
       sessionCode,
       scenarioOrder,
       field,
       value,
+      authorship: authorshipRef.current[field],
       updatedBy: participantName,
     });
 
@@ -294,28 +287,13 @@ export function useCollaboration({
     });
   };
 
-  const broadcastScaffolding = (
-    state: Omit<RoomScaffoldingState, "updatedAt">
-  ) => {
-    socketRef.current?.emit("scaffolding:update", { sessionCode, scenarioOrder, ...state });
-  };
-
-  const broadcastProposal = (event: ProposalEvent) => {
-    socketRef.current?.emit("proposal:update", { sessionCode, scenarioOrder, event });
-  };
-
-  const broadcastSubmitted = (finalAnswer: string, ownWordsExplanation: string) => {
-    socketRef.current?.emit("scenario:submitted", {
-      sessionCode,
-      scenarioOrder,
-      finalAnswer,
-      ownWordsExplanation,
-      submittedBy: participantName,
-    });
+  const broadcastReady = (event: ReadyEvent) => {
+    socketRef.current?.emit("ready:update", { sessionCode, scenarioOrder, ...event });
   };
 
   return {
     fields,
+    authorship,
     setField,
     messages: allMessages,
     sendMessage,
@@ -323,8 +301,6 @@ export function useCollaboration({
     connected,
     participantCount,
     lastUpdatedBy,
-    broadcastScaffolding,
-    broadcastProposal,
-    broadcastSubmitted,
+    broadcastReady,
   };
 }

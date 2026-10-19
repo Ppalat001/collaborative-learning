@@ -56,10 +56,9 @@ Open [http://localhost:3000](http://localhost:3000)
 5. For each scenario:
    - Read the task
    - Discuss together in a live group chat (each message shows the student's name, time and their own colour, and is logged under their anonymous ID)
-   - If the group wants AI help: one member **proposes** a help reason and a scaffolding type; the proposal appears on every device and the AI is only asked once **another member agrees** (anyone can cancel). In a one-member group the proposer confirms alone
-   - Review AI response (synced to all devices)
-   - After a full answer only: explain the AI answer in their own words (15+ words)
-   - Write and submit the shared final answer
+   - **Individual AI support (Step 2):** each student privately selects any number of AI options (or none). Each option's response is generated once per student and stored; unselecting hides it and selecting it again shows the same response without a new AI call. Other members never see it
+   - **Final group answer (Step 3):** everyone types in one shared box (max 500 words). Each student's text is highlighted in their own colour, and a bar above the answer lists every member with their colour, share of the text and status
+   - Each student clicks **I am good** when happy (this pauses their typing; clicking again unselects it). The scenario finishes only when **every** member is marked good
    - **Every** student completes the scenario rating on their own device
 6. Each participant completes the **post-test** and short end-of-study open questions
 7. Researcher scores the final answers with the rubric and exports CSVs from `/admin`
@@ -70,17 +69,17 @@ Visit `/admin` and enter the admin password (`ADMIN_PASSWORD`; locally defaults 
 
 | Export | One row per |
 |---|---|
-| Group answers per scenario | group × scenario (chat before and after AI, help reason, support level, final answer, overlap with AI text, participation balance, rubric mean) |
-| Individual scenario ratings | student × scenario |
-| Individual contributions | student × scenario |
-| Discussion chat log | chat message (marked as sent before or after the AI request) |
-| AI support proposals | proposal (who proposed, status agreed/cancelled, who resolved it, seconds to decision) |
+| Group answers per scenario | group × scenario (chat before and after the first AI request, members using AI, AI types and highest level used, final answer, overlap with AI text, who wrote the answer, participation balance, rubric mean) |
+| Individual scenario ratings | student × scenario (with that student's own AI use) |
+| Individual contributions | student × scenario (chat, AI use, share of the final answer they typed) |
+| Individual AI support | student × scenario × AI option (level, times selected/unselected, AI response) |
+| Discussion chat log | chat message (marked as sent before or after the group's first AI request) |
 | Raw edit log | batch of typing |
 | End-of-study open answers | student |
 | Rubric scores | answer × rater |
 | Pre/post-test scores | student × test |
 
-Research instruments (help reasons, survey items, end-of-study questions, rubric criteria) are defined in `src/lib/instruments.ts`.
+Research instruments (survey items, end-of-study questions, rubric criteria) are defined in `src/lib/instruments.ts`.
 
 ## Pilot testing
 

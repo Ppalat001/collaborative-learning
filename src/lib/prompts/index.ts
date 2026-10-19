@@ -3,13 +3,14 @@ import type { ScaffoldingType, Scenario } from "@/lib/types";
 export interface ScaffoldPromptContext {
   scenario: Scenario;
   discussionText: string;
-  helpReason?: string;
+  groupAnswer?: string;
 }
 
 const BASE_SYSTEM_PROMPT = `You are a learning support agent in a collaborative educational research study.
 Your role is to scaffold group learning — never to replace human collaboration or autopilot the task.
 Keep responses concise (2–4 short paragraphs max unless the scaffolding type requires less).
-Address the group collectively ("your group", "you all").
+One member of the group asked for this support privately. Speak to them directly ("you"),
+and help them bring better ideas back to their group rather than writing the group's answer.
 Do not ask follow-up questions unless the scaffolding type explicitly requires questions.`;
 
 const SCAFFOLDING_RULES: Record<ScaffoldingType, string> = {
@@ -45,7 +46,7 @@ Do NOT complete the task for any member.`,
 Encourage respectful comparison of ideas using clear criteria.
 Do NOT pick a side or declare which member is correct.`,
 
-  full_answer: `The group explicitly requested a full expert answer for comparison.
+  full_answer: `The student explicitly requested a full expert answer for comparison.
 Provide a clear, well-reasoned model answer to the scenario.
 Note that they should compare this to their own reasoning — not copy it.`,
 
@@ -53,7 +54,7 @@ Note that they should compare this to their own reasoning — not copy it.`,
 };
 
 function buildUserMessage(context: ScaffoldPromptContext): string {
-  const { scenario, discussionText, helpReason } = context;
+  const { scenario, discussionText, groupAnswer } = context;
   const parts = [
     `Scenario title: ${scenario.title}`,
     `Task type: ${scenario.taskType}`,
@@ -64,9 +65,7 @@ function buildUserMessage(context: ScaffoldPromptContext): string {
     discussionText.trim() || "(No discussion recorded yet)",
   ];
 
-  if (helpReason?.trim()) {
-    parts.push("", `Why the group says it needs help: ${helpReason.trim()}`);
-  }
+  parts.push("", "Group answer written so far:", groupAnswer?.trim() || "(Nothing written yet)");
 
   return parts.join("\n");
 }

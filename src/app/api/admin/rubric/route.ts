@@ -13,12 +13,13 @@ export async function GET(request: Request) {
 
   try {
     const rater = new URL(request.url).searchParams.get("rater")?.trim() ?? "";
-    const [sessions, attempts, scores] = await Promise.all([
+    const [sessions, attempts, scaffolds, scores] = await Promise.all([
       db.select().from(schema.sessions),
       db
         .select()
         .from(schema.scenarioAttempts)
         .where(eq(schema.scenarioAttempts.submitted, true)),
+      db.select().from(schema.individualScaffolds),
       rater
         ? db.select().from(schema.rubricScores).where(eq(schema.rubricScores.rater, rater))
         : Promise.resolve([]),
@@ -39,9 +40,17 @@ export async function GET(request: Request) {
             scenarioOrder: attempt.scenarioOrder,
             scenarioTitle: scenario?.title ?? attempt.scenarioId,
             scenarioDescription: scenario?.description ?? "",
-            scaffoldingType: attempt.scaffoldingType,
-            helpReason: attempt.helpReason,
-            aiResponse: attempt.aiResponse,
+            aiTypesUsed: [
+              ...new Set(
+                scaffolds
+                  .filter(
+                    (s) =>
+                      s.sessionId === attempt.sessionId &&
+                      s.scenarioOrder === attempt.scenarioOrder
+                  )
+                  .map((s) => s.scaffoldingType)
+              ),
+            ],
             finalAnswer: attempt.finalAnswer,
             scores: scores.filter((score) => score.attemptId === attempt.id),
           };

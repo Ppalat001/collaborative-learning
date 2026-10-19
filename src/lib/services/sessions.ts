@@ -4,8 +4,20 @@ import { generateAnonymousId, generateSessionCode } from "@/lib/utils/codes";
 import { nowIso } from "@/lib/utils/dates";
 import { getScenarioByOrder, getScenarios } from "@/lib/utils/scenarios";
 import { logResearchEvent } from "@/lib/utils/export";
-import type { SharedField, SurveyRatingKey } from "@/lib/instruments";
-import type { DiscussionMessage, ScaffoldProposal, ScaffoldingType } from "@/lib/types";
+import { normalizeRuns } from "@/lib/authorship";
+import {
+  ANSWER_WORD_LIMIT,
+  countWords,
+  type SharedField,
+  type SurveyRatingKey,
+} from "@/lib/instruments";
+import type {
+  AuthorRun,
+  DiscussionMessage,
+  GroupMember,
+  IndividualScaffold,
+  ScaffoldingType,
+} from "@/lib/types";
 
 export async function createSession() {
   const code = generateSessionCode();
@@ -210,210 +222,82 @@ export async function addDiscussionMessage(
 }
 
 type Member = typeof schema.participants.$inferSelect;
-type ProposalRow = typeof schema.scaffoldProposals.$inferSelect;
 
-export function memberName(members: Member[], participantId: string | null): string {
-  return members.find((m) => m.id === participantId)?.displayName ?? "Unknown";
+export function toGroupMembers(members: Member[]): GroupMember[] {
+  return members.map((m, index) => ({ id: m.id, name: m.displayName, colorIndex: index }));
 }
 
-function toProposal(row: ProposalRow, members: Member[]): ScaffoldProposal {
+type ScaffoldRow = typeof schema.individualScaffolds.$inferSelect;
+
+const scaffoldWhere = (participantId: string, scenarioOrder: number) =>
+  and(
+    eq(schema.individualScaffolds.participantId, participantId),
+    eq(schema.individualScaffolds.scenarioOrder, scenarioOrder)
+  );
+
+export function toIndividualScaffold(row: ScaffoldRow): IndividualScaffold {
   return {
-    id: row.id,
-    proposedById: row.proposedBy,
-    proposedByName: memberName(members, row.proposedBy),
-    helpReason: row.helpReason,
     scaffoldingType: row.scaffoldingType as ScaffoldingType,
-    createdAt: row.createdAt,
+    aiResponse: row.aiResponse,
+    selected: row.selected,
   };
 }
 
-const pendingProposalWhere = (sessionId: string, scenarioOrder: number) =>
-  and(
-    eq(schema.scaffoldProposals.sessionId, sessionId),
-    eq(schema.scaffoldProposals.scenarioOrder, scenarioOrder),
-    eq(schema.scaffoldProposals.status, "pending")
-  );
-
-export async function getPendingProposal(
-  sessionId: string,
-  scenarioOrder: number
-): Promise<ScaffoldProposal | null> {
-  const [[row], members] = await Promise.all([
-    db
-      .select()
-      .from(schema.scaffoldProposals)
-      .where(pendingProposalWhere(sessionId, scenarioOrder))
-      .limit(1),
-    getSessionMembers(sessionId),
-  ]);
-  return row ? toProposal(row, members) : null;
+/** A participant's own AI responses for a scenario, in the order they first asked for them. */
+export async function getIndividualScaffolds(participantId: string, scenarioOrder: number) {
+  return db
+    .select()
+    .from(schema.individualScaffolds)
+    .where(scaffoldWhere(participantId, scenarioOrder))
+    .orderBy(asc(schema.individualScaffolds.createdAt));
 }
 
-type ProposalResult<T> = { ok: true; value: T } | { ok: false; error: string; status: number };
-
-/**
- * The check-and-write blocks below run as synchronous better-sqlite3
- * transactions, so two members clicking at the same moment cannot both win.
- */
-export async function proposeScaffolding(
-  sessionId: string,
-  scenarioOrder: number,
+export async function getIndividualScaffold(
   participantId: string,
-  helpReason: string,
-  scaffoldingType: ScaffoldingType
-): Promise<ProposalResult<ScaffoldProposal>> {
-  const attempt = await getOrCreateAttempt(sessionId, scenarioOrder);
-  const members = await getSessionMembers(sessionId);
-
-  const result = db.transaction((tx): ProposalResult<ProposalRow> => {
-    const current = tx
-      .select()
-      .from(schema.scenarioAttempts)
-      .where(eq(schema.scenarioAttempts.id, attempt.id))
-      .get();
-    if (current?.scaffoldingType || current?.submitted) {
-      return { ok: false, error: "AI support was already chosen for this scenario", status: 409 };
-    }
-    const pending = tx
-      .select()
-      .from(schema.scaffoldProposals)
-      .where(pendingProposalWhere(sessionId, scenarioOrder))
-      .get();
-    if (pending) {
-      return {
-        ok: false,
-        error: "Another proposal is waiting. Agree to it or cancel it first.",
-        status: 409,
-      };
-    }
-    const row = tx
-      .insert(schema.scaffoldProposals)
-      .values({ sessionId, scenarioOrder, proposedBy: participantId, helpReason, scaffoldingType })
-      .returning()
-      .get();
-    return { ok: true, value: row };
-  });
-
-  if (!result.ok) return result;
-  await logResearchEvent(
-    sessionId,
-    "scaffolding_proposed",
-    { scenarioOrder, helpReason, scaffoldingType, proposalId: result.value.id },
-    participantId
-  );
-  return { ok: true, value: toProposal(result.value, members) };
-}
-
-export async function cancelProposal(
-  sessionId: string,
   scenarioOrder: number,
-  proposalId: string,
-  participantId: string
-): Promise<ProposalResult<ProposalRow>> {
-  const resolved = db
-    .update(schema.scaffoldProposals)
-    .set({ status: "cancelled", resolvedBy: participantId, resolvedAt: nowIso() })
+  scaffoldingType: ScaffoldingType
+) {
+  const [row] = await db
+    .select()
+    .from(schema.individualScaffolds)
     .where(
       and(
-        eq(schema.scaffoldProposals.id, proposalId),
-        pendingProposalWhere(sessionId, scenarioOrder)
+        scaffoldWhere(participantId, scenarioOrder),
+        eq(schema.individualScaffolds.scaffoldingType, scaffoldingType)
       )
     )
-    .returning()
-    .get();
+    .limit(1);
+  return row ?? null;
+}
 
-  if (!resolved) {
-    return { ok: false, error: "This proposal is no longer open", status: 409 };
-  }
-  await logResearchEvent(
-    sessionId,
-    "scaffolding_proposal_cancelled",
-    { scenarioOrder, proposalId },
-    participantId
+/** Stores a freshly generated response; if a parallel request stored one first, that one wins. */
+export async function saveIndividualScaffold(
+  values: typeof schema.individualScaffolds.$inferInsert
+): Promise<ScaffoldRow> {
+  await db.insert(schema.individualScaffolds).values(values).onConflictDoNothing();
+  const row = await getIndividualScaffold(
+    values.participantId,
+    values.scenarioOrder,
+    values.scaffoldingType as ScaffoldingType
   );
-  return { ok: true, value: resolved };
+  if (!row) throw new Error("Failed to store AI support");
+  return row;
 }
 
-/** Marks the proposal agreed and claims the scenario's single AI request. */
-export async function agreeToProposal(
-  sessionId: string,
-  scenarioOrder: number,
-  proposalId: string,
-  participantId: string
-): Promise<ProposalResult<{ proposal: ProposalRow; attemptId: string; requestedAt: string }>> {
-  const attempt = await getOrCreateAttempt(sessionId, scenarioOrder);
-  const members = await getSessionMembers(sessionId);
-  const requestedAt = nowIso();
-
-  return db.transaction((tx) => {
-    const proposal = tx
-      .select()
-      .from(schema.scaffoldProposals)
-      .where(
-        and(
-          eq(schema.scaffoldProposals.id, proposalId),
-          pendingProposalWhere(sessionId, scenarioOrder)
-        )
-      )
-      .get();
-    if (!proposal) {
-      return { ok: false as const, error: "This proposal is no longer open", status: 409 };
-    }
-    if (proposal.proposedBy === participantId && members.length > 1) {
-      return {
-        ok: false as const,
-        error: "Another group member needs to agree to your proposal",
-        status: 403,
-      };
-    }
-    const current = tx
-      .select()
-      .from(schema.scenarioAttempts)
-      .where(eq(schema.scenarioAttempts.id, attempt.id))
-      .get();
-    if (current?.scaffoldingType || current?.submitted) {
-      return { ok: false as const, error: "AI support was already chosen for this scenario", status: 409 };
-    }
-
-    tx.update(schema.scaffoldProposals)
-      .set({ status: "agreed", resolvedBy: participantId, resolvedAt: requestedAt })
-      .where(eq(schema.scaffoldProposals.id, proposal.id))
-      .run();
-    tx.update(schema.scenarioAttempts)
-      .set({
-        helpReason: proposal.helpReason,
-        scaffoldingType: proposal.scaffoldingType,
-        scaffoldingRequestedBy: proposal.proposedBy,
-        scaffoldingAgreedBy: participantId,
-        scaffoldingRequestedAt: requestedAt,
-        updatedAt: requestedAt,
-      })
-      .where(eq(schema.scenarioAttempts.id, attempt.id))
-      .run();
-
-    return { ok: true as const, value: { proposal, attemptId: attempt.id, requestedAt } };
-  });
-}
-
-/** Undoes agreeToProposal when the AI call fails, so the group can try again. */
-export function releaseAgreement(attemptId: string, proposalId: string) {
-  db.transaction((tx) => {
-    tx.update(schema.scaffoldProposals)
-      .set({ status: "pending", resolvedBy: null, resolvedAt: null })
-      .where(eq(schema.scaffoldProposals.id, proposalId))
-      .run();
-    tx.update(schema.scenarioAttempts)
-      .set({
-        helpReason: null,
-        scaffoldingType: null,
-        scaffoldingRequestedBy: null,
-        scaffoldingAgreedBy: null,
-        scaffoldingRequestedAt: null,
-        updatedAt: nowIso(),
-      })
-      .where(eq(schema.scenarioAttempts.id, attemptId))
-      .run();
-  });
+/** Shows or hides an already generated response without calling the AI again. */
+export async function setIndividualScaffoldSelected(row: ScaffoldRow, selected: boolean) {
+  if (row.selected === selected) return row;
+  const [updated] = await db
+    .update(schema.individualScaffolds)
+    .set({
+      selected,
+      timesSelected: row.timesSelected + (selected ? 1 : 0),
+      timesUnselected: row.timesUnselected + (selected ? 0 : 1),
+      lastToggledAt: nowIso(),
+    })
+    .where(eq(schema.individualScaffolds.id, row.id))
+    .returning();
+  return updated;
 }
 
 export interface EditBatch {
@@ -423,19 +307,40 @@ export interface EditBatch {
   insertedText: string;
 }
 
+type UpdateResult =
+  | { ok: true; attempt: typeof schema.scenarioAttempts.$inferSelect }
+  | { ok: false; error: string; status: number };
+
 export async function updateAttemptFields(
   sessionId: string,
   scenarioOrder: number,
   fields: Partial<Record<SharedField, string>>,
+  authorship: AuthorRun[] | null,
   edits: EditBatch[],
   participantId: string | null
-) {
+): Promise<UpdateResult> {
   const attempt = await getOrCreateAttempt(sessionId, scenarioOrder);
-  if (attempt.submitted) return attempt;
+  if (attempt.submitted) {
+    return { ok: false, error: "This answer was already submitted", status: 409 };
+  }
+  if (participantId && (attempt.readyParticipantIds ?? []).includes(participantId)) {
+    return { ok: false, error: "Unselect \"I am good\" before editing", status: 409 };
+  }
+  if (fields.finalAnswer !== undefined && countWords(fields.finalAnswer) > ANSWER_WORD_LIMIT) {
+    return { ok: false, error: `The answer is limited to ${ANSWER_WORD_LIMIT} words`, status: 400 };
+  }
+
+  const changes: Partial<typeof schema.scenarioAttempts.$inferInsert> = {
+    ...fields,
+    updatedAt: nowIso(),
+  };
+  if (fields.finalAnswer !== undefined) {
+    changes.finalAnswerAuthorship = normalizeRuns(authorship, fields.finalAnswer.length);
+  }
 
   const [updated] = await db
     .update(schema.scenarioAttempts)
-    .set({ ...fields, updatedAt: nowIso() })
+    .set(changes)
     .where(eq(schema.scenarioAttempts.id, attempt.id))
     .returning();
 
@@ -456,56 +361,104 @@ export async function updateAttemptFields(
     );
   }
 
-  return updated;
+  return { ok: true, attempt: updated };
 }
 
-export async function submitFinalAnswer(
+export interface ReadyState {
+  readyIds: string[];
+  submitted: boolean;
+}
+
+/**
+ * Records a member's "I am good". The answer is submitted only when every member
+ * of the session is ready; the check and the write share one transaction so two
+ * members clicking together cannot both miss (or both trigger) the submission.
+ */
+export async function setParticipantReady(
   sessionId: string,
   scenarioOrder: number,
-  finalAnswer: string,
-  ownWordsExplanation: string,
-  participantId: string | null
-) {
+  participantId: string,
+  ready: boolean
+): Promise<{ ok: true; value: ReadyState } | { ok: false; error: string; status: number }> {
   const attempt = await getOrCreateAttempt(sessionId, scenarioOrder);
-  const scenarios = getScenarios();
-  const isLast = scenarioOrder >= scenarios.length;
+  const memberIds = (await getSessionMembers(sessionId)).map((m) => m.id);
+  const isLast = scenarioOrder >= getScenarios().length;
+  const now = nowIso();
 
-  const [updated] = await db
-    .update(schema.scenarioAttempts)
-    .set({
-      finalAnswer: finalAnswer.trim(),
-      ownWordsExplanation: ownWordsExplanation.trim(),
-      submittedBy: participantId,
-      finalAnswerAt: nowIso(),
-      submitted: true,
-      updatedAt: nowIso(),
-    })
-    .where(eq(schema.scenarioAttempts.id, attempt.id))
-    .returning();
+  const result = db.transaction((tx) => {
+    const current = tx
+      .select()
+      .from(schema.scenarioAttempts)
+      .where(eq(schema.scenarioAttempts.id, attempt.id))
+      .get();
+    if (!current) return { ok: false as const, error: "Scenario not found", status: 404 };
+    const previous = current.readyParticipantIds ?? [];
+    if (current.submitted) {
+      return {
+        ok: true as const,
+        value: { readyIds: previous, submitted: true, answer: null as string | null },
+      };
+    }
+    if (ready && !current.finalAnswer.trim()) {
+      return {
+        ok: false as const,
+        error: "Write the group answer before selecting \"I am good\"",
+        status: 400,
+      };
+    }
 
-  if (isLast) {
-    await db
-      .update(schema.sessions)
-      .set({ completedAt: nowIso(), currentScenarioIndex: scenarioOrder })
-      .where(eq(schema.sessions.id, sessionId));
-  } else {
-    await db
-      .update(schema.sessions)
-      .set({ currentScenarioIndex: scenarioOrder })
-      .where(eq(schema.sessions.id, sessionId));
-  }
+    const readyIds = ready
+      ? Array.from(new Set([...previous, participantId]))
+      : previous.filter((id) => id !== participantId);
+    const everyoneReady = memberIds.length > 0 && memberIds.every((id) => readyIds.includes(id));
+
+    tx.update(schema.scenarioAttempts)
+      .set({
+        readyParticipantIds: readyIds,
+        updatedAt: now,
+        ...(everyoneReady
+          ? { submitted: true, submittedBy: participantId, finalAnswerAt: now }
+          : {}),
+      })
+      .where(eq(schema.scenarioAttempts.id, attempt.id))
+      .run();
+
+    if (everyoneReady) {
+      tx.update(schema.sessions)
+        .set(
+          isLast
+            ? { completedAt: now, currentScenarioIndex: scenarioOrder }
+            : { currentScenarioIndex: scenarioOrder }
+        )
+        .where(eq(schema.sessions.id, sessionId))
+        .run();
+    }
+
+    return {
+      ok: true as const,
+      value: { readyIds, submitted: everyoneReady, answer: current.finalAnswer as string | null },
+    };
+  });
+
+  if (!result.ok) return result;
+  const { readyIds, submitted, answer } = result.value;
+  if (answer === null) return { ok: true, value: { readyIds, submitted } };
 
   await logResearchEvent(
     sessionId,
-    "final_answer_submitted",
-    {
-      scenarioOrder,
-      finalAnswerLength: finalAnswer.trim().length,
-    },
-    participantId ?? undefined
+    ready ? "participant_ready" : "participant_unready",
+    { scenarioOrder, readyCount: readyIds.length, memberCount: memberIds.length },
+    participantId
   );
-
-  return updated;
+  if (submitted) {
+    await logResearchEvent(
+      sessionId,
+      "final_answer_submitted",
+      { scenarioOrder, finalAnswerWords: countWords(answer) },
+      participantId
+    );
+  }
+  return { ok: true, value: { readyIds, submitted } };
 }
 
 export async function getParticipantSurvey(

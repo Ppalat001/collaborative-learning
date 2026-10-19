@@ -18,12 +18,12 @@ export async function generateScaffoldResponse(
   scaffoldingType: ScaffoldingType,
   scenario: Scenario,
   discussionText: string,
-  helpReason?: string
+  groupAnswer = ""
 ): Promise<ScaffoldResult> {
   const { system, user } = buildScaffoldRequest(scaffoldingType, {
     scenario,
     discussionText,
-    helpReason,
+    groupAnswer,
   });
 
   if (scaffoldingType === "no_assistance") {

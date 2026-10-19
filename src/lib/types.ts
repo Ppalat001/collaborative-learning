@@ -48,33 +48,25 @@ export interface SessionState {
   participants: ParticipantInfo[];
 }
 
-export interface ScenarioAttemptState {
-  scenarioId: string;
-  helpReason: string | null;
-  scaffoldingType: ScaffoldingType | null;
-  aiResponse: string | null;
-  ownWordsExplanation: string;
-  finalAnswer: string;
-  discussionStartedAt: string | null;
-  scaffoldingRequestedAt: string | null;
-  aiResponseAt: string | null;
-  finalAnswerAt: string | null;
-  submitted: boolean;
-}
-
-export interface ScaffoldProposal {
+export interface GroupMember {
   id: string;
-  proposedById: string | null;
-  proposedByName: string;
-  helpReason: string;
-  scaffoldingType: ScaffoldingType;
-  createdAt: string;
+  name: string;
+  /** Join order within the session, used to give each member a stable colour. */
+  colorIndex: number;
 }
 
-/** Agreement is announced through the scaffolding broadcast once the AI has answered. */
-export type ProposalEvent =
-  | { type: "proposed"; proposal: ScaffoldProposal }
-  | { type: "cancelled"; proposal: ScaffoldProposal; byName: string };
+/** A stretch of consecutive characters in the group answer typed by one member. */
+export interface AuthorRun {
+  participantId: string | null;
+  length: number;
+}
+
+/** One participant's private AI response for one support type. */
+export interface IndividualScaffold {
+  scaffoldingType: ScaffoldingType;
+  aiResponse: string;
+  selected: boolean;
+}
 
 /**
  * "content" options sit on a single directness scale (supportLevel 0–3).
@@ -172,6 +164,11 @@ export const SCAFFOLDING_OPTIONS: ScaffoldingOption[] = [
     supportLevel: null,
   },
 ];
+
+/** Options a student can switch on in Step 2; selecting nothing means no assistance. */
+export const AI_SUPPORT_OPTIONS = SCAFFOLDING_OPTIONS.filter(
+  (option) => option.type !== "no_assistance"
+);
 
 export function getScaffoldingOption(
   type: ScaffoldingType

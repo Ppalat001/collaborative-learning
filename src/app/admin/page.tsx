@@ -9,7 +9,7 @@ const EXPORTS = [
     type: "scenarios",
     label: "Group answers per scenario",
     description:
-      "Chat before and after AI, help reason, support level, final answer, overlap with AI text, participation balance, rubric mean",
+      "Chat before and after AI, AI types used by members, final answer, overlap with AI text, who wrote the answer, participation balance, rubric mean",
   },
   {
     type: "ratings",
@@ -19,7 +19,8 @@ const EXPORTS = [
   {
     type: "contributions",
     label: "Individual contributions",
-    description: "Chat messages and characters each student wrote, per scenario",
+    description:
+      "Chat messages, AI use and share of the final answer each student wrote, per scenario",
   },
   {
     type: "messages",
@@ -27,10 +28,10 @@ const EXPORTS = [
     description: "Every chat message, with anonymous ID, time and whether it was before AI",
   },
   {
-    type: "proposals",
-    label: "AI support proposals",
+    type: "ai_support",
+    label: "Individual AI support",
     description:
-      "Every proposal for AI support: who proposed it, who agreed or cancelled, and how long the decision took",
+      "Every AI option each student selected: type, level, how often they showed or hid it, and the AI response",
   },
   {
     type: "edits",

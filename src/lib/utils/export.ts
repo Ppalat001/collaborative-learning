@@ -1,10 +1,11 @@
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
+import { charsByAuthor } from "@/lib/authorship";
 import {
   FINAL_REFLECTION_QUESTIONS,
   RUBRIC_CRITERIA,
   SURVEY_ITEMS,
-  getHelpReasonLabel,
+  countWords,
   type SurveyRatingKey,
 } from "@/lib/instruments";
 import { getScaffoldingOption, type ScaffoldingType } from "@/lib/types";
@@ -95,21 +96,20 @@ function mean(values: number[]): number | null {
 
 const RATING_COLUMNS: Record<SurveyRatingKey, string> = {
   perceivedHelpfulness: "ai_helpful",
-  aiHelpedDiscussion: "ai_helped_discussion",
+  aiHelpedDiscussion: "ai_helped_my_contribution",
   aiHelpedFocus: "ai_helped_focus",
-  aiHelpedInclusion: "ai_helped_include_everyone",
+  aiHelpedInclusion: "ai_helped_include_others",
   aiHelpedDisagreement: "ai_helped_resolve_disagreement",
   collaborationRating: "collaborated_well",
   sharedAnswerRating: "answer_was_shared",
   autonomyRating: "felt_in_control",
   aiHelpedThinking: "ai_helped_me_think",
   overRelianceRating: "relied_too_much_on_ai",
-  couldAnswerWithoutAi: "could_answer_without_ai",
+  couldAnswerWithoutAi: "could_contribute_without_ai",
   satisfactionRating: "satisfied",
 };
 
 const FIELD_COLUMNS = {
-  ownWordsExplanation: "own_words",
   finalAnswer: "final",
 } as const;
 
@@ -127,6 +127,29 @@ function supportInfo(scaffoldingType: string | null) {
   };
 }
 
+type ScaffoldRow = typeof schema.individualScaffolds.$inferSelect;
+
+/** Summary of a set of individual AI requests (one participant's, or a whole group's). */
+function aiUseSummary(scaffolds: ScaffoldRow[]) {
+  const types = [...new Set(scaffolds.map((s) => s.scaffoldingType))];
+  const levels = types.flatMap((type) => {
+    const level = supportInfo(type).support_level;
+    return level === null ? [] : [level];
+  });
+  const firstAt: string | null = scaffolds.map((s) => s.createdAt).sort()[0] ?? null;
+  return {
+    ai_used: scaffolds.length > 0 ? "yes" : "no",
+    ai_types_used: types.join(";"),
+    ai_requests: scaffolds.length,
+    highest_support_level_used: levels.length > 0 ? Math.max(...levels) : null,
+    used_full_answer: types.includes("full_answer") ? "yes" : "no",
+    used_process_support: types.some((t) => supportInfo(t).support_category === "process")
+      ? "yes"
+      : "no",
+    first_ai_request_at: firstAt,
+  };
+}
+
 function snakeCase(key: string): string {
   return key.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
 }
@@ -136,7 +159,7 @@ function rubricTotal(score: typeof schema.rubricScores.$inferSelect): number {
 }
 
 async function loadStudyData() {
-  const [sessions, participants, attempts, surveys, edits, messages, proposals, rubric] =
+  const [sessions, participants, attempts, surveys, edits, messages, scaffolds, rubric] =
     await Promise.all([
       db.select().from(schema.sessions),
       db.select().from(schema.participants),
@@ -144,7 +167,7 @@ async function loadStudyData() {
       db.select().from(schema.surveys),
       db.select().from(schema.editEvents),
       db.select().from(schema.discussionMessages),
-      db.select().from(schema.scaffoldProposals),
+      db.select().from(schema.individualScaffolds),
       db.select().from(schema.rubricScores),
     ]);
 
@@ -154,15 +177,17 @@ async function loadStudyData() {
     (id && participantById.get(id)?.anonymousId) || "";
   const attemptKey = (sessionId: string, scenarioOrder: number) =>
     `${sessionId}:${scenarioOrder}`;
-  const attemptByKey = new Map(
-    attempts.map((a) => [attemptKey(a.sessionId, a.scenarioOrder), a])
-  );
 
-  /** Messages sent at or after the AI request count as "after AI". */
+  const sortedScaffolds = scaffolds.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const firstAiAt = new Map<string, string>();
+  for (const scaffold of sortedScaffolds) {
+    const key = attemptKey(scaffold.sessionId, scaffold.scenarioOrder);
+    if (!firstAiAt.has(key)) firstAiAt.set(key, scaffold.createdAt);
+  }
+
+  /** Messages sent before any member of the group first asked the AI count as "before AI". */
   const sentBeforeAi = (message: (typeof messages)[number]) => {
-    const requestedAt = attemptByKey.get(
-      attemptKey(message.sessionId, message.scenarioOrder)
-    )?.scaffoldingRequestedAt;
+    const requestedAt = firstAiAt.get(attemptKey(message.sessionId, message.scenarioOrder));
     return !requestedAt || message.createdAt < requestedAt;
   };
 
@@ -178,7 +203,7 @@ async function loadStudyData() {
     surveys,
     edits: edits.filter((e) => isCurrentField(e.field)),
     messages: messages.sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
-    proposals: proposals.sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    scaffolds: sortedScaffolds,
     rubric,
     sessionById,
     participantById,
@@ -199,11 +224,16 @@ export async function buildScenarioExport(): Promise<CsvExport> {
       row.sessionId === attempt.sessionId && row.scenarioOrder === attempt.scenarioOrder;
     const attemptMessages = data.messages.filter(inAttempt);
     const attemptEdits = data.edits.filter(inAttempt);
-    const attemptProposals = data.proposals.filter(inAttempt);
-    const agreedProposal = attemptProposals.find((p) => p.status === "agreed");
+    const attemptScaffolds = data.scaffolds.filter(inAttempt);
+    const aiUse = aiUseSummary(attemptScaffolds);
     const messagesBeforeAi = attemptMessages.filter(data.sentBeforeAi);
     const messagesAfterAi = attemptMessages.filter((m) => !data.sentBeforeAi(m));
     const discussionBeforeAi = data.transcript(messagesBeforeAi);
+    const allAiText = attemptScaffolds.map((s) => s.aiResponse).join("\n");
+    const fullAnswerText = attemptScaffolds
+      .filter((s) => s.scaffoldingType === "full_answer")
+      .map((s) => s.aiResponse)
+      .join("\n");
 
     const charsByMember = members.map(
       (member) =>
@@ -215,6 +245,10 @@ export async function buildScenarioExport(): Promise<CsvExport> {
           .reduce((sum, e) => sum + e.charsAdded, 0)
     );
     const totalChars = charsByMember.reduce((sum, value) => sum + value, 0);
+
+    const authored = charsByAuthor(attempt.finalAnswerAuthorship);
+    const authoredByMember = members.map((m) => authored.get(m.id) ?? 0);
+    const authoredTotal = authoredByMember.reduce((sum, value) => sum + value, 0);
 
     const ratings = data.surveys.filter(
       (s) => s.sessionId === attempt.sessionId && s.scenarioId === attempt.scenarioId
@@ -231,52 +265,46 @@ export async function buildScenarioExport(): Promise<CsvExport> {
       scenario_order: attempt.scenarioOrder,
       scenario_title: scenario?.title ?? "",
       task_type: scenario?.taskType ?? "",
-      help_reason: attempt.helpReason ?? "",
-      help_reason_label: getHelpReasonLabel(attempt.helpReason),
-      scaffolding_type: attempt.scaffoldingType ?? "",
-      ...supportInfo(attempt.scaffoldingType),
-      scaffolding_proposed_by: data.anonymousId(attempt.scaffoldingRequestedBy),
-      scaffolding_agreed_by: data.anonymousId(attempt.scaffoldingAgreedBy),
-      proposals_made: attemptProposals.length,
-      proposals_cancelled: attemptProposals.filter((p) => p.status === "cancelled").length,
-      seconds_proposal_to_agreement: agreedProposal
-        ? secondsBetween(agreedProposal.createdAt, agreedProposal.resolvedAt)
-        : null,
-      submitted_by: data.anonymousId(attempt.submittedBy),
+      members_using_ai: new Set(attemptScaffolds.map((s) => s.participantId)).size,
+      ai_types_used: aiUse.ai_types_used,
+      ai_requests: aiUse.ai_requests,
+      highest_support_level_used: aiUse.highest_support_level_used,
+      used_full_answer: aiUse.used_full_answer,
+      used_process_support: aiUse.used_process_support,
       discussion_before_ai: discussionBeforeAi,
       discussion_after_ai: data.transcript(messagesAfterAi),
       messages_before_ai: messagesBeforeAi.length,
       messages_after_ai: messagesAfterAi.length,
-      ai_response: attempt.aiResponse ?? "",
-      own_words_explanation: attempt.ownWordsExplanation,
       final_answer: attempt.finalAnswer,
-      final_length: attempt.finalAnswer.length,
-      final_overlap_with_ai: attempt.aiResponse
-        ? textOverlap(attempt.finalAnswer, attempt.aiResponse)
+      final_words: countWords(attempt.finalAnswer),
+      final_overlap_with_ai: allAiText ? textOverlap(attempt.finalAnswer, allAiText) : null,
+      final_overlap_with_full_answer: fullAnswerText
+        ? textOverlap(attempt.finalAnswer, fullAnswerText)
         : null,
       final_overlap_with_discussion_before_ai: textOverlap(
         attempt.finalAnswer,
         discussionBeforeAi
       ),
-      own_words_overlap_with_ai: attempt.aiResponse
-        ? textOverlap(attempt.ownWordsExplanation, attempt.aiResponse)
-        : null,
+      final_authors_count: authoredByMember.filter((value) => value > 0).length,
+      final_top_author_share:
+        authoredTotal > 0 ? round(Math.max(...authoredByMember) / authoredTotal) : null,
+      final_authorship_balance: participationBalance(authoredByMember),
       final_rubric_mean: mean(finalScores),
       contributors_count: charsByMember.filter((value) => value > 0).length,
       top_contributor_share:
         totalChars > 0 ? round(Math.max(...charsByMember) / totalChars) : null,
       participation_balance: participationBalance(charsByMember),
       ratings_count: ratings.length,
-      time_before_ai_seconds: secondsBetween(
-        attempt.discussionStartedAt,
-        attempt.scaffoldingRequestedAt
+      submitted_by_last_ready: data.anonymousId(attempt.submittedBy),
+      time_before_first_ai_seconds: secondsBetween(
+        attempt.discussionStartedAt ?? attempt.createdAt,
+        aiUse.first_ai_request_at
       ),
-      time_after_ai_seconds: secondsBetween(attempt.aiResponseAt, attempt.finalAnswerAt),
-      ai_model: attempt.aiModel ?? "",
-      ai_latency_ms: attempt.aiLatencyMs,
-      discussion_started_at: toIsoString(attempt.discussionStartedAt) ?? "",
-      scaffolding_requested_at: toIsoString(attempt.scaffoldingRequestedAt) ?? "",
-      ai_response_at: toIsoString(attempt.aiResponseAt) ?? "",
+      time_total_seconds: secondsBetween(
+        attempt.discussionStartedAt ?? attempt.createdAt,
+        attempt.finalAnswerAt
+      ),
+      first_ai_request_at: toIsoString(aiUse.first_ai_request_at) ?? "",
       final_answer_at: toIsoString(attempt.finalAnswerAt) ?? "",
     };
   });
@@ -286,35 +314,82 @@ export async function buildScenarioExport(): Promise<CsvExport> {
 
 const SCENARIO_COLUMNS = [
   "session_code", "session_id", "group_size", "scenario_id", "scenario_order",
-  "scenario_title", "task_type", "help_reason", "help_reason_label",
-  "scaffolding_type", "support_category", "support_level",
-  "scaffolding_proposed_by", "scaffolding_agreed_by", "proposals_made",
-  "proposals_cancelled", "seconds_proposal_to_agreement", "submitted_by",
-  "discussion_before_ai",
-  "discussion_after_ai", "messages_before_ai", "messages_after_ai", "ai_response",
-  "own_words_explanation", "final_answer", "final_length", "final_overlap_with_ai",
-  "final_overlap_with_discussion_before_ai", "own_words_overlap_with_ai",
-  "final_rubric_mean", "contributors_count",
-  "top_contributor_share", "participation_balance", "ratings_count",
-  "time_before_ai_seconds", "time_after_ai_seconds", "ai_model", "ai_latency_ms",
-  "discussion_started_at", "scaffolding_requested_at", "ai_response_at",
-  "final_answer_at",
+  "scenario_title", "task_type", "members_using_ai", "ai_types_used", "ai_requests",
+  "highest_support_level_used", "used_full_answer", "used_process_support",
+  "discussion_before_ai", "discussion_after_ai", "messages_before_ai", "messages_after_ai",
+  "final_answer", "final_words", "final_overlap_with_ai", "final_overlap_with_full_answer",
+  "final_overlap_with_discussion_before_ai", "final_authors_count",
+  "final_top_author_share", "final_authorship_balance", "final_rubric_mean",
+  "contributors_count", "top_contributor_share", "participation_balance", "ratings_count",
+  "submitted_by_last_ready", "time_before_first_ai_seconds", "time_total_seconds",
+  "first_ai_request_at", "final_answer_at",
 ];
+
+export async function buildAiSupportExport(): Promise<CsvExport> {
+  const data = await loadStudyData();
+  const attemptFor = (sessionId: string, scenarioOrder: number) =>
+    data.attempts.find((a) => a.sessionId === sessionId && a.scenarioOrder === scenarioOrder);
+
+  return {
+    columns: [
+      "session_code",
+      "anonymous_id",
+      "scenario_order",
+      "scaffolding_type",
+      "support_category",
+      "support_level",
+      "selected_at_end",
+      "times_selected",
+      "times_unselected",
+      "group_messages_before_request",
+      "final_overlap_with_response",
+      "ai_model",
+      "ai_latency_ms",
+      "ai_response",
+      "requested_at",
+      "last_toggled_at",
+    ],
+    rows: data.scaffolds.map((scaffold) => {
+      const attempt = attemptFor(scaffold.sessionId, scaffold.scenarioOrder);
+      return {
+        session_code: data.sessionById.get(scaffold.sessionId)?.code ?? "",
+        anonymous_id: data.anonymousId(scaffold.participantId),
+        scenario_order: scaffold.scenarioOrder,
+        scaffolding_type: scaffold.scaffoldingType,
+        ...supportInfo(scaffold.scaffoldingType),
+        selected_at_end: scaffold.selected ? "yes" : "no",
+        times_selected: scaffold.timesSelected,
+        times_unselected: scaffold.timesUnselected,
+        group_messages_before_request: data.messages.filter(
+          (m) =>
+            m.sessionId === scaffold.sessionId &&
+            m.scenarioOrder === scaffold.scenarioOrder &&
+            m.createdAt < scaffold.createdAt
+        ).length,
+        final_overlap_with_response: attempt
+          ? textOverlap(attempt.finalAnswer, scaffold.aiResponse)
+          : null,
+        ai_model: scaffold.aiModel ?? "",
+        ai_latency_ms: scaffold.aiLatencyMs,
+        ai_response: scaffold.aiResponse,
+        requested_at: toIsoString(scaffold.createdAt) ?? "",
+        last_toggled_at: toIsoString(scaffold.lastToggledAt) ?? "",
+      };
+    }),
+  };
+}
 
 export async function buildRatingsExport(): Promise<CsvExport> {
   const data = await loadStudyData();
-  const attemptFor = (sessionId: string, scenarioId: string) =>
-    data.attempts.find((a) => a.sessionId === sessionId && a.scenarioId === scenarioId);
 
   const columns = [
     "session_code",
     "anonymous_id",
     "scenario_id",
     "scenario_order",
-    "help_reason",
-    "scaffolding_type",
-    "support_category",
-    "support_level",
+    "ai_used",
+    "ai_types_used",
+    "highest_support_level_used",
     "support_amount",
     ...SURVEY_ITEMS.map((item) => RATING_COLUMNS[item.key]),
     "open_reflection",
@@ -322,15 +397,23 @@ export async function buildRatingsExport(): Promise<CsvExport> {
   ];
 
   const rows = data.surveys.map((survey) => {
-    const attempt = attemptFor(survey.sessionId, survey.scenarioId);
+    const order = getScenarioById(survey.scenarioId)?.order;
+    const aiUse = aiUseSummary(
+      data.scaffolds.filter(
+        (s) =>
+          s.sessionId === survey.sessionId &&
+          s.participantId === survey.participantId &&
+          s.scenarioOrder === order
+      )
+    );
     const row: CsvRow = {
       session_code: data.sessionById.get(survey.sessionId)?.code ?? "",
       anonymous_id: data.anonymousId(survey.participantId),
       scenario_id: survey.scenarioId,
-      scenario_order: attempt?.scenarioOrder ?? getScenarioById(survey.scenarioId)?.order,
-      help_reason: attempt?.helpReason ?? "",
-      scaffolding_type: attempt?.scaffoldingType ?? "",
-      ...supportInfo(attempt?.scaffoldingType ?? null),
+      scenario_order: order,
+      ai_used: aiUse.ai_used,
+      ai_types_used: aiUse.ai_types_used,
+      highest_support_level_used: aiUse.highest_support_level_used,
       support_amount: survey.supportAmount ?? "",
       open_reflection: survey.openReflection ?? "",
       created_at: toIsoString(survey.createdAt) ?? "",
@@ -348,17 +431,18 @@ export async function buildContributionsExport(): Promise<CsvExport> {
     "session_code",
     "anonymous_id",
     "scenario_order",
-    "scaffolding_type",
-    "support_level",
+    "ai_used",
+    "ai_types_used",
+    "ai_requests",
+    "highest_support_level_used",
     "messages_before_ai",
     "messages_after_ai",
     "message_chars",
-    ...Object.values(FIELD_COLUMNS).map((name) => `${name}_chars_added`),
+    "final_chars_added",
+    "final_chars_in_answer",
+    "final_answer_share",
     "total_chars",
     "share_of_group_chars",
-    "proposals_made",
-    "proposals_agreed_to",
-    "proposals_cancelled",
   ];
 
   const rows: CsvRow[] = [];
@@ -368,7 +452,8 @@ export async function buildContributionsExport(): Promise<CsvExport> {
       row.sessionId === attempt.sessionId && row.scenarioOrder === attempt.scenarioOrder;
     const attemptEdits = data.edits.filter(inAttempt);
     const attemptMessages = data.messages.filter(inAttempt);
-    const attemptProposals = data.proposals.filter(inAttempt);
+    const attemptScaffolds = data.scaffolds.filter(inAttempt);
+    const authored = charsByAuthor(attempt.finalAnswerAuthorship);
     const groupChars =
       attemptEdits.reduce((sum, e) => sum + e.charsAdded, 0) +
       attemptMessages.reduce((sum, m) => sum + m.text.length, 0);
@@ -377,33 +462,28 @@ export async function buildContributionsExport(): Promise<CsvExport> {
       const memberEdits = attemptEdits.filter((e) => e.participantId === member.id);
       const memberMessages = attemptMessages.filter((m) => m.participantId === member.id);
       const messageChars = memberMessages.reduce((sum, m) => sum + m.text.length, 0);
-      const total =
-        messageChars + memberEdits.reduce((sum, e) => sum + e.charsAdded, 0);
-      const row: CsvRow = {
+      const finalCharsAdded = memberEdits.reduce((sum, e) => sum + e.charsAdded, 0);
+      const inAnswer = authored.get(member.id) ?? 0;
+      const total = messageChars + finalCharsAdded;
+      const aiUse = aiUseSummary(attemptScaffolds.filter((s) => s.participantId === member.id));
+      rows.push({
         session_code: data.sessionById.get(attempt.sessionId)?.code ?? "",
         anonymous_id: member.anonymousId,
         scenario_order: attempt.scenarioOrder,
-        scaffolding_type: attempt.scaffoldingType ?? "",
-        support_level: supportInfo(attempt.scaffoldingType).support_level,
+        ai_used: aiUse.ai_used,
+        ai_types_used: aiUse.ai_types_used,
+        ai_requests: aiUse.ai_requests,
+        highest_support_level_used: aiUse.highest_support_level_used,
         messages_before_ai: memberMessages.filter(data.sentBeforeAi).length,
         messages_after_ai: memberMessages.filter((m) => !data.sentBeforeAi(m)).length,
         message_chars: messageChars,
+        final_chars_added: finalCharsAdded,
+        final_chars_in_answer: inAnswer,
+        final_answer_share:
+          attempt.finalAnswer.length > 0 ? round(inAnswer / attempt.finalAnswer.length) : null,
         total_chars: total,
         share_of_group_chars: groupChars > 0 ? round(total / groupChars) : null,
-        proposals_made: attemptProposals.filter((p) => p.proposedBy === member.id).length,
-        proposals_agreed_to: attemptProposals.filter(
-          (p) => p.status === "agreed" && p.resolvedBy === member.id
-        ).length,
-        proposals_cancelled: attemptProposals.filter(
-          (p) => p.status === "cancelled" && p.resolvedBy === member.id
-        ).length,
-      };
-      for (const [field, name] of Object.entries(FIELD_COLUMNS)) {
-        row[`${name}_chars_added`] = memberEdits
-          .filter((e) => e.field === field)
-          .reduce((sum, e) => sum + e.charsAdded, 0);
-      }
-      rows.push(row);
+      });
     }
   }
 
@@ -430,39 +510,6 @@ export async function buildMessagesExport(): Promise<CsvExport> {
       text: message.text,
       length: message.text.length,
       created_at: toIsoString(message.createdAt) ?? "",
-    })),
-  };
-}
-
-export async function buildProposalsExport(): Promise<CsvExport> {
-  const data = await loadStudyData();
-  return {
-    columns: [
-      "session_code",
-      "scenario_order",
-      "proposed_by",
-      "help_reason",
-      "scaffolding_type",
-      "support_category",
-      "support_level",
-      "status",
-      "resolved_by",
-      "seconds_to_decision",
-      "created_at",
-      "resolved_at",
-    ],
-    rows: data.proposals.map((proposal) => ({
-      session_code: data.sessionById.get(proposal.sessionId)?.code ?? "",
-      scenario_order: proposal.scenarioOrder,
-      proposed_by: data.anonymousId(proposal.proposedBy),
-      help_reason: proposal.helpReason,
-      scaffolding_type: proposal.scaffoldingType,
-      ...supportInfo(proposal.scaffoldingType),
-      status: proposal.status,
-      resolved_by: data.anonymousId(proposal.resolvedBy),
-      seconds_to_decision: secondsBetween(proposal.createdAt, proposal.resolvedAt),
-      created_at: toIsoString(proposal.createdAt) ?? "",
-      resolved_at: toIsoString(proposal.resolvedAt) ?? "",
     })),
   };
 }
@@ -530,11 +577,18 @@ export async function buildRubricExport(): Promise<CsvExport> {
   const attemptById = new Map(data.attempts.map((a) => [a.id, a]));
   const rows = data.rubric.map((score) => {
     const attempt = attemptById.get(score.attemptId);
+    const aiUse = aiUseSummary(
+      attempt
+        ? data.scaffolds.filter(
+            (s) => s.sessionId === attempt.sessionId && s.scenarioOrder === attempt.scenarioOrder
+          )
+        : []
+    );
     const row: CsvRow = {
       session_code: attempt ? data.sessionById.get(attempt.sessionId)?.code ?? "" : "",
       scenario_order: attempt?.scenarioOrder,
-      scaffolding_type: attempt?.scaffoldingType ?? "",
-      support_level: supportInfo(attempt?.scaffoldingType ?? null).support_level,
+      ai_types_used: aiUse.ai_types_used,
+      highest_support_level_used: aiUse.highest_support_level_used,
       answer_type: score.answerType,
       rater: score.rater,
       total: rubricTotal(score),
@@ -551,8 +605,8 @@ export async function buildRubricExport(): Promise<CsvExport> {
     columns: [
       "session_code",
       "scenario_order",
-      "scaffolding_type",
-      "support_level",
+      "ai_types_used",
+      "highest_support_level_used",
       "answer_type",
       "rater",
       ...RUBRIC_CRITERIA.map((c) => snakeCase(c.key)),
@@ -613,8 +667,8 @@ export const EXPORT_BUILDERS = {
   scenarios: buildScenarioExport,
   ratings: buildRatingsExport,
   contributions: buildContributionsExport,
+  ai_support: buildAiSupportExport,
   messages: buildMessagesExport,
-  proposals: buildProposalsExport,
   edits: buildEditsExport,
   reflections: buildReflectionsExport,
   rubric: buildRubricExport,

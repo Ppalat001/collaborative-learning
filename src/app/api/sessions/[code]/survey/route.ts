@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  getIndividualScaffolds,
   getOrCreateAttempt,
   getParticipantInSession,
   getSessionByCode,
@@ -41,7 +42,13 @@ export async function POST(
     }
 
     const attempt = await getOrCreateAttempt(session.id, scenario.order);
-    const aiUsed = !!attempt.scaffoldingType && attempt.scaffoldingType !== "no_assistance";
+    if (!attempt.submitted) {
+      return NextResponse.json(
+        { error: "Rate the scenario after your group has finished its answer" },
+        { status: 409 }
+      );
+    }
+    const aiUsed = (await getIndividualScaffolds(participant.id, scenario.order)).length > 0;
 
     const ratings: SurveyRatings = {
       supportAmount: null,

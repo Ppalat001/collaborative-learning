@@ -27,14 +27,15 @@ Use this checklist before running your full dissertation study.
 4. Each member completes the **pre-test** individually in the lobby
 5. Begin Scenario 1 together
 5. Observe:
-   - Do all members see discussion text update in real time?
-   - Does the group understand they must choose scaffolding before submitting?
-   - Does the AI response match the scaffolding type chosen?
-   - Is the final answer truly a group product?
+   - Do all members see the chat and the shared answer update in real time, in each person's colour?
+   - Do students understand that Step 2 AI support is private and that they can select and unselect options?
+   - Does the AI response match the option chosen?
+   - Do students understand they must all click "I am good" to move on?
+   - Is the final answer truly a group product (check the colours and the share shown in the name bar)?
 
 ### After each scenario
 
-- Confirm **every** student submitted their own rating (not only the one who submitted the answer)
+- Confirm **every** student submitted their own rating
 - Check that data appears in CSV export
 
 ## What to tune after pilot
@@ -55,17 +56,18 @@ npm run pilot:test
 
 Expected output: `Pilot test PASSED`
 
-This validates: session creation, join, consent, group chat (names, colours, before/after AI split), scaffolding, final answer, survey, and CSV export.
+This validates: session creation, join, consent, group chat (names, colours, before/after AI split), private multi-select AI support with stored responses, the shared answer with authorship and the 500-word limit, "I am good" readiness, surveys and CSV export.
 
 ## Data to verify in export
 
 After a pilot group completes at least one scenario, export CSV and confirm:
 
 - `session_code` matches room code
-- `scaffolding_type` and `help_reason` match what the group chose
-- `discussion_before_ai` contains the chat up to the AI request, and `final_answer` is populated
+- `ai_types_used` and `members_using_ai` match what the students selected
+- The AI support export has one row per student and option, with `times_selected` and `times_unselected`
+- `discussion_before_ai` contains the chat up to the first AI request, and `final_answer` is populated
 - The chat log export shows every message, with `sent_before_ai` set to yes or no
-- `time_before_ai_seconds` is calculated
+- `final_answer_share` in the contributions export roughly matches the colours you saw
 - The ratings export has one row per student per scenario
 - The contributions export shows every student, including those who typed nothing
 - Delete `data/research.db` after piloting so test sessions don't mix with study data

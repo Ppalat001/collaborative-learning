@@ -1,14 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { RUBRIC_CRITERIA, RUBRIC_SCALE, type RubricCriterion } from "@/lib/instruments";
 import {
-  RUBRIC_CRITERIA,
-  RUBRIC_SCALE,
-  getHelpReasonLabel,
-  type RubricCriterion,
-} from "@/lib/instruments";
-import {
-  SCAFFOLDING_OPTIONS,
+  AI_SUPPORT_OPTIONS,
   SUPPORT_LEVEL_LABELS,
   getScaffoldingOption,
   type ScaffoldingType,
@@ -25,11 +20,16 @@ interface RubricAttempt {
   scenarioOrder: number;
   scenarioTitle: string;
   scenarioDescription: string;
-  scaffoldingType: ScaffoldingType | null;
-  helpReason: string | null;
-  aiResponse: string | null;
+  aiTypesUsed: ScaffoldingType[];
   finalAnswer: string;
   scores: RubricScore[];
+}
+
+function highestLevel(types: ScaffoldingType[]): number | null {
+  const levels = types
+    .map((type) => getScaffoldingOption(type)?.supportLevel)
+    .filter((level): level is 0 | 1 | 2 | 3 => typeof level === "number");
+  return levels.length > 0 ? Math.max(...levels) : null;
 }
 
 function UsageSummary({ attempts }: { attempts: RubricAttempt[] }) {
@@ -38,18 +38,20 @@ function UsageSummary({ attempts }: { attempts: RubricAttempt[] }) {
     attempts.filter(predicate).length;
   const percent = (count: number) => (total ? Math.round((count / total) * 100) : 0);
 
-  const levels = [0, 1, 2, 3] as const;
+  const levels = [1, 2, 3] as const;
+  const noAi = countBy((a) => a.aiTypesUsed.length === 0);
   return (
     <div className="mt-4 grid gap-4 md:grid-cols-2">
       <div>
-        <h3 className="text-sm font-semibold text-slate-900">Support level used</h3>
+        <h3 className="text-sm font-semibold text-slate-900">
+          Highest support level used by any member
+        </h3>
         <ul className="mt-2 space-y-1 text-sm text-slate-700">
+          <li>
+            No AI used: {noAi} ({percent(noAi)}%)
+          </li>
           {levels.map((level) => {
-            const count = countBy(
-              (a) =>
-                !!a.scaffoldingType &&
-                getScaffoldingOption(a.scaffoldingType)?.supportLevel === level
-            );
+            const count = countBy((a) => highestLevel(a.aiTypesUsed) === level);
             return (
               <li key={level}>
                 Level {level} · {SUPPORT_LEVEL_LABELS[level]}: {count} ({percent(count)}%)
@@ -57,20 +59,20 @@ function UsageSummary({ attempts }: { attempts: RubricAttempt[] }) {
             );
           })}
           <li>
-            Collaboration support:{" "}
-            {countBy(
-              (a) =>
-                !!a.scaffoldingType &&
-                getScaffoldingOption(a.scaffoldingType)?.category === "process"
+            Used collaboration support:{" "}
+            {countBy((a) =>
+              a.aiTypesUsed.some((t) => getScaffoldingOption(t)?.category === "process")
             )}
           </li>
         </ul>
       </div>
       <div>
-        <h3 className="text-sm font-semibold text-slate-900">Support type used</h3>
+        <h3 className="text-sm font-semibold text-slate-900">
+          Scenarios where a member used each type
+        </h3>
         <ul className="mt-2 space-y-1 text-sm text-slate-700">
-          {SCAFFOLDING_OPTIONS.map((option) => {
-            const count = countBy((a) => a.scaffoldingType === option.type);
+          {AI_SUPPORT_OPTIONS.map((option) => {
+            const count = countBy((a) => a.aiTypesUsed.includes(option.type));
             return (
               <li key={option.type}>
                 {option.label}: {count} ({percent(count)}%)
@@ -212,9 +214,8 @@ export function RubricScoring({ password }: { password: string }) {
     <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
       <h2 className="font-semibold text-slate-900">Rubric scoring and support usage</h2>
       <p className="mt-1 text-sm text-slate-600">
-        Score each group&apos;s final answer on six criteria (1–4). Blind mode hides the
-        help reason, the AI support type and the AI response, so the score isn&apos;t
-        influenced by the condition.
+        Score each group&apos;s final answer on six criteria (1–4). Blind mode hides which
+        AI support the members used, so the score isn&apos;t influenced by the condition.
       </p>
       <div className="mt-4 flex flex-wrap items-end gap-3">
         <label className="space-y-1">
@@ -250,10 +251,6 @@ export function RubricScoring({ password }: { password: string }) {
 
           <div className="mt-6 space-y-4">
             {attempts.map((attempt) => {
-              const option = attempt.scaffoldingType
-                ? getScaffoldingOption(attempt.scaffoldingType)
-                : undefined;
-
               return (
                 <div key={attempt.id} className="rounded-xl border border-slate-200 p-4">
                   <p className="text-xs text-slate-500">
@@ -263,18 +260,12 @@ export function RubricScoring({ password }: { password: string }) {
                   <p className="mt-1 text-sm text-slate-600">{attempt.scenarioDescription}</p>
                   {!blind && (
                     <div className="mt-2 rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
-                      <p>
-                        Help reason: {getHelpReasonLabel(attempt.helpReason) || "–"} · Support:{" "}
-                        {option?.label ?? "–"}
-                        {option?.supportLevel !== null && option?.supportLevel !== undefined
-                          ? ` (Level ${option.supportLevel})`
-                          : ""}
-                      </p>
-                      {attempt.aiResponse && (
-                        <p className="mt-2 whitespace-pre-wrap text-xs text-slate-600">
-                          AI: {attempt.aiResponse}
-                        </p>
-                      )}
+                      AI support used by members:{" "}
+                      {attempt.aiTypesUsed.length > 0
+                        ? attempt.aiTypesUsed
+                            .map((type) => getScaffoldingOption(type)?.label ?? type)
+                            .join(", ")
+                        : "none"}
                     </div>
                   )}
                   <div className="mt-3 rounded-lg border border-slate-100 p-3">

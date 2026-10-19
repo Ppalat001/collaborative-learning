@@ -1,7 +1,7 @@
 import type { Server as SocketServer } from "socket.io";
 
 import { isSharedField, type SharedField } from "@/lib/instruments";
-import type { ProposalEvent, ScaffoldingType } from "@/lib/types";
+import type { AuthorRun } from "@/lib/types";
 
 /**
  * Only holds fields edited since the server started. Fields missing here are
@@ -9,27 +9,17 @@ import type { ProposalEvent, ScaffoldingType } from "@/lib/types";
  */
 export interface RoomFieldState {
   fields: Partial<Record<SharedField, string>>;
+  authorship: Partial<Record<SharedField, AuthorRun[]>>;
   updatedAt: string;
   updatedBy?: string;
 }
 
-export interface RoomScaffoldingState {
-  scaffoldingType: ScaffoldingType;
-  helpReason: string;
-  aiResponse: string;
-  proposedBy: string;
-  agreedBy: string;
-  updatedAt: string;
-}
-
-export interface RoomSubmissionState {
-  finalAnswer: string;
-  ownWordsExplanation: string;
-  submittedBy: string;
+export interface ReadyEvent {
+  readyIds: string[];
+  submitted: boolean;
 }
 
 const roomState = new Map<string, RoomFieldState>();
-const scaffoldingState = new Map<string, RoomScaffoldingState>();
 
 function roomKey(sessionCode: string, scenarioOrder: number): string {
   return `${sessionCode.toUpperCase()}:${scenarioOrder}`;
@@ -47,22 +37,19 @@ function setRoomField(
   scenarioOrder: number,
   field: SharedField,
   value: string,
+  authorship: AuthorRun[] | undefined,
   updatedBy: string
 ) {
   const key = roomKey(sessionCode, scenarioOrder);
   const current = roomState.get(key);
   roomState.set(key, {
     fields: { ...current?.fields, [field]: value },
+    authorship: authorship
+      ? { ...current?.authorship, [field]: authorship }
+      : { ...current?.authorship },
     updatedAt: new Date().toISOString(),
     updatedBy,
   });
-}
-
-export function getScaffoldingState(
-  sessionCode: string,
-  scenarioOrder: number
-): RoomScaffoldingState | null {
-  return scaffoldingState.get(roomKey(sessionCode, scenarioOrder)) ?? null;
 }
 
 export function initSocketHandlers(io: SocketServer) {
@@ -84,9 +71,6 @@ export function initSocketHandlers(io: SocketServer) {
 
         const state = getRoomState(sessionCode, scenarioOrder);
         if (state) socket.emit("room:state", state);
-
-        const scaffold = getScaffoldingState(sessionCode, scenarioOrder);
-        if (scaffold) socket.emit("scaffolding:state", scaffold);
       }
     );
 
@@ -97,14 +81,16 @@ export function initSocketHandlers(io: SocketServer) {
         scenarioOrder: number;
         field: string;
         value: string;
+        authorship?: AuthorRun[];
         updatedBy: string;
       }) => {
-        const { sessionCode, scenarioOrder, field, value, updatedBy } = payload;
+        const { sessionCode, scenarioOrder, field, value, authorship, updatedBy } = payload;
         if (!isSharedField(field) || typeof value !== "string") return;
-        setRoomField(sessionCode, scenarioOrder, field, value, updatedBy);
+        const runs = Array.isArray(authorship) ? authorship : undefined;
+        setRoomField(sessionCode, scenarioOrder, field, value, runs, updatedBy);
         socket
           .to(roomKey(sessionCode, scenarioOrder))
-          .emit("field:state", { field, value, updatedBy });
+          .emit("field:state", { field, value, authorship: runs, updatedBy });
       }
     );
 
@@ -117,39 +103,12 @@ export function initSocketHandlers(io: SocketServer) {
     );
 
     socket.on(
-      "scaffolding:update",
-      (payload: {
-        sessionCode: string;
-        scenarioOrder: number;
-        scaffoldingType: ScaffoldingType;
-        helpReason: string;
-        aiResponse: string;
-        proposedBy: string;
-        agreedBy: string;
-      }) => {
-        const { sessionCode, scenarioOrder, ...rest } = payload;
-        const state: RoomScaffoldingState = {
-          ...rest,
-          updatedAt: new Date().toISOString(),
-        };
-        scaffoldingState.set(roomKey(sessionCode, scenarioOrder), state);
-        socket.to(roomKey(sessionCode, scenarioOrder)).emit("scaffolding:state", state);
-      }
-    );
-
-    socket.on(
-      "proposal:update",
-      (payload: { sessionCode: string; scenarioOrder: number; event: ProposalEvent }) => {
-        const { sessionCode, scenarioOrder, event } = payload;
-        socket.to(roomKey(sessionCode, scenarioOrder)).emit("proposal:update", event);
-      }
-    );
-
-    socket.on(
-      "scenario:submitted",
-      (payload: RoomSubmissionState & { sessionCode: string; scenarioOrder: number }) => {
-        const { sessionCode, scenarioOrder, ...submission } = payload;
-        socket.to(roomKey(sessionCode, scenarioOrder)).emit("scenario:submitted", submission);
+      "ready:update",
+      (payload: ReadyEvent & { sessionCode: string; scenarioOrder: number }) => {
+        const { sessionCode, scenarioOrder, readyIds, submitted } = payload;
+        socket
+          .to(roomKey(sessionCode, scenarioOrder))
+          .emit("ready:update", { readyIds, submitted } satisfies ReadyEvent);
       }
     );
 

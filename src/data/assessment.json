@@ -82,8 +82,8 @@
         "options": [
           "The AI decides which step the group should do next",
           "The teacher chooses all AI support in advance",
-          "The group decides when to ask for help and what kind of help it needs",
-          "Each member uses AI privately without telling the others"
+          "The group decides together what goes into its answer, even when members use AI help",
+          "Whatever the AI says is copied into the group's answer"
         ],
         "correctIndex": 2
       },
@@ -168,9 +168,9 @@
       {
         "id": "post-6",
         "concept": "overreliance",
-        "text": "After receiving a full answer from the AI, what should a group do to keep learning?",
+        "text": "After receiving a full answer from the AI, what should a student do to keep learning?",
         "options": [
-          "Submit the AI answer unchanged, because it is correct",
+          "Paste the AI answer into the group answer unchanged, because it is correct",
           "Explain the answer in their own words and check whether they agree with it",
           "Ask the AI for a second full answer to compare",
           "Move on to the next task immediately"
@@ -180,12 +180,12 @@
       {
         "id": "post-7",
         "concept": "group_agency",
-        "text": "Why should the whole group agree before asking an AI for help?",
+        "text": "Why should every member agree that the group answer is ready before the group moves on?",
         "options": [
-          "So the request reflects what the group actually needs and everyone stays involved",
-          "Because the AI only works when several people press a button",
+          "So the answer reflects the whole group's thinking and everyone stays responsible for it",
+          "Because the software only works when several people press a button",
           "So the teacher can see who is the leader",
-          "Because AI help is not allowed in group work"
+          "So the member who types fastest can decide for the group"
         ],
         "correctIndex": 0
       },

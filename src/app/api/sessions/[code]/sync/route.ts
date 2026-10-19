@@ -7,6 +7,7 @@ import {
 } from "@/lib/services/sessions";
 import { getRoomState } from "@/lib/socket";
 import { SHARED_FIELDS, isSharedField, type SharedField } from "@/lib/instruments";
+import type { AuthorRun } from "@/lib/types";
 
 const MAX_INSERTED_TEXT = 5000;
 
@@ -52,6 +53,14 @@ function parseEdits(value: unknown): EditBatch[] {
     }));
 }
 
+function parseAuthorship(value: unknown): AuthorRun[] | null {
+  if (!Array.isArray(value)) return null;
+  return value.map((run) => ({
+    participantId: typeof run?.participantId === "string" ? run.participantId : null,
+    length: Math.max(0, Math.floor(Number(run?.length) || 0)),
+  }));
+}
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ code: string }> }
@@ -70,13 +79,17 @@ export async function POST(
     const fields = parseFields(body.fields ?? body);
     const edits = parseEdits(body.edits);
 
-    await updateAttemptFields(
+    const result = await updateAttemptFields(
       session.id,
       scenarioOrder,
       fields,
+      parseAuthorship(body.authorship),
       edits,
       participant?.id ?? null
     );
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
+    }
 
     return NextResponse.json({ ok: true });
   } catch (error) {

@@ -1,39 +1,43 @@
-export const HELP_REASONS = [
-  { id: "stuck", label: "We are stuck" },
-  { id: "unsure_correct", label: "We are not sure if our answer is correct" },
-  { id: "need_example", label: "We need an example" },
-  { id: "disagree", label: "We disagree" },
-  { id: "need_explanation", label: "We need a better explanation" },
-  { id: "want_feedback", label: "We want feedback" },
-  { id: "no_help_needed", label: "We don't need help right now" },
-] as const;
-
-export type HelpReason = (typeof HELP_REASONS)[number]["id"];
-
-export function isValidHelpReason(value: string): value is HelpReason {
-  return HELP_REASONS.some((reason) => reason.id === value);
-}
-
-export function getHelpReasonLabel(id: string | null | undefined): string {
-  return HELP_REASONS.find((reason) => reason.id === id)?.label ?? "";
-}
-
-export const OWN_WORDS_MIN_WORDS = 15;
+export const ANSWER_WORD_LIMIT = 500;
 
 export function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
-export const SHARED_FIELDS = ["ownWordsExplanation", "finalAnswer"] as const;
+export const SHARED_FIELDS = ["finalAnswer"] as const;
 
 export const MAX_MESSAGE_LENGTH = 2000;
 
 export const PARTICIPANT_COLORS = [
-  { name: "text-indigo-700", bubble: "border-indigo-200 bg-indigo-50" },
-  { name: "text-emerald-700", bubble: "border-emerald-200 bg-emerald-50" },
-  { name: "text-amber-700", bubble: "border-amber-200 bg-amber-50" },
-  { name: "text-rose-700", bubble: "border-rose-200 bg-rose-50" },
+  {
+    name: "text-indigo-700",
+    bubble: "border-indigo-200 bg-indigo-50",
+    dot: "bg-indigo-600",
+    highlight: "bg-indigo-100 text-indigo-900",
+  },
+  {
+    name: "text-emerald-700",
+    bubble: "border-emerald-200 bg-emerald-50",
+    dot: "bg-emerald-600",
+    highlight: "bg-emerald-100 text-emerald-900",
+  },
+  {
+    name: "text-amber-700",
+    bubble: "border-amber-200 bg-amber-50",
+    dot: "bg-amber-500",
+    highlight: "bg-amber-100 text-amber-900",
+  },
+  {
+    name: "text-rose-700",
+    bubble: "border-rose-200 bg-rose-50",
+    dot: "bg-rose-600",
+    highlight: "bg-rose-100 text-rose-900",
+  },
 ];
+
+export function participantColor(colorIndex: number) {
+  return colorIndex >= 0 ? PARTICIPANT_COLORS[colorIndex % PARTICIPANT_COLORS.length] : null;
+}
 
 export type SharedField = (typeof SHARED_FIELDS)[number];
 
@@ -58,7 +62,7 @@ export type SurveyRatingKey =
 export interface SurveyItem {
   key: SurveyRatingKey;
   label: string;
-  /** Only asked when the group received AI support (not "No assistance"). */
+  /** Only asked when this participant selected at least one AI support option. */
   aiOnly: boolean;
   /** Offers "Not applicable", stored as null. */
   allowNotApplicable?: boolean;
@@ -70,7 +74,7 @@ export const SURVEY_SECTIONS: { title: string; items: SurveyItem[] }[] = [
     items: [
       {
         key: "perceivedHelpfulness",
-        label: "The AI support was helpful for this scenario.",
+        label: "The AI support I chose was helpful for this scenario.",
         aiOnly: true,
       },
     ],
@@ -80,22 +84,22 @@ export const SURVEY_SECTIONS: { title: string; items: SurveyItem[] }[] = [
     items: [
       {
         key: "aiHelpedDiscussion",
-        label: "The AI support helped our group discuss the task better.",
+        label: "My AI support helped me contribute better to the group discussion.",
         aiOnly: true,
       },
       {
         key: "aiHelpedFocus",
-        label: "The AI support helped our group stay focused.",
+        label: "My AI support helped me stay focused on the task.",
         aiOnly: true,
       },
       {
         key: "aiHelpedInclusion",
-        label: "The AI support helped include everyone in the discussion.",
+        label: "My AI support helped me include others' ideas in the discussion.",
         aiOnly: true,
       },
       {
         key: "aiHelpedDisagreement",
-        label: "The AI support helped our group resolve disagreement.",
+        label: "My AI support helped our group resolve disagreement.",
         aiOnly: true,
         allowNotApplicable: true,
       },
@@ -126,12 +130,12 @@ export const SURVEY_SECTIONS: { title: string; items: SurveyItem[] }[] = [
       },
       {
         key: "overRelianceRating",
-        label: "Our group relied too much on the AI.",
+        label: "I relied too much on the AI.",
         aiOnly: true,
       },
       {
         key: "couldAnswerWithoutAi",
-        label: "Our group could have answered this without the AI.",
+        label: "I could have contributed to this answer without the AI.",
         aiOnly: true,
       },
     ],

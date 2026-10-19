@@ -2,7 +2,9 @@ import {
   integer,
   sqliteTable,
   text,
+  uniqueIndex,
 } from "drizzle-orm/sqlite-core";
+import type { AuthorRun } from "@/lib/types";
 
 export const sessions = sqliteTable("sessions", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -31,18 +33,18 @@ export const scenarioAttempts = sqliteTable("scenario_attempts", {
     .references(() => sessions.id, { onDelete: "cascade" }),
   scenarioId: text("scenario_id").notNull(),
   scenarioOrder: integer("scenario_order").notNull(),
-  /** Chat transcript as sent to the AI, captured at the moment support was requested. */
+  /**
+   * No longer collected: AI support is now individual (individualScaffolds). These
+   * columns are kept so existing databases don't need a destructive migration.
+   */
   discussionText: text("discussion_text").notNull().default(""),
-  /** No longer collected; kept so existing databases don't need a destructive migration. */
   draftAnswer: text("draft_answer").notNull().default(""),
   helpReason: text("help_reason"),
   scaffoldingType: text("scaffolding_type"),
-  /** The member who proposed the support that was used. */
   scaffoldingRequestedBy: text("scaffolding_requested_by").references(
     () => participants.id,
     { onDelete: "set null" }
   ),
-  /** The member who agreed to the proposal; equals the proposer only in a one-member group. */
   scaffoldingAgreedBy: text("scaffolding_agreed_by").references(
     () => participants.id,
     { onDelete: "set null" }
@@ -52,9 +54,13 @@ export const scenarioAttempts = sqliteTable("scenario_attempts", {
   aiPromptUser: text("ai_prompt_user"),
   aiModel: text("ai_model"),
   aiLatencyMs: integer("ai_latency_ms"),
-  /** Required only after a full answer, so the group restates it in their own words. */
+  /** No longer collected; kept so existing databases don't need a destructive migration. */
   ownWordsExplanation: text("own_words_explanation").notNull().default(""),
   finalAnswer: text("final_answer").notNull().default(""),
+  /** Who typed each part of finalAnswer, as consecutive runs whose lengths sum to its length. */
+  finalAnswerAuthorship: text("final_answer_authorship", { mode: "json" }).$type<AuthorRun[]>(),
+  /** Members who clicked "I am good"; the answer is submitted once every member is in this list. */
+  readyParticipantIds: text("ready_participant_ids", { mode: "json" }).$type<string[]>(),
   submittedBy: text("submitted_by").references(() => participants.id, {
     onDelete: "set null",
   }),
@@ -120,7 +126,43 @@ export const discussionMessages = sqliteTable("discussion_messages", {
   createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
 });
 
-/** A member's proposal for AI support; at most one is pending per scenario. */
+/**
+ * One AI response per participant, scenario and support type. It is generated the
+ * first time the participant selects that type and reused on every later selection.
+ */
+export const individualScaffolds = sqliteTable(
+  "individual_scaffolds",
+  {
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => sessions.id, { onDelete: "cascade" }),
+    participantId: text("participant_id")
+      .notNull()
+      .references(() => participants.id, { onDelete: "cascade" }),
+    scenarioOrder: integer("scenario_order").notNull(),
+    scaffoldingType: text("scaffolding_type").notNull(),
+    aiResponse: text("ai_response").notNull(),
+    aiPromptSystem: text("ai_prompt_system"),
+    aiPromptUser: text("ai_prompt_user"),
+    aiModel: text("ai_model"),
+    aiLatencyMs: integer("ai_latency_ms"),
+    selected: integer("selected", { mode: "boolean" }).notNull().default(true),
+    timesSelected: integer("times_selected").notNull().default(1),
+    timesUnselected: integer("times_unselected").notNull().default(0),
+    createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
+    lastToggledAt: text("last_toggled_at").notNull().$defaultFn(() => new Date().toISOString()),
+  },
+  (table) => [
+    uniqueIndex("individual_scaffolds_unique").on(
+      table.participantId,
+      table.scenarioOrder,
+      table.scaffoldingType
+    ),
+  ]
+);
+
+/** No longer collected (group proposals were replaced by individual AI support). */
 export const scaffoldProposals = sqliteTable("scaffold_proposals", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   sessionId: text("session_id")

@@ -1,29 +1,23 @@
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
-import { db, schema } from "@/lib/db";
 import { generateScaffoldResponse } from "@/lib/ai/scaffold";
-import { getHelpReasonLabel, isValidHelpReason } from "@/lib/instruments";
 import {
-  agreeToProposal,
-  cancelProposal,
   formatTranscript,
   getDiscussionMessages,
+  getIndividualScaffold,
+  getOrCreateAttempt,
   getParticipantInSession,
   getSessionByCode,
-  getSessionMembers,
-  memberName,
-  proposeScaffolding,
-  releaseAgreement,
+  saveIndividualScaffold,
+  setIndividualScaffoldSelected,
+  toIndividualScaffold,
 } from "@/lib/services/sessions";
 import { logResearchEvent } from "@/lib/utils/export";
-import { nowIso } from "@/lib/utils/dates";
 import { getScenarioByOrder, isValidScaffoldingType } from "@/lib/utils/scenarios";
-import type { ScaffoldingType } from "@/lib/types";
 
 /**
- * AI support is a group decision: one member proposes (action "propose"),
- * another member agrees (action "agree") and only then is the AI called.
- * Any member can withdraw a pending proposal (action "cancel").
+ * AI support is individual: each member switches support types on ("select") or
+ * off ("unselect") for themselves. A type's response is generated the first time
+ * it is selected and reused afterwards, so toggling never calls the AI again.
  */
 export async function POST(
   request: Request,
@@ -34,21 +28,26 @@ export async function POST(
     const body = await request.json();
     const action = String(body.action ?? "");
     const scenarioOrder = Number(body.scenarioOrder);
+    const scaffoldingType = String(body.scaffoldingType ?? "");
 
+    if (action !== "select" && action !== "unselect") {
+      return NextResponse.json({ error: "Unknown action" }, { status: 400 });
+    }
     if (!Number.isInteger(scenarioOrder) || scenarioOrder < 1) {
       return NextResponse.json({ error: "Invalid scenario order" }, { status: 400 });
+    }
+    if (!isValidScaffoldingType(scaffoldingType) || scaffoldingType === "no_assistance") {
+      return NextResponse.json({ error: "Invalid support type" }, { status: 400 });
     }
 
     const session = await getSessionByCode(code);
     if (!session) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
-
     const scenario = getScenarioByOrder(scenarioOrder);
     if (!scenario) {
       return NextResponse.json({ error: "Scenario not found" }, { status: 404 });
     }
-
     const participant = await getParticipantInSession(session.id, body.participantId);
     if (!participant) {
       return NextResponse.json(
@@ -57,55 +56,43 @@ export async function POST(
       );
     }
 
-    if (action === "propose") {
-      const scaffoldingType = String(body.scaffoldingType ?? "");
-      const helpReason = String(body.helpReason ?? "");
-      if (!isValidScaffoldingType(scaffoldingType)) {
-        return NextResponse.json({ error: "Invalid scaffolding type" }, { status: 400 });
-      }
-      if (!isValidHelpReason(helpReason)) {
-        return NextResponse.json(
-          { error: "Choose why your group needs help before proposing AI support" },
-          { status: 400 }
+    const existing = await getIndividualScaffold(participant.id, scenarioOrder, scaffoldingType);
+
+    if (action === "unselect") {
+      if (!existing) return NextResponse.json({ scaffold: null });
+      const updated = await setIndividualScaffoldSelected(existing, false);
+      if (existing.selected) {
+        await logResearchEvent(
+          session.id,
+          "ai_support_unselected",
+          { scenarioOrder, scaffoldingType },
+          participant.id
         );
       }
-      const result = await proposeScaffolding(
-        session.id,
-        scenarioOrder,
-        participant.id,
-        helpReason,
-        scaffoldingType
+      return NextResponse.json({ scaffold: toIndividualScaffold(updated) });
+    }
+
+    if (existing) {
+      const updated = await setIndividualScaffoldSelected(existing, true);
+      if (!existing.selected) {
+        await logResearchEvent(
+          session.id,
+          "ai_support_reselected",
+          { scenarioOrder, scaffoldingType },
+          participant.id
+        );
+      }
+      return NextResponse.json({ scaffold: toIndividualScaffold(updated), cached: true });
+    }
+
+    const attempt = await getOrCreateAttempt(session.id, scenarioOrder);
+    if (attempt.submitted) {
+      return NextResponse.json(
+        { error: "This scenario is finished, so no new AI support can be requested" },
+        { status: 409 }
       );
-      if (!result.ok) {
-        return NextResponse.json({ error: result.error }, { status: result.status });
-      }
-      return NextResponse.json({ proposal: result.value });
     }
 
-    const proposalId = String(body.proposalId ?? "");
-    if (!proposalId) {
-      return NextResponse.json({ error: "proposalId is required" }, { status: 400 });
-    }
-
-    if (action === "cancel") {
-      const result = await cancelProposal(session.id, scenarioOrder, proposalId, participant.id);
-      if (!result.ok) {
-        return NextResponse.json({ error: result.error }, { status: result.status });
-      }
-      return NextResponse.json({ cancelled: true, cancelledByName: participant.displayName });
-    }
-
-    if (action !== "agree") {
-      return NextResponse.json({ error: "Unknown action" }, { status: 400 });
-    }
-
-    const claim = await agreeToProposal(session.id, scenarioOrder, proposalId, participant.id);
-    if (!claim.ok) {
-      return NextResponse.json({ error: claim.error }, { status: claim.status });
-    }
-
-    const { proposal, attemptId, requestedAt } = claim.value;
-    const scaffoldingType = proposal.scaffoldingType as ScaffoldingType;
     const discussionText = formatTranscript(
       await getDiscussionMessages(session.id, scenarioOrder)
     );
@@ -116,61 +103,43 @@ export async function POST(
         scaffoldingType,
         scenario,
         discussionText,
-        getHelpReasonLabel(proposal.helpReason)
+        attempt.finalAnswer
       );
     } catch (error) {
       console.error("AI generation failed:", error);
-      releaseAgreement(attemptId, proposal.id);
       return NextResponse.json(
-        { error: "The AI could not respond. The proposal is still open, so try agreeing again." },
+        { error: "The AI could not respond. Please try selecting it again." },
         { status: 502 }
       );
     }
 
-    const now = nowIso();
-    await db
-      .update(schema.scenarioAttempts)
-      .set({
-        discussionText,
-        aiResponse: result.response,
-        aiPromptSystem: result.systemPrompt,
-        aiPromptUser: result.userPrompt,
-        aiModel: result.model,
-        aiLatencyMs: result.latencyMs,
-        aiResponseAt: now,
-        updatedAt: now,
-      })
-      .where(eq(schema.scenarioAttempts.id, attemptId));
+    const row = await saveIndividualScaffold({
+      sessionId: session.id,
+      participantId: participant.id,
+      scenarioOrder,
+      scaffoldingType,
+      aiResponse: result.response,
+      aiPromptSystem: result.systemPrompt,
+      aiPromptUser: result.userPrompt,
+      aiModel: result.model,
+      aiLatencyMs: result.latencyMs,
+    });
 
     await logResearchEvent(
       session.id,
-      "scaffolding_requested",
+      "ai_support_requested",
       {
         scenarioOrder,
         scaffoldingType,
-        helpReason: proposal.helpReason,
-        proposalId: proposal.id,
-        proposedBy: proposal.proposedBy,
-        secondsToAgree: Math.round(
-          (Date.parse(requestedAt) - Date.parse(proposal.createdAt)) / 1000
-        ),
         mocked: result.mocked,
         model: result.model,
         latencyMs: result.latencyMs,
+        chatMessagesBefore: discussionText ? discussionText.split("\n").length : 0,
       },
       participant.id
     );
 
-    const members = await getSessionMembers(session.id);
-    return NextResponse.json({
-      scaffoldingType,
-      helpReason: proposal.helpReason,
-      aiResponse: result.response,
-      proposedByName: memberName(members, proposal.proposedBy),
-      agreedByName: participant.displayName,
-      mocked: result.mocked,
-      model: result.model,
-    });
+    return NextResponse.json({ scaffold: toIndividualScaffold(row), cached: false });
   } catch (error) {
     console.error("Scaffold error:", error);
     return NextResponse.json({ error: "Failed to process AI support request" }, { status: 500 });
