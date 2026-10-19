@@ -88,38 +88,43 @@ export async function generateScaffoldResponse(
   const model = process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
   const start = Date.now();
 
-  const messages = [
-    { role: "system" as const, content: system },
-    { role: "user" as const, content: user },
-  ];
-  // Newer models reject max_tokens and sometimes temperature. Drop a rejected option and retry.
-  const options: { temperature?: number; max_completion_tokens?: number } = {
-    temperature: 0.4,
-    max_completion_tokens: 500,
+  // Current models (including gpt-6-luna) answer through /v1/responses, not chat completions.
+  const options: {
+    max_output_tokens?: number;
+    reasoning?: { effort: "none" };
+  } = {
+    max_output_tokens: 800,
+    reasoning: { effort: "none" },
   };
 
-  let completion: Awaited<ReturnType<typeof client.chat.completions.create>> | undefined;
+  let created: Awaited<ReturnType<typeof client.responses.create>> | undefined;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      completion = await client.chat.completions.create({ model, messages, ...options });
+      created = await client.responses.create({
+        model,
+        instructions: system,
+        input: user,
+        store: false,
+        ...options,
+      });
       break;
     } catch (error) {
       const unsupported =
         error instanceof Error ? error.message.match(/Unsupported parameter: '([^']+)'/) : null;
       const name = unsupported?.[1];
-      if (name === "temperature" || name === "max_completion_tokens") {
+      if (name === "max_output_tokens" || name === "reasoning") {
         delete options[name];
         continue;
       }
       throw error;
     }
   }
-  if (!completion || !("choices" in completion)) {
+  if (!created || !("output_text" in created)) {
     throw new Error("The AI returned no response");
   }
 
   const response =
-    completion.choices[0]?.message?.content?.trim() ??
+    created.output_text.trim() ||
     "Unable to generate a response. Please continue your discussion.";
 
   return {
