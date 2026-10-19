@@ -1,7 +1,6 @@
 import {
   AI_SUPPORT_OPTIONS,
   SUPPORT_LEVEL_LABELS,
-  getScaffoldingOption,
   type IndividualScaffold,
   type ScaffoldingOption,
   type ScaffoldingType,
@@ -43,12 +42,31 @@ const OPTION_GROUPS: {
   },
 ];
 
-function optionTitle(type: ScaffoldingType): string {
-  const option = getScaffoldingOption(type);
-  if (!option) return type;
-  return option.supportLevel === null
-    ? option.label
-    : `${option.label} · Level ${option.supportLevel}`;
+function AiReply({
+  text,
+  disabled,
+  onHide,
+}: {
+  text: string;
+  disabled: boolean;
+  onHide: () => void;
+}) {
+  return (
+    <div className="rounded-xl border-2 border-amber-400 bg-amber-50 p-4 shadow-sm">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs font-bold uppercase tracking-wide text-amber-800">AI response</p>
+        <button
+          type="button"
+          onClick={onHide}
+          disabled={disabled}
+          className="text-xs font-medium text-amber-900 underline hover:text-amber-950 disabled:opacity-50"
+        >
+          Hide
+        </button>
+      </div>
+      <p className="mt-2 whitespace-pre-wrap text-base leading-7 text-slate-900">{text}</p>
+    </div>
+  );
 }
 
 export function ScaffoldingSelector({
@@ -59,9 +77,6 @@ export function ScaffoldingSelector({
   onToggle,
 }: ScaffoldingSelectorProps) {
   const byType = new Map(scaffolds.map((s) => [s.scaffoldingType, s]));
-  const shown = AI_SUPPORT_OPTIONS.map((o) => byType.get(o.type)).filter(
-    (s): s is IndividualScaffold => !!s?.selected
-  );
 
   return (
     <div className="space-y-4">
@@ -73,76 +88,57 @@ export function ScaffoldingSelector({
               <h3 className="text-sm font-semibold text-slate-900">{group.title}</h3>
               <span className="text-xs text-slate-500">{group.description}</span>
             </div>
-            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            <div className="mt-2 space-y-3">
               {options.map((option) => {
                 const scaffold = byType.get(option.type);
                 const isSelected = !!scaffold?.selected;
                 const isLoading = loading.includes(option.type);
                 const unavailable = locked && !scaffold;
                 return (
-                  <button
-                    key={option.type}
-                    type="button"
-                    role="checkbox"
-                    aria-checked={isSelected}
-                    disabled={disabled || isLoading || unavailable}
-                    onClick={() => onToggle(option.type, !isSelected)}
-                    className={`flex items-start gap-3 rounded-xl border p-3 text-left transition ${
-                      isSelected
-                        ? "border-indigo-600 bg-indigo-50 ring-2 ring-indigo-200"
-                        : "border-slate-200 bg-white hover:border-indigo-300"
-                    } disabled:cursor-not-allowed disabled:opacity-60`}
-                  >
-                    <span
-                      aria-hidden
-                      className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border text-xs font-bold ${
+                  <div key={option.type} className="flex flex-col gap-2">
+                    <button
+                      type="button"
+                      role="checkbox"
+                      aria-checked={isSelected}
+                      disabled={disabled || isLoading || unavailable}
+                      onClick={() => onToggle(option.type, !isSelected)}
+                      className={`flex items-start gap-3 rounded-xl border p-3 text-left transition ${
                         isSelected
-                          ? "border-indigo-600 bg-indigo-600 text-white"
-                          : "border-slate-300 bg-white text-transparent"
-                      }`}
+                          ? "border-indigo-600 bg-indigo-50 ring-2 ring-indigo-200"
+                          : "border-slate-200 bg-white hover:border-indigo-300"
+                      } disabled:cursor-not-allowed disabled:opacity-60`}
                     >
-                      ✓
-                    </span>
-                    <span>
-                      <span className="block font-medium text-slate-900">{option.label}</span>
-                      <span className="mt-1 block text-sm text-slate-600">
-                        {isLoading ? "Asking the AI..." : option.description}
+                      <span
+                        aria-hidden
+                        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border text-xs font-bold ${
+                          isSelected
+                            ? "border-indigo-600 bg-indigo-600 text-white"
+                            : "border-slate-300 bg-white text-transparent"
+                        }`}
+                      >
+                        ✓
                       </span>
-                    </span>
-                  </button>
+                      <span>
+                        <span className="block font-medium text-slate-900">{option.label}</span>
+                        <span className="mt-1 block text-sm text-slate-600">
+                          {isLoading ? "Asking the AI..." : option.description}
+                        </span>
+                      </span>
+                    </button>
+                    {isSelected && scaffold && (
+                      <AiReply
+                        text={scaffold.aiResponse}
+                        disabled={disabled}
+                        onHide={() => onToggle(option.type, false)}
+                      />
+                    )}
+                  </div>
                 );
               })}
             </div>
           </div>
         );
       })}
-
-      {shown.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-sm font-semibold text-slate-900">Your AI support</h3>
-          {shown.map((scaffold) => (
-            <div
-              key={scaffold.scaffoldingType}
-              className="rounded-xl border border-indigo-100 bg-indigo-50 p-4"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <p className="text-sm font-medium text-indigo-900">
-                  {optionTitle(scaffold.scaffoldingType)}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => onToggle(scaffold.scaffoldingType, false)}
-                  disabled={disabled}
-                  className="text-xs text-indigo-700 underline hover:text-indigo-900 disabled:opacity-50"
-                >
-                  Hide
-                </button>
-              </div>
-              <p className="mt-2 whitespace-pre-wrap text-slate-800">{scaffold.aiResponse}</p>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
