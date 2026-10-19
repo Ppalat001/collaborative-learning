@@ -5,6 +5,39 @@ import {
 } from "@/lib/prompts";
 import type { ScaffoldingType, Scenario } from "@/lib/types";
 
+/** Railway values are sometimes saved with quotes or a "Bearer " prefix. */
+function readApiKey(): string {
+  let key = process.env.OPENAI_API_KEY?.trim() ?? "";
+  if (
+    (key.startsWith('"') && key.endsWith('"')) ||
+    (key.startsWith("'") && key.endsWith("'"))
+  ) {
+    key = key.slice(1, -1).trim();
+  }
+  if (key.toLowerCase().startsWith("bearer ")) key = key.slice(7).trim();
+  return key;
+}
+
+export function describeAiError(error: unknown): string {
+  const status =
+    typeof error === "object" && error !== null && "status" in error
+      ? Number((error as { status: unknown }).status)
+      : 0;
+  const raw = error instanceof Error ? error.message : "Unknown error";
+  const message = raw.replace(/sk-[A-Za-z0-9_-]+/g, "sk-…").slice(0, 300);
+
+  if (status === 401) {
+    return "OpenAI rejected the API key. In Railway, OPENAI_API_KEY must be only the key (sk-...), with no quotes, and the service must be redeployed.";
+  }
+  if (status === 429) {
+    return "OpenAI refused the request: the account has no remaining credit or is rate-limited. Add billing credit in the OpenAI dashboard, then try again.";
+  }
+  if (status === 404) {
+    return `OpenAI could not find the model. Check OPENAI_MODEL. ${message}`;
+  }
+  return `The AI could not respond${status ? ` (${status})` : ""}: ${message}`;
+}
+
 export interface ScaffoldResult {
   response: string;
   model: string;
@@ -37,7 +70,7 @@ export async function generateScaffoldResponse(
     };
   }
 
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  const apiKey = readApiKey();
   if (!apiKey) {
     return {
       response: getMockScaffoldResponse(scaffoldingType, scenario),

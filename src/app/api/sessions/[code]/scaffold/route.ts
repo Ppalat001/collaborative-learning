@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { generateScaffoldResponse } from "@/lib/ai/scaffold";
+import { describeAiError, generateScaffoldResponse } from "@/lib/ai/scaffold";
 import {
   formatTranscript,
   getDiscussionMessages,
@@ -107,10 +107,7 @@ export async function POST(
       );
     } catch (error) {
       console.error("AI generation failed:", error);
-      return NextResponse.json(
-        { error: "The AI could not respond. Please try selecting it again." },
-        { status: 502 }
-      );
+      return NextResponse.json({ error: describeAiError(error) }, { status: 502 });
     }
 
     const row = await saveIndividualScaffold({
