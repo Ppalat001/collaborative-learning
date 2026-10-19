@@ -88,15 +88,35 @@ export async function generateScaffoldResponse(
   const model = process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
   const start = Date.now();
 
-  const completion = await client.chat.completions.create({
-    model,
+  const messages = [
+    { role: "system" as const, content: system },
+    { role: "user" as const, content: user },
+  ];
+  // Newer models reject max_tokens and sometimes temperature. Drop a rejected option and retry.
+  const options: { temperature?: number; max_completion_tokens?: number } = {
     temperature: 0.4,
-    max_tokens: 500,
-    messages: [
-      { role: "system", content: system },
-      { role: "user", content: user },
-    ],
-  });
+    max_completion_tokens: 500,
+  };
+
+  let completion: Awaited<ReturnType<typeof client.chat.completions.create>> | undefined;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      completion = await client.chat.completions.create({ model, messages, ...options });
+      break;
+    } catch (error) {
+      const unsupported =
+        error instanceof Error ? error.message.match(/Unsupported parameter: '([^']+)'/) : null;
+      const name = unsupported?.[1];
+      if (name === "temperature" || name === "max_completion_tokens") {
+        delete options[name];
+        continue;
+      }
+      throw error;
+    }
+  }
+  if (!completion || !("choices" in completion)) {
+    throw new Error("The AI returned no response");
+  }
 
   const response =
     completion.choices[0]?.message?.content?.trim() ??
