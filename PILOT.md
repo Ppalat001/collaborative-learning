@@ -14,15 +14,13 @@ Use this checklist before running your full dissertation study.
 
 ### Before students arrive
 
-1. Create a session from the home page
-2. Note the room code (e.g. `GROUP-A7X2`)
-3. Open `/admin` and confirm you can export (may be empty initially)
-4. Prepare observation notes: collaboration quality, scaffolding choices, UX friction
+1. Open the app and `/admin` and confirm you can log in (don't create the session yourself: whoever creates it joins as a group member)
+2. Prepare observation notes: collaboration quality, scaffolding choices, UX friction
 
 ### With students (2–4 per group)
 
 1. Each student opens the app on their own device (laptop, tablet, or phone)
-2. Students join with the room code and a nickname
+2. One student enters their name and clicks **Create session**; the lobby shows the group ID (e.g. `GROUP-A7X2`) with a copy button. The others join with that group ID and their own name (a name is required and must be unique within the group)
 3. Read the consent text aloud; one member checks the box and records consent
 4. Each member completes the **pre-test** individually in the lobby
 5. Begin Scenario 1 together

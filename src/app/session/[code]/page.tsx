@@ -17,7 +17,43 @@ interface SessionInfo {
 }
 
 interface Participant {
+  id: string;
   displayName: string;
+}
+
+function GroupIdCard({ code, name }: { code: string; name: string | null }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <section className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border-2 border-indigo-200 bg-indigo-50 p-5">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">
+          Group ID
+        </p>
+        <p className="mt-1 font-mono text-3xl font-bold tracking-wider text-slate-900">
+          {code}
+        </p>
+        <p className="mt-1 text-sm text-slate-600">
+          {name ? (
+            <>
+              You joined as <strong>{name}</strong>.{" "}
+            </>
+          ) : null}
+          Share this ID so the other members can join your group.
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={async () => {
+          await navigator.clipboard.writeText(code);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        }}
+        className="rounded-lg border border-indigo-300 bg-white px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
+      >
+        {copied ? "Copied" : "Copy group ID"}
+      </button>
+    </section>
+  );
 }
 
 export default function SessionLobbyPage() {
@@ -99,17 +135,30 @@ export default function SessionLobbyPage() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
       <p className="text-sm font-medium text-indigo-600">Group session</p>
-      <h1 className="mt-2 text-3xl font-semibold text-slate-900">Room {session.code}</h1>
+      <h1 className="mt-2 text-3xl font-semibold text-slate-900">Group {session.code}</h1>
       <p className="mt-2 text-slate-600">
         {session.participantCount} of {session.maxParticipants} participants joined
       </p>
 
-      <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6">
+      <GroupIdCard
+        code={session.code}
+        name={participants.find((p) => p.id === participantId)?.displayName ?? null}
+      />
+
+      <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
         <h2 className="font-semibold text-slate-900">Participants</h2>
         <ul className="mt-3 space-y-2">
-          {participants.map((p, index) => (
-            <li key={`${p.displayName}-${index}`} className="rounded-lg bg-slate-50 px-3 py-2">
+          {participants.map((p) => (
+            <li
+              key={p.id}
+              className={`rounded-lg px-3 py-2 ${
+                p.id === participantId
+                  ? "bg-indigo-50 font-medium text-indigo-900"
+                  : "bg-slate-50"
+              }`}
+            >
               {p.displayName}
+              {p.id === participantId && " (you)"}
             </li>
           ))}
         </ul>

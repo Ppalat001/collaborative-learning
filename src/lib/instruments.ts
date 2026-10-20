@@ -8,6 +8,14 @@ export const SHARED_FIELDS = ["finalAnswer"] as const;
 
 export const MAX_MESSAGE_LENGTH = 2000;
 
+export const DISPLAY_NAME_MAX_LENGTH = 40;
+
+export function normalizeDisplayName(value: unknown): string {
+  return String(value ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export const PARTICIPANT_COLORS = [
   {
     name: "text-indigo-700",

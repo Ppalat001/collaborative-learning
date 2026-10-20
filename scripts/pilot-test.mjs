@@ -132,6 +132,8 @@ async function main() {
   const studentA = joinA.participant.id;
   const studentB = joinB.participant.id;
   console.log("Joined 2 participants");
+  await expectRejected(`/api/sessions/${code}/join`, post({ displayName: "   " }), "joining without a name");
+  await expectRejected(`/api/sessions/${code}/join`, post({ displayName: "pilot-a" }), "joining with a name already used in the group");
 
   await request(`/api/sessions/${code}/consent`, { method: "POST" });
   await expectRejected(

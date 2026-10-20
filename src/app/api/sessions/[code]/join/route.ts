@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { DISPLAY_NAME_MAX_LENGTH, normalizeDisplayName } from "@/lib/instruments";
 import { joinSession } from "@/lib/services/sessions";
 
 export async function POST(
@@ -8,10 +9,19 @@ export async function POST(
   try {
     const { code } = await params;
     const body = await request.json();
-    const displayName = String(body.displayName ?? "").trim();
+    const displayName = normalizeDisplayName(body.displayName);
 
     if (!displayName) {
-      return NextResponse.json({ error: "Display name is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Please enter your name to join the session" },
+        { status: 400 }
+      );
+    }
+    if (displayName.length > DISPLAY_NAME_MAX_LENGTH) {
+      return NextResponse.json(
+        { error: `Names can be at most ${DISPLAY_NAME_MAX_LENGTH} characters` },
+        { status: 400 }
+      );
     }
 
     const result = await joinSession(code, displayName);

@@ -49,8 +49,8 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ## Study flow
 
-1. Researcher clicks **Create session** and shares the room code
-2. 2–4 students join with first names/nicknames
+1. The first student enters their name and clicks **Create session**; the lobby shows the group ID to share
+2. The other students (2–4 in total) join with the group ID and their own name; a name is required and must be unique within the group
 3. Group records informed consent in the lobby
 4. Each participant completes the **pre-test** individually
 5. For each scenario:

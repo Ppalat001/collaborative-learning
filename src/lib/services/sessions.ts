@@ -72,19 +72,26 @@ export async function joinSession(
     throw new Error("Session is full (maximum 4 participants)");
   }
 
+  const name = displayName.trim();
+  if (members.some((m) => m.displayName.toLowerCase() === name.toLowerCase())) {
+    throw new Error(
+      `Someone in this group already uses the name "${name}". Please use a different name.`
+    );
+  }
+
   const anonymousId = generateAnonymousId();
   const [participant] = await db
     .insert(schema.participants)
     .values({
       sessionId: session.id,
-      displayName: displayName.trim(),
+      displayName: name,
       anonymousId,
     })
     .returning();
 
   await logResearchEvent(session.id, "participant_joined", {
     anonymousId,
-    displayName: displayName.trim(),
+    displayName: name,
   }, participant.id);
 
   return { session, participant };
