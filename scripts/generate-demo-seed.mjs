@@ -7,8 +7,8 @@
  * be run again.
  *
  * GROUP-7HQM  Panagiotis, Christos, Papouris — Friday 30 Oct 2026
- *   Weak pre-test, heavy use of the full AI answer, short one-author answers,
- *   a little better on the last two scenarios and on the post-test.
+ *   Weak pre-test, everyone requests the full AI answer on 1-8, short mostly
+ *   one-author answers. On 9-10 two move to medium help, one keeps the full answer.
  *
  * GROUP-R4WK  Maria, Rafaella, Konstantina — Sunday 1 Nov 2026
  *   Some prior knowledge, full AI answers early, then steadily less help,
@@ -213,10 +213,10 @@ function buildGroup(spec) {
       text: message[2],
       id: uuid(`msg:${spec.code}:${scenario.order}:${index}`),
     }));
-    if (firstAi !== null && !messages.some((message) => message.at < firstAi)) {
-      throw new Error(`${spec.code} scenario ${scenario.order} has no chat before AI`);
+    const chatBeforeAi = messages.filter((message) => firstAi === null || message.at < firstAi).length;
+    if (chatBeforeAi < spec.chatBeforeAi[0] || chatBeforeAi > spec.chatBeforeAi[1]) {
+      throw new Error(`${spec.code} scenario ${scenario.order} has ${chatBeforeAi} chat messages before AI`);
     }
-
     const readyAt = scenario.ready.map((who, index) => ({
       who,
       at: scenarioStart + (scenario.readyAt + index * 25) * 1000,
@@ -353,7 +353,8 @@ function buildGroup(spec) {
     people.forEach((person, index) => {
       const ratedAt = submittedAt + (index + 1) * 50_000;
       const usedAi = aiUsers.has(index);
-      const rating = spec.rate(scenario, index, usedAi);
+      const own = aiEvents.filter((event) => event.who === index);
+      const rating = spec.rate(scenario, index, usedAi, own);
       insert("surveys", {
         id: q(uuid(`survey:${spec.code}:${scenario.order}:${person.name}`)),
         session_id: q(sessionId),
@@ -465,8 +466,8 @@ function rubricNote(code, order, scores) {
   const total = scores.reduce((sum, value) => sum + value, 0);
   if (code === "GROUP-7HQM") {
     return order >= 9
-      ? `Short answer (${total}/24). Less direct copying than their earlier scenarios, still thin reasoning.`
-      : `Short answer (${total}/24). Mostly one student, close to the full AI wording.`;
+      ? `Short answer (${total}/24). Two students moved to medium help; one still used the full answer. Less direct copying, still thin reasoning.`
+      : `Short answer (${total}/24). All three opened the full answer; mostly one student typed, close to the AI wording.`;
   }
   return order <= 4
     ? `Shared answer (${total}/24). Clear, but several phrases come from the full AI answer.`
@@ -476,28 +477,29 @@ function rubricNote(code, order, scores) {
 const hint =
   "Before you answer, check whether every member could explain the result, or only the part they wrote.";
 
+const full = (who, at, latency, response) => ({
+  who,
+  type: "full_answer",
+  at,
+  selected: true,
+  latency,
+  response,
+});
+
 const team1Scenarios = [
   {
     order: 1,
     ready: [0, 1, 2],
-    readyAt: 340,
+    readyAt: 330,
     chat: [
-      [0, 25, "so group work is not just splitting the assignment right?"],
-      [1, 48, "idk, just get the ai. a hint wont tell us what to write"],
-      [2, 70, "ok"],
-      [0, 210, "hint was useless. i took the full answer and shortened it"],
+      [0, 30, "group work is not just splitting the assignment, right?"],
+      [1, 52, "yes but lets see the full answer first"],
     ],
     ai: [
-      { who: 0, type: "hint", at: 95, selected: false, latency: 1100, response: hint },
-      {
-        who: 0,
-        type: "full_answer",
-        at: 160,
-        selected: true,
-        latency: 1800,
-        response:
-          "Collaborative learning means members build a shared understanding together and are jointly responsible for the result. Dividing the assignment into separate parts can finish the page faster, but then nobody can explain the whole answer.",
-      },
+      { who: 0, type: "hint", at: 70, selected: false, latency: 1100, response: hint },
+      full(0, 95, 1800, "Collaborative learning means members build a shared understanding together and are jointly responsible for the result. Dividing the assignment into separate parts can finish the page faster, but then nobody can explain the whole answer."),
+      full(1, 110, 1700, "Collaborative learning is more than dividing the work. The members build one shared understanding and are jointly responsible for the result. Splitting the assignment into parts may be faster, but then no one can explain the whole answer."),
+      full(2, 140, 1900, "Working collaboratively means the group constructs knowledge together and shares responsibility for the outcome. Dividing the task into separate parts finishes faster, but nobody understands or can explain the whole answer."),
     ],
     segments: [
       {
@@ -510,24 +512,17 @@ const team1Scenarios = [
     order: 2,
     allThree: true,
     ready: [1, 0, 2],
-    readyAt: 420,
+    readyAt: 400,
     chat: [
-      [1, 30, "the weak answer only says splitting makes it faster"],
-      [0, 55, "thats incomplete. ask ai for the full thing, hints dont help"],
-      [2, 80, "what do i add?"],
-      [0, 250, "put one line each. i already have the ai text"],
+      [1, 30, "the weak answer only says splitting is faster"],
+      [0, 50, "everyone get the full answer and we add one line each"],
+      [2, 230, "i take the part about splitting reducing learning, ok?"],
+      [0, 248, "yes, keep it short"],
     ],
     ai: [
-      { who: 0, type: "hint", at: 110, selected: false, latency: 900, response: "Which benefits of working together are missing from that sentence?" },
-      {
-        who: 0,
-        type: "full_answer",
-        at: 175,
-        selected: true,
-        latency: 2100,
-        response:
-          "The answer is incomplete because it treats speed as the only benefit. Collaborative learning also means explaining ideas to each other and being accountable for the whole result. Splitting the work can reduce learning when members never discuss what the others wrote.",
-      },
+      full(0, 75, 2100, "The answer is incomplete because it treats speed as the only benefit. Collaborative learning also means explaining ideas to each other and being accountable for the whole result. Splitting the work can reduce learning when members never discuss what the others wrote."),
+      full(1, 90, 1900, "The answer is incomplete. Speed is only one benefit. Collaborative learning also involves explaining ideas to each other and shared accountability for the result. When members just split the work and never discuss it, learning can actually go down."),
+      full(2, 120, 2000, "It is incomplete because it only mentions speed. Groups also learn by explaining ideas to each other and by being responsible for the whole result. Splitting the work can reduce learning if nobody discusses what the others wrote."),
     ],
     segments: [
       { who: 0, text: "The answer is incomplete because it treats speed as the only benefit." },
@@ -538,23 +533,12 @@ const team1Scenarios = [
   {
     order: 3,
     ready: [0, 2, 1],
-    readyAt: 360,
-    chat: [
-      [0, 40, "one person does nothing and one takes over. which option?"],
-      [1, 70, "dont debate, full answer"],
-      [2, 95, "roles?"],
-      [0, 230, "ai says peer assessment. i wrote that"],
-    ],
+    readyAt: 300,
+    chat: [],
     ai: [
-      {
-        who: 0,
-        type: "full_answer",
-        at: 130,
-        selected: true,
-        latency: 1600,
-        response:
-          "Recommend peer assessment of contributions. Assigned roles help a little, and an individual quiz checks learning, but peer assessment makes the free-rider visible and keeps the person who takes over from deciding everything alone.",
-      },
+      full(0, 65, 1600, "Recommend peer assessment of contributions. Assigned roles help a little, and an individual quiz checks learning, but peer assessment makes the free-rider visible and keeps the person who takes over from deciding everything alone."),
+      full(2, 85, 1700, "Choose peer assessment. Roles help a little and an individual quiz checks learning, but peer assessment shows who contributed and stops the person who takes over from deciding alone."),
+      full(1, 100, 1500, "Peer assessment of contributions is the best option. It makes the free-rider visible and stops one member from making every decision. Assigned roles and an individual quiz help less."),
     ],
     segments: [
       {
@@ -566,24 +550,13 @@ const team1Scenarios = [
   {
     order: 4,
     ready: [1, 0, 2],
-    readyAt: 300,
-    chat: [
-      [1, 20, "project is tomorrow. just submit the ai answer?"],
-      [0, 45, "the hint wont decide it. full answer"],
-      [2, 60, "fine"],
-      [1, 200, "i copied the short version"],
-    ],
+    readyAt: 290,
+    chat: [[1, 25, "due tomorrow, can we just submit the ai answer?"]],
     ai: [
-      { who: 1, type: "hint", at: 80, selected: false, latency: 1000, response: "What is the cost to learning if nobody reads the answer?" },
-      {
-        who: 1,
-        type: "full_answer",
-        at: 140,
-        selected: true,
-        latency: 1500,
-        response:
-          "Submitting a full AI answer the group has not read is not acceptable. Time pressure does not replace honesty or learning. A full AI answer could be justified only as a comparison after the group has already written its own reasoning.",
-      },
+      { who: 1, type: "hint", at: 50, selected: false, latency: 1000, response: "What is the cost to learning if nobody reads the answer?" },
+      full(1, 85, 1500, "Submitting a full AI answer the group has not read is not acceptable. Time pressure does not replace honesty or learning. A full AI answer could be justified only as a comparison after the group has already written its own reasoning."),
+      full(0, 95, 1600, "No. Submitting an AI answer that the group has not read is not acceptable, even under time pressure. It is only justified as a comparison after the group has written its own reasoning."),
+      full(2, 115, 1700, "It is not acceptable to hand in a full AI answer nobody has read. The deadline explains the temptation but does not justify it. Use a full AI answer only to compare after your own reasoning."),
     ],
     segments: [
       {
@@ -595,22 +568,17 @@ const team1Scenarios = [
   {
     order: 5,
     ready: [0, 1, 2],
-    readyAt: 330,
+    readyAt: 320,
     chat: [
-      [0, 35, "shared doc, roles, or ai. i dont want a hint"],
-      [1, 60, "full answer again"],
-      [0, 200, "done, ai says shared document"],
+      [0, 30, "shared doc, roles or ai?"],
+      [1, 45, "full answer"],
+      [2, 240, "why not ai first?"],
+      [0, 262, "because the group lets it write the answer"],
     ],
     ai: [
-      {
-        who: 0,
-        type: "full_answer",
-        at: 100,
-        selected: true,
-        latency: 1700,
-        response:
-          "Prioritise a shared online document with edit history. It makes contributions visible. Structured roles are useful next, but an AI assistant should not be the first support because groups may let it write the answer.",
-      },
+      full(0, 65, 1700, "Prioritise a shared online document with edit history. It makes contributions visible. Structured roles are useful next, but an AI assistant should not be the first support because groups may let it write the answer."),
+      full(1, 75, 1800, "Prioritise the shared online document with edit history, because it makes everyone's contribution visible. Structured roles come second. An AI assistant should not come first, since groups tend to let it write the answer."),
+      full(2, 100, 1600, "A shared document with edit history should come first: contributions are visible. Roles are useful next. Putting the AI assistant first risks the group letting it write the answer."),
     ],
     segments: [
       {
@@ -622,22 +590,12 @@ const team1Scenarios = [
   {
     order: 6,
     ready: [2, 0, 1],
-    readyAt: 280,
-    chat: [
-      [2, 30, "i can write this one"],
-      [0, 55, "ok but check the full answer first, hints are nothing"],
-      [1, 80, "agree"],
-    ],
+    readyAt: 270,
+    chat: [[2, 35, "i write this one"]],
     ai: [
-      {
-        who: 0,
-        type: "full_answer",
-        at: 110,
-        selected: true,
-        latency: 1400,
-        response:
-          "What helped was explaining the stuck point to each other. What hindered was waiting for one person to finish the section alone. Next time the group should stop and retell the idea before moving on.",
-      },
+      full(2, 60, 1400, "What helped was explaining the stuck point to each other. What hindered was waiting for one person to finish the section alone. Next time the group should stop and retell the idea before moving on."),
+      full(0, 80, 1500, "Helpful: explaining the point where you were stuck to each other. Hindering: waiting for one person to finish a section alone. Next time, stop and have someone retell the idea before moving on."),
+      full(1, 95, 1300, "Explaining the stuck point to each other helped most. Waiting while one member finished alone hindered the group. Next time pause and retell the idea before continuing."),
     ],
     segments: [
       {
@@ -649,24 +607,13 @@ const team1Scenarios = [
   {
     order: 7,
     ready: [0, 1, 2],
-    readyAt: 350,
-    chat: [
-      [0, 25, "allow, restrict or ban ai?"],
-      [1, 50, "full answer, im not writing from a hint"],
-      [2, 75, "ban?"],
-      [0, 220, "ai says restrict. pasted a short version"],
-    ],
+    readyAt: 320,
+    chat: [[0, 25, "allow, restrict or ban ai?"]],
     ai: [
-      { who: 0, type: "hint", at: 90, selected: false, latency: 800, response: "Where does support become substitution?" },
-      {
-        who: 0,
-        type: "full_answer",
-        at: 145,
-        selected: true,
-        latency: 2000,
-        response:
-          "The institution should restrict AI in group projects, not ban it and not allow unrestricted use. AI may support planning and feedback, but unrestricted use lets a group submit work no member engaged with.",
-      },
+      { who: 2, type: "hint", at: 45, selected: false, latency: 800, response: "Where does support become substitution?" },
+      full(0, 70, 2000, "The institution should restrict AI in group projects, not ban it and not allow unrestricted use. AI may support planning and feedback, but unrestricted use lets a group submit work no member engaged with."),
+      full(1, 85, 1800, "Restrict AI in group projects. A ban removes useful support, and unrestricted use lets a group submit work nobody engaged with. Allow AI for planning and feedback only."),
+      full(2, 105, 1900, "The best policy is to restrict it: not a ban, not unrestricted use. AI can support planning and feedback, but groups should not submit work that no member engaged with."),
     ],
     segments: [
       {
@@ -678,23 +625,17 @@ const team1Scenarios = [
   {
     order: 8,
     ready: [1, 2, 0],
-    readyAt: 340,
+    readyAt: 330,
     chat: [
-      [1, 30, "groups scored 12% higher but 45% said unfair"],
-      [0, 60, "dont guess. full answer"],
-      [2, 90, "maybe the strong students chose groups"],
-      [1, 210, "i wrote what the ai said, shorter"],
+      [1, 30, "12% higher but 45% said unfair, what does it mean?"],
+      [0, 48, "full answer"],
+      [2, 250, "so the strong students may have chosen groups?"],
+      [1, 270, "yes, thats the selection part, i put it in"],
     ],
     ai: [
-      {
-        who: 1,
-        type: "full_answer",
-        at: 120,
-        selected: true,
-        latency: 1900,
-        response:
-          "The data shows an association, not that group work caused the higher score. Students who chose groups may already have been stronger. The 45% unfair workload shows the average hides unequal participation. We would need to know who chose groups and each member's contribution.",
-      },
+      full(1, 70, 1900, "The data shows an association, not that group work caused the higher score. Students who chose groups may already have been stronger. The 45% unfair workload shows the average hides unequal participation. We would need to know who chose groups and each member's contribution."),
+      full(0, 80, 2000, "It is an association, not proof that group work caused the 12%. Stronger students may have chosen groups. The 45% unfair workload shows the average hides unequal participation. You would need to know how groups were chosen and who contributed."),
+      full(2, 100, 1800, "This shows correlation, not causation. Students who picked group work may have been stronger already. The 45% unfair workload suggests unequal participation. More data is needed on how groups formed and each member's contribution."),
     ],
     segments: [
       {
@@ -707,27 +648,28 @@ const team1Scenarios = [
     order: 9,
     allThree: true,
     ready: [0, 1, 2],
-    readyAt: 480,
+    readyAt: 460,
     chat: [
-      [0, 40, "no full answer this time. christos said try medium"],
-      [1, 70, "ok explanation, not a hint. hints still dont help us"],
-      [2, 100, "i can do the fairness line"],
-      [0, 300, "we each added a bit"],
+      [0, 35, "lets try medium this time, not the full one"],
+      [1, 55, "ok explanation and feedback"],
+      [2, 300, "my full answer says use the criteria again if two want the same topic"],
+      [0, 318, "ok add that line"],
     ],
     ai: [
       {
         who: 0,
         type: "explanation",
-        at: 150,
+        at: 80,
         selected: true,
         latency: 1300,
         response:
           "A fair process states the criteria first, such as interest, workload and schedule, then lets members propose and compare options against those criteria. Disagreement should be handled by the criteria, not by the loudest person.",
       },
+      full(2, 95, 1900, "A fair process: first agree the criteria (interest, workload, schedule). Each member proposes topics, and options are compared against the criteria. If two people want the same topic, apply the criteria again instead of letting the loudest person decide."),
       {
         who: 1,
         type: "feedback",
-        at: 260,
+        at: 200,
         selected: true,
         latency: 1500,
         response:
@@ -743,27 +685,23 @@ const team1Scenarios = [
   {
     order: 10,
     ready: [0, 1, 2],
-    readyAt: 500,
-    chat: [
-      [0, 30, "one thing to encourage and one to avoid"],
-      [1, 70, "medium help only. i still dont like hints"],
-      [2, 110, "you two write it"],
-      [0, 320, "ok we used the explanation, not the whole answer"],
-    ],
+    readyAt: 420,
+    chat: [[0, 30, "one to encourage, one to avoid. medium again?"]],
     ai: [
       {
         who: 1,
         type: "explanation",
-        at: 160,
+        at: 70,
         selected: true,
         latency: 1200,
         response:
           "Teachers can encourage AI that asks groups to explain their reasoning, and avoid AI use that replaces the discussion. The useful line is between support and substitution.",
       },
+      full(2, 85, 1800, "Encourage AI use that asks the group to explain and justify its reasoning. Avoid AI use that replaces the discussion, such as pasting a finished answer. The line is support versus substitution, like a calculator used to check, not to skip the problem."),
       {
         who: 0,
         type: "example",
-        at: 230,
+        at: 110,
         selected: true,
         latency: 1400,
         response:
@@ -800,6 +738,8 @@ const team2Scenarios = [
         response:
           "Collaborative learning means the group builds a shared understanding and every member can explain the result. Dividing the assignment into separate parts only looks efficient. A clear example is a lab report where each person writes one section and nobody can present the whole study.",
       },
+      full(1, 300, 1800, "Collaborative learning is when the group develops a shared understanding and each member can explain the outcome. Splitting the assignment into parts only appears efficient. For example, in a lab report where everyone writes one section, nobody can present the whole study."),
+      full(2, 330, 1600, "It means building understanding together so that every member can explain the result, not dividing the work into separate pieces. A common example is a group report where each person writes a section and no one can present all of it."),
     ],
     segments: [
       { who: 0, text: "Collaborative learning means the group builds a shared understanding, not just dividing the assignment into separate parts." },
@@ -828,6 +768,8 @@ const team2Scenarios = [
         response:
           "The sentence is misleading because faster work is not the same as learning. Missing benefits are explaining ideas, challenging assumptions and shared responsibility. Splitting the work reduces learning when members never have to defend or revise what the others produced. A better answer would say group work is useful when the group thinks together, not when the page is finished sooner.",
       },
+      full(0, 215, 1900, "The sentence equates speed with learning, which is misleading. It leaves out explaining ideas, challenging each other's assumptions and shared responsibility. When members split the work and never defend or revise each other's parts, they learn less. Group work is valuable when the group thinks together."),
+      full(1, 240, 2100, "Faster is not the same as better learning. Missing benefits include explaining ideas to each other, questioning assumptions and joint responsibility. Splitting the work reduces learning when nobody has to justify what the others wrote. A revised answer would focus on thinking together, not finishing sooner."),
     ],
     segments: [
       { who: 1, text: "Faster work is not the same as learning. The sentence misses explaining ideas, challenging assumptions and shared responsibility." },
@@ -856,6 +798,8 @@ const team2Scenarios = [
         response:
           "Recommend peer assessment of contributions, with assigned roles as a support. An individual quiz checks learning but does not fix the process. Peer assessment makes unequal work visible, while roles stop one member from taking every decision. The risk is that friends rate each other kindly.",
       },
+      full(1, 315, 1700, "Peer assessment of contributions is the strongest choice, ideally combined with assigned roles. Peer assessment exposes unequal effort, roles prevent one member from dominating, and the quiz checks individual learning but does not change the process. Watch for friends rating each other generously."),
+      full(2, 345, 1600, "Recommend peer assessment, supported by roles. The individual quiz measures learning but does not fix the group process. Peer assessment shows who contributed and roles stop one student taking over. A risk is that ratings become a popularity contest."),
     ],
     segments: [
       { who: 0, text: "We recommend peer assessment of contributions together with assigned roles, not instead of them." },
@@ -884,6 +828,8 @@ const team2Scenarios = [
         response:
           "It is not acceptable to submit a full AI answer the group has not understood. Time pressure explains the temptation but does not justify it. A full AI answer is justified only as a comparison after the group has written its own position on learning, honesty and fairness.",
       },
+      full(1, 295, 1800, "Submitting a full AI answer that the group has not understood is not acceptable. Time pressure explains the temptation but is not a justification. It could be used only as a comparison once the group has written its own view on learning, honesty and fairness."),
+      full(2, 320, 1500, "No. Handing in an AI answer nobody understands misrepresents the group's learning. The deadline makes it tempting but does not justify it. A full AI answer is acceptable only for comparison after the group has formed its own position."),
     ],
     segments: [
       { who: 0, text: "It is not acceptable to submit a full AI answer the group has not understood. The grade would describe the AI, not what we can explain." },
@@ -921,6 +867,15 @@ const team2Scenarios = [
         response:
           "Analogy, not the answer: students comparing three study methods usually list their constraints first, then drop the option that fails the most important constraint.",
       },
+      {
+        who: 2,
+        type: "explanation",
+        at: 380,
+        selected: true,
+        latency: 1300,
+        response:
+          "A good comparison starts by agreeing what best means: learning, fair participation, effort. Then check each support against those criteria. Supports that make contributions visible usually serve learning better than those that produce the answer.",
+      },
     ],
     segments: [
       { who: 1, text: "Best means learning and fair participation, not the least effort. We listed those criteria before comparing." },
@@ -948,6 +903,15 @@ const team2Scenarios = [
         latency: 1500,
         response:
           "Strength: you are using a real class moment, not a vague claim. Revise: say what you would do differently in the first ten minutes, not only what failed.",
+      },
+      {
+        who: 2,
+        type: "example",
+        at: 330,
+        selected: true,
+        latency: 1400,
+        response:
+          "Example, not your answer: a group stuck on a proof started each meeting with every member naming the step they did not understand. Within a week the quiet member was explaining steps to the others.",
       },
     ],
     segments: [
@@ -1074,41 +1038,50 @@ function phase(order) {
   return "none";
 }
 
-function rateTeam1(scenario, person, usedAi) {
-  const late = scenario.order >= 9;
+function rateTeam1(scenario, person, usedAi, own) {
+  const usedFull = own.some((request) => request.type === "full_answer");
+  const openedHint = own.some((request) => request.type === "hint");
+  const medium = scenario.order >= 9 && !usedFull;
   const wrote = scenario.segments.some((segment) => segment.who === person);
   return {
-    helpful: late ? 3 : 5,
+    helpful: medium ? 4 : 5,
     amount: "appropriate",
-    discussion: late ? 3 : 2,
+    discussion: medium ? 3 : 2,
     focus: 4,
     inclusion: 2,
     disagreement: scenario.order === 4 || scenario.order === 7 ? 2 : null,
     collaboration: wrote && scenario.allThree ? 3 : 2,
     shared: scenario.allThree ? 3 : 2,
-    autonomy: late ? 3 : 2,
-    thinking: late ? 3 : 2,
-    reliance: late ? 3 : 5,
-    without: late ? 3 : 1,
-    satisfaction: late ? 3 : 4,
-    confidence: wrote ? (late ? 4 : 3) : 2,
+    autonomy: medium ? 3 : 2,
+    thinking: medium ? 4 : 2,
+    reliance: medium ? 3 : 5,
+    without: medium ? 3 : 1,
+    satisfaction: medium ? 4 : scenario.order >= 9 ? 4 : 5,
+    confidence: wrote ? (scenario.order >= 9 ? 4 : 3) : 2,
     why: wrote
-      ? late
-        ? "The explanation matched what we said, so I trust it more than the copied ones."
-        : "It matches the full AI answer, but I am not sure I could explain every line."
-      : "I did not really write it, so I am only slightly confident.",
-    differently: late
+      ? medium
+        ? "We wrote it from the explanation in our own words, so I trust it more than the copied ones."
+        : "It matches the full AI answer, so I think it is right, but I am not sure I could explain every line."
+      : "I read the full answer, but someone else typed it, so I am only slightly confident.",
+    differently: medium
       ? "Start with the explanation earlier, not only on the last tasks."
-      : "Not bother with the small hint. It never helped, just ask for the full answer sooner.",
+      : scenario.order >= 9
+        ? "Maybe try the explanation like the others did."
+        : "Not bother with the small hint. Everyone just asks for the full answer anyway.",
     comment: !usedAi
-      ? "I did not open the AI. The person who did said the hint was useless."
-      : late
-        ? "The explanation was ok. A small hint would still not have been enough for me."
-        : "Satisfied with the full answer. Minimal help does not tell us what to write.",
+      ? "I did not open the AI myself this time."
+      : medium
+        ? "The explanation was ok and we still had to write it. A small hint would not have been enough."
+        : openedHint
+          ? "The hint did not help at all, so I hid it and took the full answer. Satisfied with that."
+          : scenario.order >= 9
+            ? "I still used the full answer. It is clearer than the medium help."
+            : "Satisfied with the full answer. Minimal help does not tell us what to write.",
   };
 }
 
-function rateTeam2(scenario, person, usedAi) {
+function rateTeam2(scenario, person, usedAi, own) {
+  const onlyHidden = own.length > 0 && own.every((request) => !request.selected);
   const kind = phase(scenario.order);
   const tooMuch = scenario.order === 2 || scenario.order === 4;
   const confidence = kind === "full" ? 3 : kind === "medium" ? 4 : 5;
@@ -1142,8 +1115,12 @@ function rateTeam2(scenario, person, usedAi) {
     comment: !usedAi
       ? scenario.order === 10
         ? "No AI this time. The discussion was enough."
-        : "I did not select AI. The hint someone opened was not necessary, so it was hidden."
-      : tooMuch
+        : scenario.order === 9
+          ? "I did not select AI. We were not stuck."
+          : "I did not open AI myself. The others shared what it said and we discussed it."
+      : onlyHidden
+        ? "I opened a hint but hid it, because we were not stuck."
+        : tooMuch
         ? "The full answer was too revealing. It handed us the conclusion."
         : kind === "full"
           ? "Useful, but we have to be careful not to paste it."
@@ -1171,6 +1148,7 @@ const team1 = {
   start: "2026-10-30T07:06:41.000Z",
   names: ["Panagiotis", "Christos", "Papouris"],
   answerWords: [12, 60],
+  chatBeforeAi: [0, 2],
   rarelyAllThree: true,
   scenarios: team1Scenarios,
   rate: rateTeam1,
@@ -1190,12 +1168,12 @@ const team1 = {
       ],
       reflectionMin: 4,
       reflection: {
-        ai_effect_on_collaboration: "We waited for the full answer and then I wrote a shorter version. We did not talk much.",
-        most_useful_support: "The full expert answer. I knew what to write after that.",
+        ai_effect_on_collaboration: "We all opened the full answer and then I wrote a shorter version. We did not talk much.",
+        most_useful_support: "The full expert answer. I knew what to write after that. The explanation on the last two was ok too.",
         unhelpful_or_too_much: "Small hints. They never told us what the answer was.",
         thinking_and_reliance: "Yes. On most tasks the AI did the thinking and I shortened it.",
         ai_into_group_answer: "Yes. I put the AI answer into the group box in fewer words.",
-        private_vs_shared_ai: "Private was fine, because I was the one using it.",
+        private_vs_shared_ai: "Private was fine. We all got almost the same full answer anyway.",
         participation: "Not really. I wrote almost every answer. The others mostly agreed.",
         agreement_on_answer: "I clicked I am good because it matched the AI, not because we had debated it.",
         learned_most: "Group work is more than splitting, but we still handed the thinking to the AI.",
@@ -1221,7 +1199,7 @@ const team1 = {
         unhelpful_or_too_much: "The minimal hint. I opened it once and it did not help.",
         thinking_and_reliance: "Often, yes. We were satisfied with the AI text and did not add much.",
         ai_into_group_answer: "Panagiotis did that most times. I did it on the due-tomorrow task.",
-        private_vs_shared_ai: "Shared would have been ok too. Only one of us was reading it anyway.",
+        private_vs_shared_ai: "Shared would have been ok too. We each opened the same full answer, so it made no difference.",
         participation: "No. Two of us typed on a couple of tasks, and all three only once or twice.",
         agreement_on_answer: "I clicked I am good so we could move on. I had not checked every sentence.",
         learned_most: "Copying a correct answer is not the same as learning it. My post-test was better but still shaky.",
@@ -1242,11 +1220,11 @@ const team1 = {
       ],
       reflectionMin: 2,
       reflection: {
-        ai_effect_on_collaboration: "I mostly waited. The AI answer showed up and someone else typed it.",
-        most_useful_support: "I did not use much. The full answer the others got was the useful one.",
-        unhelpful_or_too_much: "Hints. I saw one and it did not say the answer.",
-        thinking_and_reliance: "Yes for the group. I could not have written those answers alone at the start.",
-        ai_into_group_answer: "Only a little, on the task where we each added one line.",
+        ai_effect_on_collaboration: "I read my full answer and then waited. Someone else usually typed it.",
+        most_useful_support: "The full expert answer. I kept using it on the last two, when the others switched to the explanation.",
+        unhelpful_or_too_much: "Hints. I opened one on the AI policy task and it did not say the answer.",
+        thinking_and_reliance: "Yes. I could not have written those answers alone at the start.",
+        ai_into_group_answer: "Only a little, on the tasks where we each added one line.",
         private_vs_shared_ai: "Shared, so I can see what they are reading.",
         participation: "I did not contribute on most answers. I said ok in the chat.",
         agreement_on_answer: "I clicked I am good because they were already done, not because I was sure.",
@@ -1262,6 +1240,7 @@ const team2 = {
   start: "2026-11-01T08:23:18.000Z",
   names: ["Maria", "Rafaella", "Konstantina"],
   answerWords: [40, 120],
+  chatBeforeAi: [1, 6],
   rarelyAllThree: false,
   scenarios: team2Scenarios.map((scenario) => ({ ...scenario, allThree: true })),
   rate: rateTeam2,
@@ -1339,7 +1318,7 @@ const team2 = {
       ],
       reflectionMin: 4,
       reflection: {
-        ai_effect_on_collaboration: "I spoke more in the second half. At the start Maria and Rafaella were comparing the full answer and I was quiet.",
+        ai_effect_on_collaboration: "I spoke more in the second half. At the start we all opened the full answer, but Maria and Rafaella did most of the comparing and I was quiet.",
         most_useful_support: "The small hint on the later tasks. I understood those.",
         unhelpful_or_too_much: "The full answer was too much for me. I could not tell which part was ours.",
         thinking_and_reliance: "A bit at the start. Not on the last task, we did not use AI at all.",
@@ -1368,12 +1347,15 @@ const header = `-- Demo data for two finished groups. Safe to run more than once
 --
 -- GROUP-7HQM  Panagiotis, Christos, Papouris
 --   Friday 30 Oct 2026, from 09:06 UTC+2. Weak pre-test (1-3 of 8). Papouris
---   left the written pre-test blank. Scenarios 1-8 use the full AI answer;
---   9-10 use medium help. Answers are short. All three write on scenarios 2 and 9 only.
+--   left the written pre-test blank. All three request the full AI answer on
+--   scenarios 1-8; on 9-10 Panagiotis and Christos use medium help and Papouris
+--   keeps the full answer. Chat is 0-2 messages before AI. Answers are short.
+--   All three write on scenarios 2 and 9 only.
 --
 -- GROUP-R4WK  Maria, Rafaella, Konstantina
---   Sunday 1 Nov 2026, from 10:23 UTC+2. Pre-test 5, 4 and 3 of 8. Full AI
---   answers on scenarios 1-4, medium on 5-6, minimal on 7-9 (hidden on 9), none on 10.
+--   Sunday 1 Nov 2026, from 10:23 UTC+2. Pre-test 5, 4 and 3 of 8. All three
+--   request the full AI answer on scenarios 1-4; medium on 5-6 (three, then two
+--   students), minimal on 7-8 (two, then one), a hidden hint on 9, none on 10.
 --   All three write every answer.
 --
 -- Rubric rows are scored the next evening by rater "P. Palat".
