@@ -2,11 +2,15 @@
  * Builds scripts/seed-demo-groups.sql: two finished groups of three.
  * Run: node scripts/generate-demo-seed.mjs
  *
- * GROUP-PNGT  Panagiotis, Christos, Papouris
+ * Codes use the same GROUP- plus 4-character alphabet as a session created
+ * in the app (see src/lib/utils/codes.ts). They are fixed so the script can
+ * be run again.
+ *
+ * GROUP-7HQM  Panagiotis, Christos, Papouris — Friday 30 Oct 2026
  *   Weak pre-test, heavy use of the full AI answer, short one-author answers,
  *   a little better on the last two scenarios and on the post-test.
  *
- * GROUP-MARA  Maria, Rafaella, Konstantina
+ * GROUP-R4WK  Maria, Rafaella, Konstantina — Sunday 1 Nov 2026
  *   Some prior knowledge, full AI answers early, then steadily less help,
  *   shared answers, stronger post-test.
  */
@@ -76,7 +80,7 @@ function buildAnswer(segments) {
   return { text, parts };
 }
 
-/** One study sitting, 29 Oct 2026, starting 09:00 in UTC+2. */
+/** One study sitting. spec.start is the moment the group code was created. */
 function buildGroup(spec) {
   const sessionId = uuid(`session:${spec.code}`);
   const people = spec.names.map((name, index) => ({
@@ -459,7 +463,7 @@ function buildGroup(spec) {
 
 function rubricNote(code, order, scores) {
   const total = scores.reduce((sum, value) => sum + value, 0);
-  if (code === "GROUP-PNGT") {
+  if (code === "GROUP-7HQM") {
     return order >= 9
       ? `Short answer (${total}/24). Less direct copying than their earlier scenarios, still thin reasoning.`
       : `Short answer (${total}/24). Mostly one student, close to the full AI wording.`;
@@ -1163,8 +1167,8 @@ function rubricTeam2(scenario) {
 }
 
 const team1 = {
-  code: "GROUP-PNGT",
-  start: "2026-10-29T07:00:00.000Z",
+  code: "GROUP-7HQM",
+  start: "2026-10-30T07:06:41.000Z",
   names: ["Panagiotis", "Christos", "Papouris"],
   answerWords: [12, 60],
   rarelyAllThree: true,
@@ -1254,8 +1258,8 @@ const team1 = {
 };
 
 const team2 = {
-  code: "GROUP-MARA",
-  start: "2026-10-29T07:12:00.000Z",
+  code: "GROUP-R4WK",
+  start: "2026-11-01T08:23:18.000Z",
   names: ["Maria", "Rafaella", "Konstantina"],
   answerWords: [40, 120],
   rarelyAllThree: false,
@@ -1358,25 +1362,26 @@ buildGroup(team1);
 buildGroup(team2);
 
 const header = `-- Demo data for two finished groups. Safe to run more than once:
--- it deletes only GROUP-PNGT and GROUP-MARA, then inserts them again.
+-- it deletes these codes, then inserts the two groups again.
 -- Other groups in the database are left as they are.
+-- active: GROUP-7HQM GROUP-R4WK
 --
--- GROUP-PNGT  Panagiotis, Christos, Papouris
---   29 Oct 2026, from 09:00 UTC+2. Weak pre-test (1-3 of 8). Papouris left the
---   written pre-test blank. Scenarios 1-8 use the full AI answer; 9-10 use
---   medium help. Answers are short. All three write on scenarios 2 and 9 only.
+-- GROUP-7HQM  Panagiotis, Christos, Papouris
+--   Friday 30 Oct 2026, from 09:06 UTC+2. Weak pre-test (1-3 of 8). Papouris
+--   left the written pre-test blank. Scenarios 1-8 use the full AI answer;
+--   9-10 use medium help. Answers are short. All three write on scenarios 2 and 9 only.
 --
--- GROUP-MARA  Maria, Rafaella, Konstantina
---   29 Oct 2026, from 09:12 UTC+2. Pre-test 5, 4 and 3 of 8. Full AI answers on
---   scenarios 1-4, medium on 5-6, minimal on 7-9 (hidden on 9), none on 10.
+-- GROUP-R4WK  Maria, Rafaella, Konstantina
+--   Sunday 1 Nov 2026, from 10:23 UTC+2. Pre-test 5, 4 and 3 of 8. Full AI
+--   answers on scenarios 1-4, medium on 5-6, minimal on 7-9 (hidden on 9), none on 10.
 --   All three write every answer.
 --
--- Rubric rows are scored later the same evening by rater "P. Palat".
--- Times are UTC.
+-- Rubric rows are scored the next evening by rater "P. Palat".
+-- Times are UTC. GROUP-PNGT and GROUP-MARA are the previous demo codes.
 
 PRAGMA foreign_keys = ON;
 BEGIN;
-DELETE FROM sessions WHERE code IN ('GROUP-PNGT', 'GROUP-MARA');
+DELETE FROM sessions WHERE code IN ('GROUP-PNGT', 'GROUP-MARA', 'GROUP-7HQM', 'GROUP-R4WK');
 `;
 
 fs.writeFileSync(outPath, `${header}${sql.join("\n")}\nCOMMIT;\n`);

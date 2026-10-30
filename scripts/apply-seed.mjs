@@ -22,6 +22,12 @@ if (!fs.existsSync(file)) {
 }
 
 const sql = fs.readFileSync(new URL("./seed-demo-groups.sql", import.meta.url), "utf8");
+const active = sql.match(/^-- active: (.+)$/m)?.[1].split(/\s+/).filter(Boolean) ?? [];
+if (active.length !== 2) {
+  console.error("Seed file is missing the active group codes.");
+  process.exit(1);
+}
+
 const db = new Database(file);
 db.pragma("foreign_keys = ON");
 db.exec(sql);
@@ -32,10 +38,10 @@ const groups = db
             (SELECT COUNT(*) FROM participants p WHERE p.session_id = s.id) AS members,
             (SELECT COUNT(*) FROM scenario_attempts a WHERE a.session_id = s.id AND a.submitted = 1) AS finished
      FROM sessions s
-     WHERE s.code IN ('GROUP-PNGT', 'GROUP-MARA')
+     WHERE s.code IN (${active.map(() => "?").join(", ")})
      ORDER BY s.code`
   )
-  .all();
+  .all(...active);
 
 for (const group of groups) {
   console.log(

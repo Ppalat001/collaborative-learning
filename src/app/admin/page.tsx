@@ -206,9 +206,7 @@ export default function AdminPage() {
               >
                 {groups.map((group) => (
                   <option key={group.code} value={group.code}>
-                    {group.code} · {group.members.join(", ") || "no members"} ·{" "}
-                    {group.scenariosFinished}/{group.totalScenarios} scenarios ·{" "}
-                    {group.createdAt.slice(0, 10)}
+                    {group.code}
                   </option>
                 ))}
               </select>
