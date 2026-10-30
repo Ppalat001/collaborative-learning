@@ -7,7 +7,11 @@ import {
   saveSurvey,
   type SurveyRatings,
 } from "@/lib/services/sessions";
-import { SURVEY_ITEMS, isValidSupportAmount } from "@/lib/instruments";
+import {
+  METACOGNITIVE_ANSWER_MAX_LENGTH,
+  SURVEY_ITEMS,
+  isValidSupportAmount,
+} from "@/lib/instruments";
 import { getScenarioById } from "@/lib/utils/scenarios";
 
 function parseRating(value: unknown): number | null {
@@ -50,9 +54,37 @@ export async function POST(
     }
     const aiUsed = (await getIndividualScaffolds(participant.id, scenario.order)).length > 0;
 
+    const answerConfidence = parseRating(body.answerConfidence);
+    const confidenceReason = String(body.confidenceReason ?? "").trim();
+    const doDifferently = String(body.doDifferently ?? "").trim();
+    if (answerConfidence === null) {
+      return NextResponse.json(
+        { error: "Say how confident you are in your group's answer (1-5)" },
+        { status: 400 }
+      );
+    }
+    if (!confidenceReason || !doDifferently) {
+      return NextResponse.json(
+        { error: "Answer both reflection questions before rating the scenario" },
+        { status: 400 }
+      );
+    }
+    if (
+      confidenceReason.length > METACOGNITIVE_ANSWER_MAX_LENGTH ||
+      doDifferently.length > METACOGNITIVE_ANSWER_MAX_LENGTH
+    ) {
+      return NextResponse.json(
+        { error: `Reflection answers can be at most ${METACOGNITIVE_ANSWER_MAX_LENGTH} characters` },
+        { status: 400 }
+      );
+    }
+
     const ratings: SurveyRatings = {
       supportAmount: null,
       openReflection: body.openReflection ? String(body.openReflection) : undefined,
+      answerConfidence,
+      confidenceReason,
+      doDifferently,
     };
 
     for (const item of SURVEY_ITEMS) {

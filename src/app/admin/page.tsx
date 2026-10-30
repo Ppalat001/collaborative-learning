@@ -9,7 +9,7 @@ const EXPORTS = [
     type: "scenarios",
     label: "Group answers per scenario",
     description:
-      "Final answer, who wrote which share, AI help each student used, how much of the answer was copied from AI, chat before/after AI, time, rubric total",
+      "Final answer, who wrote which share, AI help each student used, how much of the answer was copied from AI, chat before/after AI, time, rubric total, average confidence",
   },
   {
     type: "messages",
@@ -31,7 +31,8 @@ const EXPORTS = [
   {
     type: "ratings",
     label: "Individual scenario ratings",
-    description: "Per student per scenario: the 1-5 ratings, amount of AI help and comment",
+    description:
+      "Per student per scenario: confidence in the group answer and why, what the group could do differently, the 1-5 ratings, amount of AI help and comment",
   },
   {
     type: "assessments",

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AssessmentForm } from "@/components/AssessmentForm";
+import { NoExternalCallsNote } from "@/components/NoExternalCallsNote";
 import { FINAL_REFLECTION_QUESTIONS } from "@/lib/instruments";
 import { getAssessment } from "@/lib/utils/assessment";
 
@@ -53,6 +54,7 @@ export default function CompletePage() {
         <p className="mt-2 text-slate-600">
           Complete this individually before finishing session {code}.
         </p>
+        <NoExternalCallsNote className="mt-6" />
         <div className="mt-6">
           <AssessmentForm
             title={postTest.title}

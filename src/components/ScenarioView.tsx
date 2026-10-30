@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { DiscussionChat } from "@/components/DiscussionChat";
 import { GroupAnswerEditor, GroupAnswerNote } from "@/components/GroupAnswerEditor";
+import { MetacognitionPrompt, type MetacognitionAnswers } from "@/components/MetacognitionPrompt";
+import { NoExternalCallsNote } from "@/components/NoExternalCallsNote";
 import { ScaffoldingSelector } from "@/components/ScaffoldingSelector";
 import { SurveyForm, type SurveyAnswers } from "@/components/SurveyForm";
 import {
@@ -26,6 +28,34 @@ interface ScenarioViewProps {
   totalScenarios: number;
   participantName: string;
   participantId: string | null;
+}
+
+function metacognitionStorageKey(code: string, order: number, participantId: string) {
+  return `metacognition:${code}:${order}:${participantId}`;
+}
+
+function readStoredMetacognition(
+  code: string,
+  order: number,
+  participantId: string
+): MetacognitionAnswers | null {
+  try {
+    const raw = sessionStorage.getItem(metacognitionStorageKey(code, order, participantId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as MetacognitionAnswers;
+    if (
+      Number.isInteger(parsed.answerConfidence) &&
+      parsed.answerConfidence >= 1 &&
+      parsed.answerConfidence <= 5 &&
+      parsed.confidenceReason?.trim() &&
+      parsed.doDifferently?.trim()
+    ) {
+      return parsed;
+    }
+  } catch {
+    /* ignore a corrupted draft */
+  }
+  return null;
 }
 
 function Step({
@@ -66,6 +96,11 @@ export function ScenarioView({
   const [initialAuthorship, setInitialAuthorship] = useState<SharedAuthorship | null>(null);
   const [initialMessages, setInitialMessages] = useState<DiscussionMessage[] | null>(null);
   const [surveyCompleted, setSurveyCompleted] = useState(false);
+  const [metacognition, setMetacognition] = useState<MetacognitionAnswers | null>(() =>
+    participantId
+      ? readStoredMetacognition(sessionCode, scenarioOrder, participantId)
+      : null
+  );
   const [loading, setLoading] = useState(true);
   const [readyBusy, setReadyBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -208,7 +243,12 @@ export function ScenarioView({
     const res = await fetch(`/api/sessions/${sessionCode}/survey`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scenarioId: scenario.id, participantId, ...answers }),
+      body: JSON.stringify({
+        scenarioId: scenario.id,
+        participantId,
+        ...answers,
+        ...metacognition,
+      }),
     });
     const data = await res.json();
     if (!res.ok) {
@@ -216,7 +256,22 @@ export function ScenarioView({
       return;
     }
     setSurveyCompleted(true);
+    if (participantId) {
+      sessionStorage.removeItem(
+        metacognitionStorageKey(sessionCode, scenarioOrder, participantId)
+      );
+    }
     goToNext();
+  };
+
+  const saveMetacognition = (answers: MetacognitionAnswers) => {
+    if (participantId) {
+      sessionStorage.setItem(
+        metacognitionStorageKey(sessionCode, scenarioOrder, participantId),
+        JSON.stringify(answers)
+      );
+    }
+    setMetacognition(answers);
   };
 
   if (loading || !scenario) {
@@ -248,6 +303,7 @@ export function ScenarioView({
         <p className="mt-3 rounded-xl bg-slate-50 p-4 text-sm text-slate-700">
           <span className="font-medium">Discuss:</span> {scenario.promptForGroup}
         </p>
+        <NoExternalCallsNote compact className="mt-4" />
       </header>
 
       {error && (
@@ -257,10 +313,6 @@ export function ScenarioView({
       )}
 
       <Step number={1} title="Group discussion">
-        <p className="mt-1 text-sm text-slate-600">
-          Discuss the task together. Each message shows who wrote it, and every group
-          member has their own colour.
-        </p>
         <DiscussionChat
           messages={collaboration.messages}
           participantId={participantId}
@@ -302,7 +354,11 @@ export function ScenarioView({
         />
       </Step>
 
-      {submitted && !surveyCompleted && (
+      {submitted && !surveyCompleted && participantId && !metacognition && (
+        <MetacognitionPrompt finalAnswer={fields.finalAnswer} onContinue={saveMetacognition} />
+      )}
+
+      {submitted && !surveyCompleted && metacognition && (
         <SurveyForm
           aiUsed={scaffolds.length > 0}
           canSubmit={!!participantId}

@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AI-Supported Collaborative Learning — Complete Application Guide</title>
+<style>
+  :root {
+    --indigo: #4f46e5; --indigo-50: #eef2ff; --indigo-100: #e0e7ff; --indigo-900: #312e81;
+    --slate-50: #f8fafc; --slate-100: #f1f5f9; --slate-200: #e2e8f0; --slate-300: #cbd5e1;
+    --slate-500: #64748b; --slate-700: #334155; --slate-900: #0f172a;
+    --amber-50: #fffbeb; --amber-200: #fde68a; --amber-800: #92400e;
+    --emerald-50: #ecfdf5; --emerald-200: #a7f3d0; --emerald-800: #065f46;
+    --rose-50: #fff1f2; --rose-200: #fecdd3; --rose-800: #9f1239;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 16px; }
+  body { margin: 0; font: 16px/1.65 "Segoe UI", system-ui, -apple-system, sans-serif; color: var(--slate-900); background: var(--slate-50); }
+  .layout { display: grid; grid-template-columns: 290px 1fr; min-height: 100vh; }
+  nav { position: sticky; top: 0; height: 100vh; overflow-y: auto; background: #fff; border-right: 1px solid var(--slate-200); padding: 24px 18px; font-size: 14px; }
+  nav .brand { font-weight: 700; color: var(--indigo); font-size: 15px; margin-bottom: 4px; }
+  nav .sub { color: var(--slate-500); font-size: 12px; margin-bottom: 18px; }
+  nav ol { list-style: none; padding: 0; margin: 0; counter-reset: n; }
+  nav li { counter-increment: n; }
+  nav a { display: block; padding: 5px 8px; border-radius: 6px; color: var(--slate-700); text-decoration: none; }
+  nav a::before { content: counter(n) ". "; color: var(--slate-500); }
+  nav a:hover { background: var(--indigo-50); color: var(--indigo-900); }
+  main { padding: 40px 56px 80px; max-width: 1100px; }
+  header.hero { background: linear-gradient(135deg, var(--indigo) 0%, #7c3aed 100%); color: #fff; border-radius: 18px; padding: 36px 40px; margin-bottom: 36px; }
+  header.hero .kicker { text-transform: uppercase; letter-spacing: .12em; font-size: 12px; opacity: .85; }
+  header.hero h1 { margin: 8px 0 10px; font-size: 34px; line-height: 1.2; }
+  header.hero p { margin: 0; opacity: .92; max-width: 760px; }
+  section { background: #fff; border: 1px solid var(--slate-200); border-radius: 16px; padding: 30px 36px; margin-bottom: 26px; }
+  h2 { margin: 0 0 14px; font-size: 25px; color: var(--indigo-900); }
+  h2 .num { display: inline-block; min-width: 38px; color: var(--indigo); }
+  h3 { margin: 26px 0 8px; font-size: 18px; color: var(--slate-900); }
+  h4 { margin: 18px 0 6px; font-size: 15.5px; color: var(--slate-700); }
+  p { margin: 0 0 12px; }
+  ul, ol { margin: 0 0 12px; padding-left: 22px; }
+  li { margin: 3px 0; }
+  code, .mono { font-family: Consolas, "Cascadia Code", monospace; font-size: 13.5px; background: var(--slate-100); padding: 1px 6px; border-radius: 5px; }
+  pre { background: var(--slate-900); color: #e2e8f0; padding: 16px 18px; border-radius: 10px; overflow-x: auto; font-size: 13px; line-height: 1.55; }
+  pre code { background: none; padding: 0; color: inherit; }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0 18px; font-size: 14.5px; }
+  th { background: var(--indigo); color: #fff; text-align: left; padding: 9px 12px; font-weight: 600; }
+  td { padding: 8px 12px; border-bottom: 1px solid var(--slate-200); vertical-align: top; }
+  tr:nth-child(even) td { background: var(--slate-50); }
+  td code { white-space: nowrap; }
+  .callout { border-radius: 12px; padding: 14px 18px; margin: 14px 0; border: 1px solid; }
+  .callout.info { background: var(--indigo-50); border-color: var(--indigo-100); }
+  .callout.warn { background: var(--amber-50); border-color: var(--amber-200); color: var(--amber-800); }
+  .callout.ok { background: var(--emerald-50); border-color: var(--emerald-200); color: var(--emerald-800); }
+  .callout.bad { background: var(--rose-50); border-color: var(--rose-200); color: var(--rose-800); }
+  .callout strong:first-child { display: block; margin-bottom: 2px; }
+  .flow { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; margin: 16px 0; }
+  .flow .step { flex: 1 1 140px; background: var(--indigo-50); border: 1px solid var(--indigo-100); border-radius: 12px; padding: 12px 14px; font-size: 14px; position: relative; }
+  .flow .step b { display: block; color: var(--indigo-900); margin-bottom: 2px; }
+  .flow .arrow { align-self: center; color: var(--indigo); font-size: 22px; }
+  .arch { display: grid; grid-template-columns: 1fr 60px 1.3fr 60px 1fr; gap: 0; align-items: center; margin: 18px 0; }
+  .box { border: 2px solid var(--indigo); border-radius: 12px; padding: 14px; background: #fff; font-size: 14px; }
+  .box h5 { margin: 0 0 6px; font-size: 15px; color: var(--indigo-900); }
+  .box.soft { border-color: var(--slate-300); background: var(--slate-50); }
+  .link { text-align: center; color: var(--indigo); font-size: 12px; line-height: 1.3; }
+  .link span { display: block; font-size: 22px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .card { border: 1px solid var(--slate-200); border-radius: 12px; padding: 14px 16px; background: var(--slate-50); }
+  .card h4 { margin-top: 0; }
+  .pill { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .p-indigo { background: var(--indigo-100); color: var(--indigo-900); }
+  .p-green { background: #d1fae5; color: #065f46; }
+  .p-amber { background: #fef3c7; color: #92400e; }
+  .p-rose { background: #ffe4e6; color: #9f1239; }
+  .p-slate { background: var(--slate-200); color: var(--slate-700); }
+  .formula { background: var(--slate-100); border-left: 4px solid var(--indigo); padding: 10px 14px; border-radius: 6px; font-family: Consolas, monospace; font-size: 14px; margin: 8px 0 12px; }
+  .seq { font-family: Consolas, monospace; font-size: 13px; background: var(--slate-50); border: 1px solid var(--slate-200); border-radius: 10px; padding: 14px 16px; white-space: pre; overflow-x: auto; line-height: 1.6; }
+  .muted { color: var(--slate-500); }
+  .small { font-size: 13.5px; }
+  .answer-demo { border: 1px solid var(--slate-300); border-radius: 10px; padding: 12px 14px; background: #fff; font-size: 15px; }
+  .a1 { background: #e0e7ff; } .a2 { background: #d1fae5; } .a3 { background: #fef3c7; } .a4 { background: #ffe4e6; }
+  footer { color: var(--slate-500); font-size: 13px; text-align: center; margin-top: 30px; }
+  @media (max-width: 980px) {
+    .layout { grid-template-columns: 1fr; } nav { position: static; height: auto; }
+    main { padding: 24px 18px; } .grid2, .grid3, .arch { grid-template-columns: 1fr; } .link span { transform: rotate(90deg); }
+  }
+  @media print { nav { display: none; } .layout { grid-template-columns: 1fr; } section { break-inside: avoid-page; } }
+</style>
+</head>
+<body>
+<div class="layout">
+<nav>
+  <div class="brand">Application Guide</div>
+  <div class="sub">AI-Supported Collaborative Learning</div>
+  <ol>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#roles">Who uses it</a></li>
+    <li><a href="#architecture">Architecture</a></li>
+    <li><a href="#journey">The full journey</a></li>
+    <li><a href="#joining">Groups, names &amp; identity</a></li>
+    <li><a href="#lobby">Lobby, consent &amp; pre-test</a></li>
+    <li><a href="#scenario">The scenario page</a></li>
+    <li><a href="#step1">Step 1 — Group chat</a></li>
+    <li><a href="#step2">Step 2 — Private AI support</a></li>
+    <li><a href="#step3">Step 3 — Shared answer</a></li>
+    <li><a href="#ready">“I am good” &amp; submission</a></li>
+    <li><a href="#rules">Business rules matrix</a></li>
+    <li><a href="#rating">Rating after each scenario</a></li>
+    <li><a href="#final">Post-test, questionnaire &amp; end</a></li>
+    <li><a href="#content">Scenarios &amp; instruments</a></li>
+    <li><a href="#admin">Researcher admin page</a></li>
+    <li><a href="#exports">CSV exports, column by column</a></li>
+    <li><a href="#metrics">Metrics &amp; formulas</a></li>
+    <li><a href="#data">Database model</a></li>
+    <li><a href="#events">Research event log</a></li>
+    <li><a href="#api">API reference</a></li>
+    <li><a href="#realtime">Real-time (Socket.IO)</a></li>
+    <li><a href="#reliability">Reliability, security &amp; privacy</a></li>
+    <li><a href="#deploy">Configuration &amp; deployment</a></li>
+    <li><a href="#testing">Testing</a></li>
+    <li><a href="#limits">Limitations &amp; gaps</a></li>
+  </ol>
+</nav>
+
+<main>
+<header class="hero">
+  <div class="kicker">Dissertation research platform · Complete reference</div>
+  <h1>How the application works — flow, business logic and metrics</h1>
+  <p>A complete walkthrough of the AI-Supported Collaborative Learning platform: what students and the researcher see, every rule the server enforces, how AI support is generated, how the shared answer is tracked character by character, what is stored, and exactly how every exported metric is calculated.</p>
+</header>
+
+<!-- 1 -->
+<section id="overview">
+  <h2><span class="num">1.</span>Overview</h2>
+  <p>The application is the research instrument of a dissertation on <strong>how AI support affects collaborative learning</strong>. Small groups of real students (2–4 per group, each on their own device) work through <strong>10 short scenarios</strong>. Every scenario has three steps on one page:</p>
+  <div class="flow">
+    <div class="step"><b>Step 1 · Discuss</b>Live group chat about the scenario.</div>
+    <div class="arrow">→</div>
+    <div class="step"><b>Step 2 · Private AI</b>Each student may switch on AI support types; only they see the replies.</div>
+    <div class="arrow">→</div>
+    <div class="step"><b>Step 3 · Shared answer</b>Everyone types one answer together; each person’s text has their colour.</div>
+    <div class="arrow">→</div>
+    <div class="step"><b>“I am good”</b>When <em>every</em> member confirms, the scenario is finished.</div>
+  </div>
+  <p>Around the scenarios, each student completes a <strong>pre-test</strong> (8 multiple-choice + 2 written questions), a short <strong>rating</strong> after every scenario, a <strong>post-test</strong> and an <strong>end questionnaire</strong> (10 open questions). A password-protected <strong>admin page</strong> lets the researcher download per-group CSV files, score answer quality with a blind rubric, and delete test data.</p>
+  <h3>Three design principles</h3>
+  <div class="grid3">
+    <div class="card"><h4>AI supports, it doesn’t do</h4>The AI is instructed to scaffold thinking and never write the group’s answer — except the deliberately chosen “Full expert answer”, which is recorded as the most direct level of help.</div>
+    <div class="card"><h4>AI is private</h4>Only the requesting student sees a reply. Any AI idea must be brought back to the group by a person, which makes the influence of AI on collaboration observable.</div>
+    <div class="card"><h4>The answer is truly shared</h4>One text box, simultaneous typing, every character attributed to its author, and the group moves on only when all members agree.</div>
+  </div>
+</section>
+
+<!-- 2 -->
+<section id="roles">
+  <h2><span class="num">2.</span>Who uses it</h2>
+  <table>
+    <tr><th>Role</th><th>What they do</th><th>Where</th></tr>
+    <tr><td><strong>First student of a group</strong></td><td>Creates the group session with their name, shares the group ID with the others, and takes part as a normal member.</td><td>Home page → lobby</td></tr>
+    <tr><td><strong>Other students (1–3)</strong></td><td>Join with the group ID and their own name, then complete everything individually and as a group.</td><td>Home page → lobby → scenarios → final page</td></tr>
+    <tr><td><strong>Researcher</strong></td><td>Monitors groups, downloads data per group, scores answers with the rubric, deletes pilot/test data. Should <em>not</em> create sessions, because the creator becomes a member and takes one of the 4 places.</td><td><code>/admin</code> (link at the bottom of the home page)</td></tr>
+  </table>
+  <p>Students need only a modern browser (laptop, tablet or phone). There are no accounts: identity is the group ID + name, remembered by the browser.</p>
+</section>
+
+<!-- 3 -->
+<section id="architecture">
+  <h2><span class="num">3.</span>Architecture</h2>
+  <div class="arch">
+    <div class="box"><h5>Student browsers (2–4)</h5>Next.js / React pages<br/>Remembers <code>participantId</code> in localStorage<br/>Opens a live Socket.IO connection</div>
+    <div class="link"><span>⇄</span>HTTP API<br/>+ WebSocket</div>
+    <div class="box"><h5>One Node.js server (<code>server.ts</code>)</h5><strong>Next.js</strong> — pages + API routes (business rules)<br/><strong>Socket.IO</strong> at <code>/socket.io</code> — real-time relay per group &amp; scenario<br/><strong>Services</strong> — sessions, attempts, AI, exports</div>
+    <div class="link"><span>⇄</span>SQL / HTTPS</div>
+    <div class="box soft"><h5>Storage &amp; AI</h5><strong>SQLite</strong> file via Drizzle ORM (<code>/data/research.db</code> on Railway)<br/><strong>OpenAI</strong> Responses API (model from <code>OPENAI_MODEL</code>)</div>
+  </div>
+  <table>
+    <tr><th>Layer</th><th>Technology</th><th>Role</th></tr>
+    <tr><td>Framework</td><td>Next.js 16 (App Router), React 19, TypeScript</td><td>Pages and server-side API routes in one project.</td></tr>
+    <tr><td>Styling</td><td>Tailwind CSS 4</td><td>Visual design.</td></tr>
+    <tr><td>Custom server</td><td><code>server.ts</code></td><td>Starts Next.js and Socket.IO on the same port (<code>PORT</code>, default 3000). Binds to <code>127.0.0.1</code> in development and <code>0.0.0.0</code> in production.</td></tr>
+    <tr><td>Real-time</td><td>Socket.IO</td><td>Instant chat delivery, live shared answer, “I am good” status, online count.</td></tr>
+    <tr><td>Database</td><td>SQLite (better-sqlite3) + Drizzle ORM</td><td>All research data in one file. WAL mode, 8 s busy timeout, foreign keys on. Schema is created/updated automatically at start (<code>drizzle-kit push</code>).</td></tr>
+    <tr><td>AI</td><td>OpenAI SDK, Responses API</td><td>Generates individual AI support; falls back to built-in “mock” replies when no key is configured.</td></tr>
+    <tr><td>Hosting</td><td>Railway</td><td>Builds from GitHub <code>master</code>, persistent volume at <code>/data</code>.</td></tr>
+  </table>
+  <h3>Project structure</h3>
+<pre><code>server.ts                         custom HTTP + Next.js + Socket.IO server
+src/app/page.tsx                  home page (create / join)
+src/app/session/[code]/page.tsx   group lobby (group ID, members, consent, pre-test)
+src/app/session/[code]/scenario/[index]/page.tsx   scenario page (Steps 1–3, rating)
+src/app/session/[code]/complete/page.tsx           post-test, questionnaire, thank-you
+src/app/admin/page.tsx            researcher admin page
+src/app/api/...                   API routes (see section 21)
+src/components/                   HomePage, ScenarioView, DiscussionChat, GroupAnswerEditor,
+                                  ScaffoldingSelector, RubricScoring, ...
+src/hooks/useCollaboration.ts     live sync + saving of the shared answer and chat
+src/lib/socket/index.ts           Socket.IO server logic (rooms, relays, in-memory state)
+src/lib/services/sessions.ts      core business logic (joining, attempts, readiness, ...)
+src/lib/ai/scaffold.ts            OpenAI call, retries, error descriptions, mock mode
+src/lib/prompts/index.ts          system prompt + rules per support type
+src/lib/authorship.ts             who-typed-what tracking (diff + author runs)
+src/lib/utils/export.ts           CSV exports and all derived metrics
+src/lib/db/schema.ts              database tables
+src/lib/instruments.ts            rating items, questionnaire, rubric, limits, colours
+src/data/scenarios.json           the 10 scenarios
+src/data/assessment.json          pre- and post-test questions
+scripts/pilot-test.mjs            automated end-to-end test</code></pre>
+</section>
+
+<!-- 4 -->
+<section id="journey">
+  <h2><span class="num">4.</span>The full journey, end to end</h2>
+  <div class="flow">
+    <div class="step"><b>1. Home</b>Create group (first student) or join with group ID. Name required.</div>
+    <div class="arrow">→</div>
+    <div class="step"><b>2. Lobby</b>Group ID card, member list, consent (once per group).</div>
+    <div class="arrow">→</div>
+    <div class="step"><b>3. Pre-test</b>Each student: 8 MCQ + 2 written. Once only.</div>
+    <div class="arrow">→</div>
+    <div class="step"><b>4. Begin scenarios</b>Opens the group’s current scenario.</div>
+  </div>
+  <div class="flow">
+    <div class="step"><b>5. Scenario ×10</b>Chat · private AI · shared answer · “I am good” by all.</div>
+    <div class="arrow">→</div>
+    <div class="step"><b>6. Rating</b>Each student rates the scenario (AI items only if they used AI).</div>
+    <div class="arrow">→</div>
+    <div class="step"><b>7. Post-test</b>8 new MCQ (same concepts) + same 2 written questions.</div>
+    <div class="arrow">→</div>
+    <div class="step"><b>8. Questionnaire</b>10 open questions (optional), then thank-you with score.</div>
+  </div>
+  <p>In parallel, the researcher can use the admin page at any time; data appears as soon as students act.</p>
+</section>
+
+<!-- 5 -->
+<section id="joining">
+  <h2><span class="num">5.</span>Groups, names and identity</h2>
+  <h3>Creating a group</h3>
+  <p>On the home page the first student types their name and clicks <strong>Create group session</strong>. The browser calls <code>POST /api/sessions</code>, which creates a session with a random group ID <code>GROUP-XXXX</code> (4 characters from <code>ABCDEFGHJKLMNPQRSTUVWXYZ23456789</code> — no O/0/I/1 to avoid confusion), then immediately calls the join endpoint so the creator becomes the first member. The event <code>session_created</code> is logged.</p>
+  <h3>Joining a group</h3>
+  <p>Other students enter the group ID and their name and click <strong>Join</strong> → <code>POST /api/sessions/{code}/join</code>. The server enforces:</p>
+  <table>
+    <tr><th>Rule</th><th>Result if broken</th></tr>
+    <tr><td>Group ID must exist</td><td>400 “Session not found”</td></tr>
+    <tr><td>Name is required (extra spaces collapsed and trimmed)</td><td>400 “Please enter your name to join the session”</td></tr>
+    <tr><td>Name at most 40 characters</td><td>400 “Names can be at most 40 characters”</td></tr>
+    <tr><td>Name unique within the group (case-insensitive)</td><td>400 “Someone in this group already uses the name …”</td></tr>
+    <tr><td>At most 4 members per group</td><td>400 “Session is full (maximum 4 participants)”</td></tr>
+  </table>
+  <p>On success the server creates a <strong>participant</strong> with an internal UUID, an <strong>anonymous code</strong> <code>P-XXXXXXXX</code> (used for anonymised reporting) and the join time, and logs <code>participant_joined</code>.</p>
+  <h3>How the app remembers a student</h3>
+  <p>The browser stores <code>participantId</code> and <code>participantName</code> in <strong>localStorage</strong>. Every later request sends <code>participantId</code>, and the server verifies it belongs to that group (<code>getParticipantInSession</code>). Consequences:</p>
+  <ul>
+    <li>A student must keep the same browser and device for the whole study.</li>
+    <li>Reloading a page is safe; clearing browser data or switching device loses the link to earlier contributions.</li>
+    <li>If the scenario page is opened without a stored identity, it shows a warning: “Join from the home page with the group ID and your name.”</li>
+  </ul>
+  <h3>Member colours</h3>
+  <p>Members get a colour by join order: <span class="pill p-indigo">1st indigo</span> <span class="pill p-green">2nd green</span> <span class="pill p-amber">3rd amber</span> <span class="pill p-rose">4th rose</span>. The same colour is used in the chat and in the shared answer.</p>
+</section>
+
+<!-- 6 -->
+<section id="lobby">
+  <h2><span class="num">6.</span>Lobby, consent and pre-test</h2>
+  <h3>Lobby (<code>/session/{code}</code>)</h3>
+  <ul>
+    <li><strong>Group ID card</strong>: large group ID, “You joined as &lt;name&gt;”, and a <em>Copy group ID</em> button.</li>
+    <li><strong>Participant list</strong>: all members, the current student marked “(you)”. Refreshes every <strong>3 seconds</strong>.</li>
+  </ul>
+  <h3>Consent</h3>
+  <p>One member ticks the consent box and clicks <em>Record consent</em> → <code>POST /api/sessions/{code}/consent</code>. Consent is stored once for the whole group (<code>sessions.consent_given</code>) and <code>consent_given</code> is logged.</p>
+  <h3>Pre-test</h3>
+  <p>After consent, each student completes the pre-test individually → <code>POST /api/sessions/{code}/assessment</code> with <code>assessmentType: "pre"</code>.</p>
+  <ul>
+    <li><strong>8 multiple-choice questions</strong>, one per concept (definition, interdependence, accountability, scaffolding, choosing support, over-reliance, group agency, disagreement) — all required.</li>
+    <li><strong>2 written questions</strong> — required.</li>
+    <li>Score = number of correct options (0–8), computed on the server.</li>
+    <li>Stored: chosen option index per question, written answers, score, max score, completion time. Logged as <code>assessment_completed</code>.</li>
+    <li><strong>Only once</strong> per student; a repeated submission returns the existing result.</li>
+  </ul>
+  <div class="callout info"><strong>Begin scenarios</strong>The button is enabled only when consent is recorded <em>and</em> this student completed their own pre-test. It opens scenario <code>currentScenarioIndex + 1</code>, so a returning student continues where the group is.</div>
+</section>
+
+<!-- 7 -->
+<section id="scenario">
+  <h2><span class="num">7.</span>The scenario page</h2>
+  <p>URL: <code>/session/{code}/scenario/{1–10}</code>. On load the page calls <code>GET /api/sessions/{code}/scenario/{n}?participantId=…</code>, which returns the scenario text, the chat history, the members (with colours), <strong>this student’s own</strong> AI replies, the shared answer with authorship, the list of “ready” members, whether it is submitted, and whether this student already rated it.</p>
+  <p>The first time anyone opens a scenario, the server creates the group’s <strong>attempt</strong> for that scenario (<code>getOrCreateAttempt</code>), stores <code>discussion_started_at</code> and logs <code>scenario_started</code>. This start time is the reference for all “minutes” metrics.</p>
+  <p>The header shows the scenario number and title, a <strong>“Group GROUP-XXXX”</strong> badge, “Signed in as &lt;name&gt;”, and a live indicator (connected / reconnecting, number of members online). All three steps are visible at once so students can move freely between discussing, consulting AI and writing.</p>
+</section>
+
+<!-- 8 -->
+<section id="step1">
+  <h2><span class="num">8.</span>Step 1 — Group chat</h2>
+  <div class="seq">Student A types message → POST /api/sessions/{code}/messages
+   server checks: text not empty · ≤ 2,000 chars · A is a member · scenario not finished
+   server saves message (author, scenario, created_at) → returns it
+A's browser shows it → emits socket "chat:message" → server relays to room → B, C, D show it instantly</div>
+  <ul>
+    <li>Messages show author name, colour and time.</li>
+    <li><strong>Saved first, then broadcast</strong> — a message on screen is always in the database.</li>
+    <li>On (re)connection the page reloads the full history and merges it by message ID (no losses, no duplicates).</li>
+    <li>After the scenario is finished, the chat is read-only (409 “This scenario has already been submitted”).</li>
+    <li>The chat transcript (“Name: text” per line) is sent to the AI as context in Step 2.</li>
+  </ul>
+</section>
+
+<!-- 9 -->
+<section id="step2">
+  <h2><span class="num">9.</span>Step 2 — Private AI support</h2>
+  <h3>The nine options</h3>
+  <table>
+    <tr><th>Option (on screen)</th><th>Internal type</th><th>Category / level</th><th>What the AI is told</th></tr>
+    <tr><td>Small hint</td><td><code>hint</code></td><td><span class="pill p-green">Level 1 · Minimal</span></td><td>ONE small hint; never reveal the answer, conclusion or steps.</td></tr>
+    <tr><td>Guiding question</td><td><code>guiding_question</code></td><td><span class="pill p-green">Level 1 · Minimal</span></td><td>One or two questions only; no answers or strong conclusions.</td></tr>
+    <tr><td>Brief explanation</td><td><code>explanation</code></td><td><span class="pill p-amber">Level 2 · Moderate</span></td><td>Short conceptual explanation; not the solution.</td></tr>
+    <tr><td>Example</td><td><code>example</code></td><td><span class="pill p-amber">Level 2 · Moderate</span></td><td>One analogous example, clearly marked as analogy.</td></tr>
+    <tr><td>Feedback on your answer</td><td><code>feedback</code></td><td><span class="pill p-amber">Level 2 · Moderate</span></td><td>At least one strength and 1–2 things to revise; don’t rewrite the answer.</td></tr>
+    <tr><td>Full expert answer</td><td><code>full_answer</code></td><td><span class="pill p-rose">Level 3 · Direct</span></td><td>Complete model answer, with a note to compare rather than copy.</td></tr>
+    <tr><td>Summary of discussion</td><td><code>summary</code></td><td><span class="pill p-indigo">Collaboration</span></td><td>Neutral summary; add no new arguments.</td></tr>
+    <tr><td>Help splitting the task</td><td><code>task_splitting</code></td><td><span class="pill p-indigo">Collaboration</span></td><td>Fair roles/sub-questions for 2–4 members; do no work for anyone.</td></tr>
+    <tr><td>Help with disagreement</td><td><code>conflict_support</code></td><td><span class="pill p-indigo">Collaboration</span></td><td>Facilitate comparison using criteria; never pick a side.</td></tr>
+  </table>
+  <p>Students can select any number of options or none. Selecting nothing = “no assistance” (level 0).</p>
+
+  <h3>What happens when a student selects an option</h3>
+  <div class="seq">Student ticks "Small hint" → POST /api/sessions/{code}/scaffold {action:"select", scenarioOrder, scaffoldingType, participantId}
+  ├─ reply already stored for (student, scenario, type)?  → mark shown, times_shown +1, return cached (no AI call)
+  │                                                          event ai_support_reselected (if it was hidden)
+  └─ not stored yet:
+       scenario finished?            → 409 "no new AI support can be requested"
+       build prompt (system + context) → call OpenAI → save reply → event ai_support_requested
+       return reply → shown in amber "AI response" box under the option (only to this student)
+Student unticks → {action:"unselect"} → hidden, times_hidden +1, event ai_support_unselected</div>
+
+  <h3>The prompt sent to the AI</h3>
+  <div class="grid2">
+    <div class="card"><h4>Instructions (system prompt)</h4>
+      <em>“You are a learning support agent in a collaborative educational research study. Your role is to scaffold group learning — never to replace human collaboration or autopilot the task. Keep responses concise (2–4 short paragraphs)… One member of the group asked for this support privately. Speak to them directly and help them bring better ideas back to their group rather than writing the group’s answer…”</em><br/>+ the specific rules for the chosen type (table above).</div>
+    <div class="card"><h4>Context (user message)</h4>
+      Scenario title · task type · description · prompt for the group<br/>
+      <strong>Group discussion so far</strong> (full chat transcript, “Name: text”)<br/>
+      <strong>Group answer written so far</strong><br/>
+      → So the help is tailored to what this group actually discussed and wrote.</div>
+  </div>
+  <h3>The OpenAI call</h3>
+  <ul>
+    <li><code>client.responses.create({ model, instructions, input, store: false, max_output_tokens: 800, reasoning: { effort: "none" } })</code></li>
+    <li>Model from <code>OPENAI_MODEL</code> (study: <code>gpt-6-luna</code>; default <code>gpt-4o-mini</code>). Optional <code>OPENAI_BASE_URL</code>.</li>
+    <li><code>store: false</code> — OpenAI does not keep the conversation.</li>
+    <li>If the model rejects an optional parameter, the server automatically retries without it.</li>
+    <li>Errors are translated into understandable messages (invalid key 401, no credit / rate limit 429, unknown model 404) and returned as 502; the key is never revealed.</li>
+    <li>Response time is measured (<code>ai_latency_ms</code>).</li>
+    <li><strong>Mock mode</strong>: without <code>OPENAI_API_KEY</code>, a fixed example reply per type is returned with model <code>"mock"</code>; exports flag it as <code>real_ai_response = no</code>.</li>
+  </ul>
+  <h3>Caching and integrity</h3>
+  <ul>
+    <li>A unique database index on (student, scenario, type) guarantees <strong>one reply per student per scenario per type</strong>. Double clicks or simultaneous requests cannot create duplicates (insert uses “on conflict do nothing” and re-reads).</li>
+    <li>Toggling never calls the AI again; it only changes <code>selected</code> and increments <code>times_selected</code> / <code>times_unselected</code>.</li>
+    <li>Stored with each reply: the exact instructions and context sent, model, latency, created time, last toggle time.</li>
+    <li>After the scenario is finished, <em>new</em> replies cannot be requested, but existing replies can still be shown or hidden by their owner.</li>
+    <li>Replies are <strong>never</strong> sent to other members — not via API, not via socket.</li>
+  </ul>
+</section>
+
+<!-- 10 -->
+<section id="step3">
+  <h2><span class="num">10.</span>Step 3 — The shared group answer</h2>
+  <p>All members type in one text box simultaneously. Each person’s text is highlighted in their colour:</p>
+  <div class="answer-demo"><span class="a1">Collaboration means building understanding together, </span><span class="a2">not just splitting the work, </span><span class="a1">because everyone must be able to explain </span><span class="a3">the final result.</span></div>
+  <p class="small muted">Above the box: a member bar with each name, share of the current text (%) and status (editing / “I am good”). Below: word counter “n / 500 words” (red at the limit).</p>
+
+  <h3>What happens on every keystroke (<code>useCollaboration</code> hook)</h3>
+  <ol>
+    <li><strong>Diff</strong> — the new text is compared with the previous text to find the single changed region (common prefix and suffix kept): start position, characters removed, inserted text.</li>
+    <li><strong>Authorship update</strong> — the answer’s authorship is a list of <em>runs</em> <code>[{participantId, length}, …]</code> covering every character. Removed characters are cut out of the runs; inserted characters become a run for the typist; adjacent runs by the same person merge.</li>
+    <li><strong>Live broadcast</strong> — socket <code>field:update</code> (text + authorship) → server stores it as the room’s latest state in memory → <code>field:state</code> to the other members, whose screens update instantly.</li>
+    <li><strong>Debounced save</strong> — after <strong>0.8 s</strong> without typing: <code>POST /api/sessions/{code}/sync</code> with text, authorship and the batch of edits (chars added, chars removed, inserted text) → stored in <code>scenario_attempts</code> + one <code>edit_events</code> row per batch.</li>
+    <li><strong>Flush</strong> — on leaving the page (keep-alive request) and before “I am good”, unsaved changes are sent immediately.</li>
+  </ol>
+  <h3>Server checks when saving</h3>
+  <table>
+    <tr><th>Condition</th><th>Response</th></tr>
+    <tr><td>Scenario already submitted</td><td>409 “This answer was already submitted”</td></tr>
+    <tr><td>This student is marked “I am good”</td><td>409 “Unselect "I am good" before editing”</td></tr>
+    <tr><td>More than 500 words</td><td>400 “The answer is limited to 500 words”</td></tr>
+  </table>
+  <p>The editor also refuses typing that would exceed 500 words (deleting is always allowed). Authorship received from the browser is normalised on the server so the runs always cover exactly the answer length (anything untracked is attributed to “nobody”).</p>
+  <h3>Late joiners and reconnects</h3>
+  <p>When a member opens the page, they load the saved version from the database; if the server holds a newer live version in memory (<code>room:state</code>), that is applied. Live edits that already arrived are never overwritten by an older database copy.</p>
+</section>
+
+<!-- 11 -->
+<section id="ready">
+  <h2><span class="num">11.</span>“I am good” and submission</h2>
+  <div class="seq">Student clicks "I am good"
+  → flush unsaved typing
+  → PUT /api/sessions/{code}/scenario/{n} {action:"ready", ready:true}
+     in ONE database transaction:
+       answer empty?                       → 400 "Write the group answer before selecting I am good"
+       add student to ready list            → event participant_ready
+       every member in ready list?
+          yes → submitted = true, submitted_by, final_answer_at = now
+                sessions.current_scenario_index = n   (progress)
+                n = 10 → sessions.completed_at = now
+                event final_answer_submitted
+  → socket "ready:update" → all screens update (status chips, lock, rating form)</div>
+  <ul>
+    <li>A ready student cannot type (button state + server 409). Clicking again (“ready: false”) removes readiness → <code>participant_unready</code>, and they can edit again.</li>
+    <li>Readiness of others is <strong>not</strong> reset when someone edits; each member decides when to un-ready.</li>
+    <li>The transaction makes simultaneous last clicks safe: the scenario is submitted exactly once.</li>
+    <li>After submission: chat, answer and new AI requests are locked; the rating form appears.</li>
+  </ul>
+</section>
+
+<!-- 12 -->
+<section id="rules">
+  <h2><span class="num">12.</span>Business rules matrix</h2>
+  <table>
+    <tr><th>Action</th><th>Before finish</th><th>While I am “ready”</th><th>After finish</th></tr>
+    <tr><td>Send chat message</td><td>✅</td><td>✅</td><td>❌ 409</td></tr>
+    <tr><td>Request a <em>new</em> AI reply</td><td>✅</td><td>✅</td><td>❌ 409</td></tr>
+    <tr><td>Show / hide an existing AI reply</td><td>✅</td><td>✅</td><td>✅</td></tr>
+    <tr><td>Type in the shared answer</td><td>✅ (≤ 500 words)</td><td>❌ 409</td><td>❌ 409</td></tr>
+    <tr><td>Click “I am good”</td><td>✅ (answer not empty)</td><td>✅ (un-ready)</td><td>—</td></tr>
+    <tr><td>Rate the scenario</td><td>❌ 409</td><td>❌ 409</td><td>✅ once</td></tr>
+  </table>
+  <table>
+    <tr><th>Limit</th><th>Value</th></tr>
+    <tr><td>Group size</td><td>max 4 (min 2 recommended for meaningful collaboration)</td></tr>
+    <tr><td>Name length</td><td>40 characters, unique per group</td></tr>
+    <tr><td>Chat message</td><td>2,000 characters</td></tr>
+    <tr><td>Shared answer</td><td>500 words</td></tr>
+    <tr><td>AI reply length</td><td>800 output tokens (≈600 words)</td></tr>
+    <tr><td>Answer save delay</td><td>0.8 s after last keystroke</td></tr>
+    <tr><td>Submissions</td><td>pre-test, post-test, each rating, questionnaire: once each</td></tr>
+  </table>
+</section>
+
+<!-- 13 -->
+<section id="rating">
+  <h2><span class="num">13.</span>Rating after each scenario</h2>
+  <p>When the scenario is finished, each student sees an individual form (“answer for yourself, not for the group”) → <code>POST /api/sessions/{code}/survey</code>. The server decides by itself whether the student used AI in that scenario (any stored reply) — it does not trust the browser.</p>
+  <table>
+    <tr><th>Section</th><th>Statement (1 = strongly disagree … 5 = strongly agree)</th><th>Shown to</th><th>Export column</th></tr>
+    <tr><td>—</td><td>Amount of AI help: too little / about right / too much</td><td>AI users</td><td><code>amount_of_ai_help</code></td></tr>
+    <tr><td>AI support</td><td>The AI support I chose was helpful for this scenario.</td><td>AI users</td><td><code>ai_helpful</code></td></tr>
+    <tr><td rowspan="6">Collaboration</td><td>My AI support helped me contribute better to the group discussion.</td><td>AI users</td><td><code>ai_helped_my_contribution</code></td></tr>
+    <tr><td>My AI support helped me stay focused on the task.</td><td>AI users</td><td><code>ai_helped_focus</code></td></tr>
+    <tr><td>My AI support helped me include others’ ideas in the discussion.</td><td>AI users</td><td><code>ai_helped_include_others</code></td></tr>
+    <tr><td>My AI support helped our group resolve disagreement. <span class="pill p-slate">N/A allowed</span></td><td>AI users</td><td><code>ai_helped_resolve_disagreement</code></td></tr>
+    <tr><td>Our group collaborated well on this scenario.</td><td>Everyone</td><td><code>collaborated_well</code></td></tr>
+    <tr><td>Our final answer was a genuinely shared group answer.</td><td>Everyone</td><td><code>answer_was_shared</code></td></tr>
+    <tr><td rowspan="4">Autonomy &amp; reliance</td><td>I still felt in control of the task.</td><td>Everyone</td><td><code>felt_in_control</code></td></tr>
+    <tr><td>The AI helped me think, rather than thinking for me.</td><td>AI users</td><td><code>ai_helped_me_think</code></td></tr>
+    <tr><td>I relied too much on the AI.</td><td>AI users</td><td><code>relied_too_much_on_ai</code></td></tr>
+    <tr><td>I could have contributed to this answer without the AI.</td><td>AI users</td><td><code>could_contribute_without_ai</code></td></tr>
+    <tr><td>Overall</td><td>I am satisfied with how our group handled this scenario.</td><td>Everyone</td><td><code>satisfied</code></td></tr>
+    <tr><td>—</td><td>Optional comment: what stood out?</td><td>Everyone</td><td><code>comment</code></td></tr>
+  </table>
+  <p>Validation: every shown item 1–5 (except N/A), amount of help required for AI users, scenario must be finished, once per student per scenario. AI items for non-users are stored as empty (null). Logged as <code>survey_submitted</code>. After saving, the student moves to the next scenario (or to the final page after scenario 10) — each at their own pace.</p>
+</section>
+
+<!-- 14 -->
+<section id="final">
+  <h2><span class="num">14.</span>Post-test, questionnaire and the end</h2>
+  <p>Page <code>/session/{code}/complete</code>, in this order:</p>
+  <ol>
+    <li><strong>Post-test</strong> — 8 <em>new</em> multiple-choice questions on the <em>same 8 concepts</em> (so learning can be compared per concept without memorising answers) + the <em>same 2 written questions</em> as the pre-test (direct before/after comparison). Required, scored 0–8, once only, logged <code>assessment_completed</code>.</li>
+    <li><strong>End questionnaire</strong> — 10 open questions, all optional, saved once → <code>POST /api/sessions/{code}/reflection</code>, logged <code>final_reflection_submitted</code>.</li>
+    <li><strong>Thank-you page</strong> — “study complete” with the student’s post-test score.</li>
+  </ol>
+</section>
+
+<!-- 15 -->
+<section id="content">
+  <h2><span class="num">15.</span>Scenarios and research instruments</h2>
+  <h3>The 10 scenarios</h3>
+  <table>
+    <tr><th>#</th><th>Title</th><th>Task type</th><th>Expected min</th><th>Task</th></tr>
+    <tr><td>1</td><td>Explaining a Concept</td><td>explain</td><td>8</td><td>Explain to a first-year student what makes group work truly collaborative.</td></tr>
+    <tr><td>2</td><td>Improving a Weak Answer</td><td>expand_answer</td><td>7</td><td>Improve “group work is useful because the work gets done faster when you split it up”.</td></tr>
+    <tr><td>3</td><td>Short Case Study</td><td>case_study</td><td>10</td><td>Free-rider and dominating member: choose peer assessment, assigned roles or an individual quiz.</td></tr>
+    <tr><td>4</td><td>Making a Judgment Call</td><td>judgment</td><td>8</td><td>Is submitting a full AI answer the night before acceptable, and when?</td></tr>
+    <tr><td>5</td><td>Choosing Among Solutions</td><td>solutions</td><td>9</td><td>Shared document with history vs structured roles vs AI assistant — prioritise one.</td></tr>
+    <tr><td>6</td><td>Reflecting on Learning</td><td>reflection</td><td>6</td><td>A time the group struggled with a new topic; what helped or hindered.</td></tr>
+    <tr><td>7</td><td>Ethical Dilemma</td><td>judgment</td><td>10</td><td>Allow, restrict or ban AI in group projects; support vs substitution.</td></tr>
+    <tr><td>8</td><td>Data Interpretation</td><td>case_study</td><td>8</td><td>Groups scored 12% higher but 45% found workload unfair — what does the data show?</td></tr>
+    <tr><td>9</td><td>Designing a Process</td><td>solutions</td><td>9</td><td>A fair process for dividing presentation topics among four members.</td></tr>
+    <tr><td>10</td><td>Synthesis and Recommendation</td><td>reflection</td><td>10</td><td>One practice to encourage and one to avoid when using AI in group work.</td></tr>
+  </table>
+  <h3>Pre- and post-test (matched by concept)</h3>
+  <table>
+    <tr><th>Concept</th><th>Pre-test question</th><th>Post-test question</th></tr>
+    <tr><td>definition</td><td>Which description best fits collaborative learning?</td><td>Which group is working collaboratively?</td></tr>
+    <tr><td>interdependence</td><td>A group task has “positive interdependence” when…</td><td>Which task design creates the strongest positive interdependence?</td></tr>
+    <tr><td>accountability</td><td>Why is individual accountability important in group work?</td><td>Which practice best supports individual accountability?</td></tr>
+    <tr><td>scaffolding</td><td>In education, “scaffolding” means…</td><td>How much help should a learner receive (scaffolding theory)?</td></tr>
+    <tr><td>choosing_support</td><td>Two members disagree and discussion stopped — which AI support fits?</td><td>Group lost track of what they agreed — which AI support fits?</td></tr>
+    <tr><td>overreliance</td><td>Main risk of regularly asking AI for complete answers?</td><td>After a full AI answer, what should a student do to keep learning?</td></tr>
+    <tr><td>group_agency</td><td>Keeping the group’s agency in AI-supported work means…</td><td>Why should every member agree the answer is ready before moving on?</td></tr>
+    <tr><td>disagreement</td><td>Most productive response when members disagree?</td><td>Why can disagreement improve learning?</td></tr>
+  </table>
+  <p><strong>Written questions (both tests):</strong> (1) “In your own words, what makes group work truly collaborative, rather than just dividing the work? Give an example.” (2) “How should AI support be used in group work so that the group still does the thinking?”</p>
+  <h3>End questionnaire (10 open questions)</h3>
+  <table>
+    <tr><th>Export column</th><th>Question</th></tr>
+    <tr><td><code>ai_effect_on_collaboration</code></td><td>How did the AI support affect the way your group worked together?</td></tr>
+    <tr><td><code>most_useful_support</code></td><td>Which type of AI support was most useful for you, and why?</td></tr>
+    <tr><td><code>unhelpful_or_too_much</code></td><td>Was any AI support unhelpful or too much? Please explain.</td></tr>
+    <tr><td><code>thinking_and_reliance</code></td><td>Did you ever feel the AI was doing the thinking for your group? When?</td></tr>
+    <tr><td><code>ai_into_group_answer</code></td><td>Did you bring ideas from your private AI support into the group discussion or answer? How?</td></tr>
+    <tr><td><code>private_vs_shared_ai</code></td><td>Would you prefer AI support to be private or shared with the whole group? Why?</td></tr>
+    <tr><td><code>participation</code></td><td>Did everyone in your group contribute fairly? What affected this?</td></tr>
+    <tr><td><code>agreement_on_answer</code></td><td>When you clicked “I am good”, did you really agree with the group answer?</td></tr>
+    <tr><td><code>learned_most</code></td><td>What is the most important thing you learned from this activity?</td></tr>
+    <tr><td><code>suggested_changes</code></td><td>What would you change about the AI support or the activity?</td></tr>
+  </table>
+</section>
+
+<!-- 16 -->
+<section id="admin">
+  <h2><span class="num">16.</span>Researcher admin page</h2>
+  <h3>Access</h3>
+  <p><code>/admin</code>. Every admin request must carry the password (header <code>x-admin-password</code> or <code>?password=</code>) equal to <code>ADMIN_PASSWORD</code>. In development without that variable the password is <code>research-admin</code>; in production without it the admin area is <strong>disabled</strong> (never falls back to a public default).</p>
+  <h3>Groups</h3>
+  <p><em>Load groups</em> lists all groups (newest first): group ID, member names, finished scenarios, created date.</p>
+  <h3>Downloads — always per group</h3>
+  <p>The researcher selects a group and downloads one of 8 CSV files (<code>GET /api/admin/export?type=…&amp;session=GROUP-XXXX</code>; refused without a group). Files open in Excel, SPSS, R or Python. All files use names <em>and</em> anonymous codes, readable values (“Small hint”, “yes/no”, 0–100 %) and UTC times. Details in section 17.</p>
+  <h3>Clean up data</h3>
+  <ul>
+    <li><strong>Delete one group</strong> — type its group ID to confirm → <code>DELETE /api/admin/sessions?session=CODE</code> with <code>{confirm: CODE}</code>.</li>
+    <li><strong>Delete all</strong> — type <code>DELETE ALL</code> → <code>?all=1</code>.</li>
+    <li>Deleting a session cascades to everything linked: members, attempts, messages, AI replies, edits, ratings, tests, questionnaires, events and rubric scores.</li>
+  </ul>
+  <h3>Rubric scoring</h3>
+  <ul>
+    <li>Lists every finished group answer (<code>GET /api/admin/rubric?rater=…</code>).</li>
+    <li>Rater enters name/initials, then scores 6 criteria from <strong>1 Weak · 2 Developing · 3 Good · 4 Strong</strong>: correctness, clarity, reasoning, completeness, use of examples, depth of understanding; optional notes.</li>
+    <li><strong>Total</strong> 6–24; <strong>average</strong> = total / 6.</li>
+    <li><strong>Blind mode</strong> (default on) hides which AI support the group used.</li>
+    <li>One score per rater per answer; saving again updates it. Multiple raters → inter-rater reliability.</li>
+    <li>Also shows a summary of how often each support type/level was used.</li>
+  </ul>
+</section>
+
+<!-- 17 -->
+<section id="exports">
+  <h2><span class="num">17.</span>CSV exports, column by column</h2>
+
+  <h3>1. Group answers per scenario <code class="small">type=scenarios</code> — one row per scenario</h3>
+  <table>
+    <tr><th>Column</th><th>Meaning</th></tr>
+    <tr><td><code>group</code>, <code>scenario_number</code>, <code>scenario_title</code>, <code>group_members</code></td><td>Identification.</td></tr>
+    <tr><td><code>finished</code></td><td>yes/no — all members clicked “I am good”.</td></tr>
+    <tr><td><code>final_answer</code>, <code>answer_words</code></td><td>The answer text and its word count.</td></tr>
+    <tr><td><code>answer_written_by</code></td><td>e.g. “Anna 60%, Ben 40%” — share of the final text’s characters by author.</td></tr>
+    <tr><td><code>ai_help_used_by_each_student</code></td><td>e.g. “Anna: Small hint | Ben: none”.</td></tr>
+    <tr><td><code>highest_ai_level_used</code></td><td>Most direct level used by anyone (“3 - Direct”, “collaboration support only”, “none”).</td></tr>
+    <tr><td><code>students_who_saw_full_answer</code></td><td>Names of members who requested the full expert answer.</td></tr>
+    <tr><td><code>answer_copied_from_ai_percent</code></td><td>Text overlap of the final answer with all AI replies in this scenario (blank if no AI).</td></tr>
+    <tr><td><code>answer_matches_chat_before_ai_percent</code></td><td>Overlap of the final answer with the chat written before the first AI request.</td></tr>
+    <tr><td><code>chat_messages_before_ai</code>, <code>chat_messages_after_ai</code></td><td>Messages before/after the first AI request by any member.</td></tr>
+    <tr><td><code>participation_balance_0_to_1</code></td><td>How evenly activity was spread (1 = even).</td></tr>
+    <tr><td><code>minutes_before_first_ai</code>, <code>minutes_total</code></td><td>From scenario start to first AI request / to finish.</td></tr>
+    <tr><td><code>rubric_total_6_to_24</code></td><td>Mean rubric total over raters.</td></tr>
+    <tr><td><code>finished_at_utc</code></td><td>Submission time.</td></tr>
+  </table>
+
+  <h3>2. Discussion chat log <code class="small">type=messages</code> — one row per message</h3>
+  <p><code>group</code>, <code>scenario_number</code>, <code>time_utc</code>, <code>student</code>, <code>message</code>, <code>before_or_after_ai</code>.</p>
+
+  <h3>3. Individual AI support <code class="small">type=ai_support</code> — one row per AI reply</h3>
+  <table>
+    <tr><th>Column</th><th>Meaning</th></tr>
+    <tr><td><code>student</code>, <code>student_id</code></td><td>Who requested it (name, anonymous code).</td></tr>
+    <tr><td><code>ai_help_selected</code>, <code>help_level</code></td><td>e.g. “Small hint”, “Level 1 - Minimal” / “Collaboration support”.</td></tr>
+    <tr><td><code>still_shown_at_end</code></td><td>Whether the reply was still visible (selected) at the end.</td></tr>
+    <tr><td><code>times_shown</code>, <code>times_hidden</code></td><td>How often it was selected / unselected.</td></tr>
+    <tr><td><code>group_chat_messages_before_request</code></td><td>Messages (all members) in the scenario before this request.</td></tr>
+    <tr><td><code>answer_copied_from_this_help_percent</code></td><td>Overlap of the final answer with this specific reply.</td></tr>
+    <tr><td><code>real_ai_response</code></td><td>no = mock reply (exclude from analysis).</td></tr>
+    <tr><td><code>ai_response</code>, <code>requested_at_utc</code></td><td>Full reply text and time.</td></tr>
+  </table>
+
+  <h3>4. Individual contributions <code class="small">type=contributions</code> — one row per student per scenario</h3>
+  <table>
+    <tr><th>Column</th><th>Meaning</th></tr>
+    <tr><td><code>chat_messages</code>, <code>chat_messages_before_ai</code>, <code>chat_messages_after_ai</code>, <code>chat_words</code></td><td>This student’s chat activity.</td></tr>
+    <tr><td><code>characters_typed_in_answer</code></td><td>Total characters this student added in the answer (including text later deleted).</td></tr>
+    <tr><td><code>share_of_final_answer_percent</code></td><td>Characters of the final answer authored by this student ÷ answer length.</td></tr>
+    <tr><td><code>share_of_group_activity_percent</code></td><td>(own chat characters + typed characters) ÷ group total.</td></tr>
+    <tr><td><code>ai_help_used</code>, <code>clicked_i_am_good</code></td><td>AI types used; whether the student is in the ready list.</td></tr>
+  </table>
+
+  <h3>5. Individual scenario ratings <code class="small">type=ratings</code> — one row per student per scenario</h3>
+  <p><code>used_ai</code>, <code>ai_help_used</code>, <code>amount_of_ai_help</code>, the 12 rating columns (section 13; blank = not asked or N/A), <code>comment</code>.</p>
+
+  <h3>6. Pre/post-test comparison <code class="small">type=assessments</code> — one row per student</h3>
+  <p><code>pre_score</code>, <code>post_score</code>, <code>max_score</code> (8), <code>score_change</code>, <code>pre_&lt;concept&gt;</code>/<code>post_&lt;concept&gt;</code> (1 = correct, 0 = wrong) for the 8 concepts, <code>pre_open_collaboration</code>/<code>post_open_collaboration</code>, <code>pre_open_ai_role</code>/<code>post_open_ai_role</code>, <code>pre_completed_at_utc</code>, <code>post_completed_at_utc</code>.</p>
+
+  <h3>7. End questionnaire <code class="small">type=reflections</code> — one row per student</h3>
+  <p>The 10 question columns (section 15) + <code>submitted_at_utc</code>.</p>
+
+  <h3>8. Rubric scores <code class="small">type=rubric</code> — one row per rater per answer</h3>
+  <p><code>rater</code>, <code>correctness</code>, <code>clarity</code>, <code>reasoning</code>, <code>completeness</code>, <code>use_of_examples</code>, <code>depth</code>, <code>total_6_to_24</code>, <code>average_1_to_4</code>, <code>ai_help_used_in_group</code>, <code>highest_ai_level_used</code>, <code>notes</code>.</p>
+</section>
+
+<!-- 18 -->
+<section id="metrics">
+  <h2><span class="num">18.</span>Metrics and formulas</h2>
+  <p>All derived metrics are computed at export time from the raw stored data (nothing is pre-aggregated), so formulas can be changed later without losing information.</p>
+
+  <h3>Before / after AI</h3>
+  <div class="formula">first_ai_at(scenario) = earliest AI request by ANY member in that scenario<br/>message is "before AI" ⇔ no AI was requested OR message.created_at &lt; first_ai_at</div>
+  <p>Used by <code>chat_messages_before_ai/after_ai</code>, <code>before_or_after_ai</code> and <code>answer_matches_chat_before_ai_percent</code>. Because AI is private, “after AI” means “after <em>someone</em> in the group had access to AI help”.</p>
+
+  <h3>Text overlap (“copied from AI”, “matches chat before AI”)</h3>
+  <div class="formula">words = lowercase, punctuation removed, split on spaces<br/>trigrams(T) = set of every 3 consecutive words in T<br/>overlap(answer, source) = |trigrams(answer) ∩ trigrams(source)| ÷ |trigrams(answer)| × 100</div>
+  <p><strong>Example:</strong> answer “students should explain their reasoning to each other” has 6 trigrams. If the AI reply contains “…explain their reasoning to each other…”, 4 of them are shared (<em>explain their reasoning, their reasoning to, reasoning to each, to each other</em>) → <strong>67%</strong>. Three-word sequences detect re-used phrasing while ignoring common single words. Blank when the answer has fewer than 3 words or no AI was used.</p>
+  <div class="callout warn"><strong>Interpretation</strong>High overlap with AI suggests wording was taken over (possibly paraphrased lightly); low overlap does not prove that no AI <em>ideas</em> were used — only that the wording differs.</div>
+
+  <h3>Authorship and answer share</h3>
+  <div class="formula">authorship = runs [{participant, length}, …] covering every character of the final answer<br/>chars_by_author(p) = Σ length of runs by p<br/>share_of_final_answer(p) = chars_by_author(p) ÷ answer length × 100</div>
+  <p>Authorship reflects who typed the characters that <em>survive</em> in the final text. Text a student typed and someone else deleted does not count here, but does count in <code>characters_typed_in_answer</code>. In <code>answer_written_by</code>, percentages are relative to all attributed characters; untracked text (rare, e.g. legacy data) is attributed to nobody.</p>
+
+  <h3>Participation balance (0–1)</h3>
+  <div class="formula">activity(p) = chat characters by p + characters added by p in the answer<br/>share(p) = activity(p) ÷ Σ activity<br/>balance = −Σ share(p) · ln share(p)  ÷  ln(number of members)</div>
+  <p>Normalised Shannon entropy: <strong>1</strong> = perfectly even, <strong>0</strong> = one person did everything. Example with 2 members at 70% / 30%: −(0.7 ln 0.7 + 0.3 ln 0.3) / ln 2 = <strong>0.88</strong>. Blank with fewer than 2 members or no activity. Members with zero activity count in the denominator (they pull the balance down).</p>
+
+  <h3>AI help level</h3>
+  <table>
+    <tr><th>Level</th><th>Types</th></tr>
+    <tr><td>0 · None</td><td>No option selected</td></tr>
+    <tr><td>1 · Minimal</td><td>Small hint, Guiding question</td></tr>
+    <tr><td>2 · Moderate</td><td>Brief explanation, Example, Feedback on your answer</td></tr>
+    <tr><td>3 · Direct</td><td>Full expert answer</td></tr>
+    <tr><td>Collaboration support (no level)</td><td>Summary, Task splitting, Help with disagreement</td></tr>
+  </table>
+  <p><code>highest_ai_level_used</code> = maximum level among all requests in the scenario; “collaboration support only” if only collaboration types were used.</p>
+
+  <h3>Time</h3>
+  <div class="formula">start = attempt.discussion_started_at (first time anyone opened the scenario)<br/>minutes_before_first_ai = (first_ai_at − start) in minutes, 1 decimal<br/>minutes_total = (final_answer_at − start) in minutes, 1 decimal</div>
+
+  <h3>Learning</h3>
+  <div class="formula">score = number of correct MCQ answers (0–8)<br/>score_change = post_score − pre_score<br/>per concept: pre_x, post_x ∈ {0,1} → concept-level gain = post_x − pre_x</div>
+  <p>Written answers before/after can be coded qualitatively or scored with a rubric.</p>
+
+  <h3>Answer quality (rubric)</h3>
+  <div class="formula">total = correctness + clarity + reasoning + completeness + use_of_examples + depth   (6–24)<br/>average = total ÷ 6   (1–4)<br/>rubric_total_6_to_24 in group export = mean total over all raters</div>
+
+  <h3>AI usage behaviour</h3>
+  <ul>
+    <li><code>times_shown</code> / <code>times_hidden</code> — engagement and reconsideration of AI help.</li>
+    <li><code>still_shown_at_end</code> — whether the student kept the help visible.</li>
+    <li><code>group_chat_messages_before_request</code> — how much the group discussed before this student turned to AI (early vs late reliance).</li>
+    <li><code>students_who_saw_full_answer</code> — exposure to the most direct help.</li>
+  </ul>
+
+  <h3>How the metrics map to research themes</h3>
+  <table>
+    <tr><th>Theme</th><th>Metrics</th></tr>
+    <tr><td>Learning</td><td>pre/post score, score change, per-concept gain, written answers</td></tr>
+    <tr><td>Answer quality</td><td>rubric total/average per criterion, answer words</td></tr>
+    <tr><td>AI use</td><td>types &amp; levels, highest level, times shown/hidden, timing of first AI</td></tr>
+    <tr><td>AI influence</td><td>answer copied from AI %, matches chat before AI %, chat before vs after AI</td></tr>
+    <tr><td>Collaboration</td><td>participation balance, answer share, activity share, chat counts, collaborated_well, answer_was_shared</td></tr>
+    <tr><td>Autonomy / over-reliance</td><td>felt_in_control, ai_helped_me_think, relied_too_much_on_ai, could_contribute_without_ai, full-answer use</td></tr>
+    <tr><td>Experience</td><td>satisfaction, amount of AI help, comments, end questionnaire</td></tr>
+  </table>
+</section>
+
+<!-- 19 -->
+<section id="data">
+  <h2><span class="num">19.</span>Database model</h2>
+  <p>One SQLite file. Every table links to <code>sessions</code> with <em>cascade delete</em>; links to participants use “set null” (or cascade for AI replies).</p>
+  <table>
+    <tr><th>Table</th><th>One row per</th><th>Key columns</th></tr>
+    <tr><td><code>sessions</code></td><td>group</td><td>code, current_scenario_index, max_participants (4), consent_given, created_at, completed_at</td></tr>
+    <tr><td><code>participants</code></td><td>student</td><td>display_name, anonymous_id, joined_at</td></tr>
+    <tr><td><code>scenario_attempts</code></td><td>group × scenario</td><td>scenario_id, scenario_order, final_answer, final_answer_authorship (JSON runs), ready_participant_ids (JSON), submitted, submitted_by, discussion_started_at, final_answer_at, created_at, updated_at</td></tr>
+    <tr><td><code>discussion_messages</code></td><td>chat message</td><td>participant_id, scenario_order, text, created_at</td></tr>
+    <tr><td><code>individual_scaffolds</code></td><td>student × scenario × support type</td><td>scaffolding_type, ai_response, ai_prompt_system, ai_prompt_user, ai_model, ai_latency_ms, selected, times_selected, times_unselected, created_at, last_toggled_at — unique (participant, scenario, type)</td></tr>
+    <tr><td><code>edit_events</code></td><td>saved typing batch</td><td>participant_id, scenario_order, field, chars_added, chars_removed, inserted_text, created_at</td></tr>
+    <tr><td><code>surveys</code></td><td>student × scenario rating</td><td>12 rating columns, support_amount, open_reflection, created_at</td></tr>
+    <tr><td><code>assessments</code></td><td>student × test</td><td>assessment_type (pre/post), answers (JSON), open_answers (JSON), score, max_score, completed_at</td></tr>
+    <tr><td><code>final_reflections</code></td><td>student</td><td>answers (JSON, 10 questions), created_at</td></tr>
+    <tr><td><code>rubric_scores</code></td><td>rater × answer</td><td>attempt_id, rater, 6 criteria, notes, created_at, updated_at</td></tr>
+    <tr><td><code>research_events</code></td><td>logged event</td><td>event_type, participant_id, payload (JSON), created_at</td></tr>
+  </table>
+  <p class="small muted">Legacy, no longer filled: <code>scaffold_proposals</code> table and some <code>scenario_attempts</code> columns (discussion_text, draft_answer, help_reason, scaffolding_*, ai_* , own_words_explanation) from earlier designs — kept so existing databases never need a destructive migration.</p>
+</section>
+
+<!-- 20 -->
+<section id="events">
+  <h2><span class="num">20.</span>Research event log</h2>
+  <p>A time-stamped timeline of key moments in <code>research_events</code> (stored, not exported as CSV).</p>
+  <table>
+    <tr><th>Event</th><th>When</th><th>Payload</th></tr>
+    <tr><td><code>session_created</code></td><td>group created</td><td>code</td></tr>
+    <tr><td><code>participant_joined</code></td><td>student joins</td><td>name / anonymous id</td></tr>
+    <tr><td><code>consent_given</code></td><td>consent recorded</td><td>—</td></tr>
+    <tr><td><code>assessment_completed</code></td><td>pre/post-test saved</td><td>type, score</td></tr>
+    <tr><td><code>scenario_started</code></td><td>first opening of a scenario</td><td>scenario order</td></tr>
+    <tr><td><code>ai_support_requested</code></td><td>new AI reply generated</td><td>scenario, type, mocked, model, latencyMs, chatMessagesBefore</td></tr>
+    <tr><td><code>ai_support_unselected</code> / <code>ai_support_reselected</code></td><td>reply hidden / shown again</td><td>scenario, type</td></tr>
+    <tr><td><code>participant_ready</code> / <code>participant_unready</code></td><td>“I am good” on / off</td><td>scenario</td></tr>
+    <tr><td><code>final_answer_submitted</code></td><td>all members ready</td><td>scenario</td></tr>
+    <tr><td><code>survey_submitted</code></td><td>rating saved</td><td>scenario</td></tr>
+    <tr><td><code>final_reflection_submitted</code></td><td>questionnaire saved</td><td>—</td></tr>
+  </table>
+</section>
+
+<!-- 21 -->
+<section id="api">
+  <h2><span class="num">21.</span>API reference</h2>
+  <table>
+    <tr><th>Method &amp; path</th><th>Purpose</th></tr>
+    <tr><td><code>POST /api/sessions</code></td><td>Create a group (returns code).</td></tr>
+    <tr><td><code>GET /api/sessions/{code}</code></td><td>Group details and members (lobby).</td></tr>
+    <tr><td><code>POST /api/sessions/{code}/join</code></td><td>Join with <code>displayName</code>.</td></tr>
+    <tr><td><code>POST /api/sessions/{code}/consent</code></td><td>Record group consent.</td></tr>
+    <tr><td><code>GET/POST /api/sessions/{code}/assessment</code></td><td>Read / submit pre- or post-test.</td></tr>
+    <tr><td><code>GET /api/sessions/{code}/scenario/{n}</code></td><td>Load scenario state for a participant (creates the attempt).</td></tr>
+    <tr><td><code>PUT /api/sessions/{code}/scenario/{n}</code></td><td><code>action: "ready"</code> — “I am good” on/off.</td></tr>
+    <tr><td><code>POST /api/sessions/{code}/messages</code></td><td>Send a chat message.</td></tr>
+    <tr><td><code>POST /api/sessions/{code}/scaffold</code></td><td><code>select</code> / <code>unselect</code> AI support.</td></tr>
+    <tr><td><code>GET/POST /api/sessions/{code}/sync</code></td><td>Read / save the shared answer, authorship and edit batches.</td></tr>
+    <tr><td><code>POST /api/sessions/{code}/survey</code></td><td>Submit the scenario rating.</td></tr>
+    <tr><td><code>GET/POST /api/sessions/{code}/reflection</code></td><td>Read / submit end questionnaire.</td></tr>
+    <tr><td><code>GET/DELETE /api/admin/sessions</code></td><td>List groups / delete one or all (admin).</td></tr>
+    <tr><td><code>GET /api/admin/export</code></td><td>Per-group CSV (<code>type</code>, <code>session</code>) (admin).</td></tr>
+    <tr><td><code>GET/POST /api/admin/rubric</code></td><td>List finished answers / save a rubric score (admin).</td></tr>
+  </table>
+</section>
+
+<!-- 22 -->
+<section id="realtime">
+  <h2><span class="num">22.</span>Real-time layer (Socket.IO)</h2>
+  <p>Each browser joins a <strong>room</strong> per group and scenario: <code>GROUP-XXXX:n</code>. The socket only <em>relays</em>; the database (via the API) remains the source of truth.</p>
+  <table>
+    <tr><th>Event</th><th>Direction</th><th>Effect</th></tr>
+    <tr><td><code>room:join</code></td><td>browser → server</td><td>Join the room; server replies <code>participant:joined</code> (online count) and, if it holds live state, <code>room:state</code>.</td></tr>
+    <tr><td><code>field:update</code></td><td>browser → server</td><td>New answer text + authorship; stored in memory and broadcast as <code>field:state</code>.</td></tr>
+    <tr><td><code>chat:message</code></td><td>both</td><td>Relay of an already-saved message.</td></tr>
+    <tr><td><code>ready:update</code></td><td>both</td><td>Relay of new readiness / submission state.</td></tr>
+    <tr><td><code>disconnect</code></td><td>—</td><td>Server sends <code>participant:left</code> with the new count.</td></tr>
+  </table>
+  <p>Room state in memory is lost on server restart; nothing is lost from the research data, because every change is also saved through the API.</p>
+</section>
+
+<!-- 23 -->
+<section id="reliability">
+  <h2><span class="num">23.</span>Reliability, security and privacy</h2>
+  <div class="grid2">
+    <div class="card"><h4>Data integrity</h4>
+      <ul>
+        <li>All rules enforced on the server, not only in the browser.</li>
+        <li>Transactions for readiness/submission; unique index for AI replies; once-only submissions.</li>
+        <li>Continuous saving (0.8 s) + flush on leave; at most a fraction of a second of typing can be lost.</li>
+        <li>SQLite WAL mode + 8 s busy timeout for concurrent writes; foreign keys enforced.</li>
+        <li>Lazy database opening, so builds on Railway don’t lock the file.</li>
+      </ul></div>
+    <div class="card"><h4>Security &amp; privacy</h4>
+      <ul>
+        <li>Admin protected by <code>ADMIN_PASSWORD</code>; disabled in production if unset.</li>
+        <li>OpenAI key only on the server; never sent to browsers or shown in errors.</li>
+        <li><code>store: false</code> for OpenAI calls.</li>
+        <li>Anonymous codes in every export for anonymised reporting.</li>
+        <li>AI replies only returned to their owner.</li>
+        <li>Consent recorded before any study activity.</li>
+      </ul></div>
+  </div>
+  <div class="callout warn"><strong>Note</strong>Students have no passwords: anyone who knows a group ID and an unused name could join a group with free places. Share group IDs only with the intended members.</div>
+</section>
+
+<!-- 24 -->
+<section id="deploy">
+  <h2><span class="num">24.</span>Configuration and deployment</h2>
+  <h3>Environment variables</h3>
+  <table>
+    <tr><th>Variable</th><th>Purpose</th><th>Study value</th></tr>
+    <tr><td><code>OPENAI_API_KEY</code></td><td>Enables real AI replies (otherwise mock).</td><td>secret</td></tr>
+    <tr><td><code>OPENAI_MODEL</code></td><td>Model name (default <code>gpt-4o-mini</code>).</td><td><code>gpt-6-luna</code></td></tr>
+    <tr><td><code>OPENAI_BASE_URL</code></td><td>Optional alternative endpoint.</td><td>—</td></tr>
+    <tr><td><code>ADMIN_PASSWORD</code></td><td>Admin page password.</td><td>secret</td></tr>
+    <tr><td><code>DATABASE_URL</code></td><td>Database file (default <code>data/research.db</code>).</td><td><code>file:/data/research.db</code></td></tr>
+    <tr><td><code>PORT</code></td><td>Server port (default 3000; Railway sets it).</td><td>auto</td></tr>
+    <tr><td><code>NEXT_PUBLIC_SOCKET_URL</code></td><td>Optional allowed origin for Socket.IO (default any).</td><td>—</td></tr>
+  </table>
+  <h3>Railway</h3>
+  <ul>
+    <li>Build: <code>npm run build</code> · Start: <code>npm run start:prod</code> (pushes the schema, then starts <code>server.ts</code> in production mode).</li>
+    <li>A volume mounted at <code>/data</code> keeps the database across deployments and restarts.</li>
+    <li>Each push to <code>master</code> on GitHub triggers a new deployment. Schema changes are applied automatically without deleting data.</li>
+  </ul>
+  <h3>Local</h3>
+<pre><code>npm install
+npm run dev            # pushes schema, starts http://localhost:3000
+npm run pilot:test     # end-to-end test against the running server (see below)</code></pre>
+  <p>To start with an empty local database, stop the server and delete <code>data/research.db</code> (and its <code>-wal</code>/<code>-shm</code> files). On Railway, use the admin page’s delete functions.</p>
+</section>
+
+<!-- 25 -->
+<section id="testing">
+  <h2><span class="num">25.</span>Testing</h2>
+  <p><code>scripts/pilot-test.mjs</code> simulates a complete group through the API and must print <strong>“Pilot test PASSED”</strong> before changes are released. It checks:</p>
+  <ul>
+    <li>creating/joining, refusing empty and duplicate names, group size;</li>
+    <li>consent, pre-tests with written answers;</li>
+    <li>chat messages; private AI select / unselect / reselect, caching, simultaneous requests;</li>
+    <li>shared answer with authorship, the 500-word limit, no editing while ready;</li>
+    <li>“I am good” rules and automatic submission, locks after submission;</li>
+    <li>ratings with and without AI, post-tests, questionnaire;</li>
+    <li>rubric scoring, all 8 CSV exports, group deletion.</li>
+  </ul>
+  <p>Recommended in addition: a pilot with 1–2 real groups before the study, then delete those groups in the admin page.</p>
+</section>
+
+<!-- 26 -->
+<section id="limits">
+  <h2><span class="num">26.</span>Limitations and known gaps</h2>
+  <h3>Design limitations</h3>
+  <ul>
+    <li><strong>Self-selection of AI:</strong> all groups have the same options and choose freely, so comparisons are “chose AI vs didn’t”, not randomised conditions. Causal claims need assigned conditions (e.g. no-AI vs AI groups).</li>
+    <li><strong>Device-bound identity:</strong> switching browser/device breaks the link to earlier data.</li>
+    <li><strong>Overlap ≠ idea use:</strong> paraphrased AI ideas are not detected by trigram overlap.</li>
+    <li><strong>No background data:</strong> age, study year, prior AI use and attitudes are not collected.</li>
+  </ul>
+  <h3>Stored but not exported</h3>
+  <ul>
+    <li>Research event timeline (incl. “I am good” on/off switching).</li>
+    <li>AI response time (<code>ai_latency_ms</code>) and exact prompts sent.</li>
+    <li>Typing history (<code>edit_events</code>) — allows reconstructing how the answer evolved.</li>
+  </ul>
+  <h3>Not captured</h3>
+  <ul>
+    <li>Connection drops / presence over time (in memory only).</li>
+    <li>Paste vs typing (batches of 0.8 s can’t distinguish them reliably).</li>
+    <li>Whether a student carried their private AI idea into the <em>chat</em> (could be computed from stored data: overlap of the student’s post-request messages with their own reply).</li>
+    <li>Which member typed the AI-matching phrases in the answer (computable from authorship + replies).</li>
+  </ul>
+</section>
+
+<footer>AI-Supported Collaborative Learning · Complete application guide · generated from the current source code</footer>
+</main>
+</div>
+</body>
+</html>

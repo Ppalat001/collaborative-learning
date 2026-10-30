@@ -182,6 +182,32 @@ export function isValidSupportAmount(value: string): value is SupportAmount {
   return SUPPORT_AMOUNTS.some((amount) => amount.id === value);
 }
 
+/** Metacognitive prompts shown in a popup once the group answer is finished, before the rating. */
+export const METACOGNITIVE_PROMPTS = {
+  confidence: {
+    label: "Evaluation",
+    text: "How confident are you in your group's answer?",
+  },
+  confidenceReason: {
+    label: "Evaluation",
+    text: "Why? What makes you this confident (or not) in the group's answer?",
+  },
+  doDifferently: {
+    label: "Reflection",
+    text: "What could your group have done differently?",
+  },
+} as const;
+
+export const CONFIDENCE_LABELS = [
+  "Not at all confident",
+  "Slightly confident",
+  "Moderately confident",
+  "Very confident",
+  "Completely confident",
+];
+
+export const METACOGNITIVE_ANSWER_MAX_LENGTH = 2000;
+
 export const FINAL_REFLECTION_QUESTIONS = [
   {
     id: "ai_effect_on_collaboration",

@@ -49,6 +49,9 @@ const RATINGS = {
   overRelianceRating: 2,
   couldAnswerWithoutAi: 3,
   satisfactionRating: 5,
+  answerConfidence: 4,
+  confidenceReason: "We checked the answer against every part of the task.",
+  doDifferently: "Discuss longer before asking the AI.",
 };
 
 const NO_AI_RATINGS = {
@@ -56,6 +59,9 @@ const NO_AI_RATINGS = {
   sharedAnswerRating: 4,
   autonomyRating: 5,
   satisfactionRating: 4,
+  answerConfidence: 2,
+  confidenceReason: "We did not agree on the example.",
+  doDifferently: "Make sure everyone gives their view first.",
 };
 
 // Pre-test: 6 of 8 correct (pre-1 and pre-6 wrong). Post-test: all 8 correct.
@@ -307,6 +313,17 @@ async function main() {
   await setReady(2, studentB, true);
   const done2 = await setReady(2, studentA, true);
   assert(done2.submitted, "Scenario 2 should finish when both are ready");
+  const { answerConfidence: _confidence, ...withoutConfidence } = NO_AI_RATINGS;
+  await expectRejected(
+    `/api/sessions/${code}/survey`,
+    post({ scenarioId: "scenario-02", participantId: studentB, ...withoutConfidence }),
+    "rating without the confidence question"
+  );
+  await expectRejected(
+    `/api/sessions/${code}/survey`,
+    post({ scenarioId: "scenario-02", participantId: studentB, ...NO_AI_RATINGS, doDifferently: " " }),
+    "rating without the reflection question"
+  );
   await request(
     `/api/sessions/${code}/survey`,
     post({ scenarioId: "scenario-02", participantId: studentB, ...NO_AI_RATINGS })
@@ -409,6 +426,19 @@ async function main() {
     ratings.some((r) => r.scenario_number === "2" && r.student === "Pilot-B" && r.used_ai === "no"),
     "Ratings export should mark the student who used no AI"
   );
+  const bRating2 = ratings.find((r) => r.scenario_number === "2" && r.student === "Pilot-B");
+  assert(
+    bRating2.confidence_in_group_answer_1_to_5 === "2" &&
+      bRating2.why_this_confidence === NO_AI_RATINGS.confidenceReason &&
+      bRating2.what_group_could_do_differently === NO_AI_RATINGS.doDifferently,
+    "Ratings export should include the metacognitive answers"
+  );
+  const confidence2 = (await exportCsv("scenarios", code)).find((r) => r.scenario_number === "2");
+  assert(
+    confidence2.mean_confidence_1_to_5 === "3",
+    `Mean confidence for scenario 2 should be 3, got ${confidence2.mean_confidence_1_to_5}`
+  );
+  console.log("Metacognitive answers are exported per student and averaged per scenario");
 
   const contributions = await exportCsv("contributions", code);
   const shares = contributions

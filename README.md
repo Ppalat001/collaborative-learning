@@ -52,14 +52,14 @@ Open [http://localhost:3000](http://localhost:3000)
 1. The first student enters their name and clicks **Create session**; the lobby shows the group ID to share
 2. The other students (2–4 in total) join with the group ID and their own name; a name is required and must be unique within the group
 3. Group records informed consent in the lobby
-4. Each participant completes the **pre-test** individually
+4. Each participant completes the **pre-test** individually (no Skype, Zoom or other external calls; tests are individual)
 5. For each scenario:
    - Read the task
    - Discuss together in a live group chat (each message shows the student's name, time and their own colour, and is logged under their anonymous ID)
    - **Individual AI support (Step 2):** each student privately selects any number of AI options (or none). Each option's response is generated once per student and stored; unselecting hides it and selecting it again shows the same response without a new AI call. Other members never see it
    - **Final group answer (Step 3):** everyone types in one shared box (max 500 words). Each student's text is highlighted in their own colour, and a bar above the answer lists every member with their colour, share of the text and status
    - Each student clicks **I am good** when happy (this pauses their typing; clicking again unselects it). The scenario finishes only when **every** member is marked good
-   - **Every** student completes the scenario rating on their own device
+   - Each student then answers two **metacognitive prompts** (confidence in the group answer and what the group could have done differently), then the scenario rating on their own device
 6. Each participant completes the **post-test** and short end-of-study open questions
 7. Researcher scores the final answers with the rubric and exports CSVs from `/admin`
 
@@ -69,11 +69,11 @@ Visit `/admin`, enter the admin password (`ADMIN_PASSWORD`; locally defaults to 
 
 | Export | One row per |
 |---|---|
-| Group answers per scenario | scenario (members, final answer, who wrote what share, AI help each student used, highest AI level, % of the answer copied from AI, chat before/after AI, minutes, rubric total) |
+| Group answers per scenario | scenario (members, final answer, who wrote what share, AI help each student used, highest AI level, % of the answer copied from AI, chat before/after AI, minutes, rubric total, mean confidence) |
 | Discussion chat log | chat message (student, time, before or after the group's first AI request) |
 | Individual AI support | student × scenario × AI option (level, times shown/hidden, the AI reply) |
 | Individual contributions | student × scenario (chat messages and words, characters typed, share of the final answer) |
-| Individual scenario ratings | student × scenario (1–5 ratings, amount of AI help, comment) |
+| Individual scenario ratings | student × scenario (confidence in the answer and why, what the group could do differently, 1–5 ratings, amount of AI help, comment) |
 | Pre/post-test comparison | student (pre and post score, each concept and the two written answers side by side) |
 | End questionnaire | student (answers to the questions after the post-test) |
 | Rubric scores | scenario × rater (6 criteria scored 1–4, total 6–24, average) |

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { NoExternalCallsNote } from "@/components/NoExternalCallsNote";
 import { OPEN_ANSWER_MAX_LENGTH } from "@/lib/utils/assessment";
 
 interface AssessmentFormProps {
@@ -59,6 +60,7 @@ export function AssessmentForm({
       <div>
         <h2 className="text-xl font-semibold text-slate-900">{title}</h2>
         <p className="mt-2 text-sm text-slate-600">{description}</p>
+        <NoExternalCallsNote compact forTest className="mt-3" />
       </div>
 
       {questions.map((question, index) => (

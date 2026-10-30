@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AssessmentForm } from "@/components/AssessmentForm";
+import { NoExternalCallsNote } from "@/components/NoExternalCallsNote";
 import { useStoredParticipant } from "@/hooks/useStoredParticipant";
 import { getAssessment } from "@/lib/utils/assessment";
 
@@ -145,6 +146,8 @@ export default function SessionLobbyPage() {
         name={participants.find((p) => p.id === participantId)?.displayName ?? null}
       />
 
+      <NoExternalCallsNote className="mt-6" />
+
       <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
         <h2 className="font-semibold text-slate-900">Participants</h2>
         <ul className="mt-3 space-y-2">
@@ -226,11 +229,12 @@ export default function SessionLobbyPage() {
       <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
         <h2 className="font-semibold text-slate-900">Activity flow</h2>
         <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-slate-700">
-          <li>Complete the pre-test individually</li>
+          <li>Complete the pre-test individually (no external calls or help)</li>
           <li>Read each scenario together</li>
-          <li>Discuss as a group</li>
+          <li>Discuss questions, unclarities and your answer in the group chat</li>
           <li>Optionally ask the AI for private support</li>
           <li>Write one shared group answer and click &quot;I am good&quot;</li>
+          <li>After everyone agrees, reflect on the answer, then rate the scenario</li>
           <li>Complete a brief post-test and questionnaire after all scenarios</li>
         </ol>
         {session.consentGiven && !preTestCompleted && (

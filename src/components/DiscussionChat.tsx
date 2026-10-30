@@ -53,6 +53,21 @@ export function DiscussionChat({
 
   return (
     <div className="mt-3">
+      <div className="mb-3 rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3">
+        <h3 className="font-semibold text-indigo-900">
+          Team discussion — questions, unclarities and aligning your answer
+        </h3>
+        <p className="mt-1 text-sm text-slate-700">
+          Use this chat to talk through the scenario&apos;s questions, clear up anything
+          that is unclear, and align as a group. If members give different answers, or
+          someone wants to update the group answer, discuss it here first so you can agree
+          on one version. Each message shows who wrote it in their own colour.
+        </p>
+        <p className="mt-1 text-xs font-medium text-amber-800">
+          Keep all group communication here: no external calls or messaging apps (e.g.
+          Skype, Zoom, Teams, WhatsApp).
+        </p>
+      </div>
       <div
         ref={listRef}
         className="max-h-96 min-h-40 space-y-2 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3"

@@ -268,6 +268,7 @@ function buildGroupAnswersExport(data: GroupData): CsvExport {
     "minutes_before_first_ai",
     "minutes_total",
     "rubric_total_6_to_24",
+    "mean_confidence_1_to_5",
     "finished_at_utc",
   ];
 
@@ -342,6 +343,11 @@ function buildGroupAnswersExport(data: GroupData): CsvExport {
       minutes_before_first_ai: minutesBetween(started, data.firstAiAt.get(order) ?? null),
       minutes_total: minutesBetween(started, attempt.finalAnswerAt),
       rubric_total_6_to_24: mean(totals),
+      mean_confidence_1_to_5: mean(
+        data.surveys
+          .filter((s) => s.scenarioId === attempt.scenarioId && s.answerConfidence !== null)
+          .map((s) => s.answerConfidence as number)
+      ),
       finished_at_utc: readableTime(attempt.finalAnswerAt),
     };
   });
@@ -479,6 +485,9 @@ function buildRatingsExport(data: GroupData): CsvExport {
     "used_ai",
     "ai_help_used",
     "amount_of_ai_help",
+    "confidence_in_group_answer_1_to_5",
+    "why_this_confidence",
+    "what_group_could_do_differently",
     ...SURVEY_ITEMS.map((item) => RATING_COLUMNS[item.key]),
     "comment",
   ];
@@ -500,6 +509,9 @@ function buildRatingsExport(data: GroupData): CsvExport {
         ai_help_used: scaffolds.length > 0 ? helpList(scaffolds) : "none",
         amount_of_ai_help:
           SUPPORT_AMOUNTS.find((a) => a.id === survey.supportAmount)?.label ?? "",
+        confidence_in_group_answer_1_to_5: survey.answerConfidence,
+        why_this_confidence: survey.confidenceReason ?? "",
+        what_group_could_do_differently: survey.doDifferently ?? "",
         comment: survey.openReflection ?? "",
       };
       for (const item of SURVEY_ITEMS) row[RATING_COLUMNS[item.key]] = survey[item.key];

@@ -490,6 +490,9 @@ export async function getParticipantSurvey(
 export type SurveyRatings = Partial<Record<SurveyRatingKey, number | null>> & {
   supportAmount: string | null;
   openReflection?: string;
+  answerConfidence: number;
+  confidenceReason: string;
+  doDifferently: string;
 };
 
 export async function saveSurvey(

@@ -110,6 +110,10 @@ export const surveys = sqliteTable("surveys", {
   couldAnswerWithoutAi: integer("could_answer_without_ai"),
   satisfactionRating: integer("satisfaction_rating"),
   openReflection: text("open_reflection"),
+  /** Metacognitive popup: confidence in the group answer (1-5), why, and what to do differently. */
+  answerConfidence: integer("answer_confidence"),
+  confidenceReason: text("confidence_reason"),
+  doDifferently: text("do_differently"),
   createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
 });
 

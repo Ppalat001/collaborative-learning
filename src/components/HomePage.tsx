@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { NoExternalCallsNote } from "@/components/NoExternalCallsNote";
 import { DISPLAY_NAME_MAX_LENGTH, normalizeDisplayName } from "@/lib/instruments";
 
 async function joinAs(code: string, name: string) {
@@ -113,6 +114,8 @@ export function HomePage() {
           it does not autopilot the task.
         </p>
       </header>
+
+      <NoExternalCallsNote className="mb-8 mt-0" />
 
       {error && (
         <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700">
