@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { RUBRIC_CRITERIA } from "@/lib/instruments";
+import { getSessionByCode } from "@/lib/services/sessions";
 import { isAdminRequest } from "@/lib/utils/admin";
 import { nowIso } from "@/lib/utils/dates";
 import { getScenarioById } from "@/lib/utils/scenarios";
@@ -12,49 +13,76 @@ export async function GET(request: Request) {
   }
 
   try {
-    const rater = new URL(request.url).searchParams.get("rater")?.trim() ?? "";
-    const [sessions, attempts, scaffolds, scores] = await Promise.all([
-      db.select().from(schema.sessions),
+    const { searchParams } = new URL(request.url);
+    const rater = searchParams.get("rater")?.trim() ?? "";
+    const code = searchParams.get("session")?.trim().toUpperCase() ?? "";
+    if (!code) {
+      return NextResponse.json({ error: "Enter a group ID" }, { status: 400 });
+    }
+    const session = await getSessionByCode(code);
+    if (!session) {
+      return NextResponse.json({ error: `Group ${code} not found` }, { status: 404 });
+    }
+
+    const [members, attempts, scaffolds] = await Promise.all([
+      db
+        .select()
+        .from(schema.participants)
+        .where(eq(schema.participants.sessionId, session.id))
+        .orderBy(asc(schema.participants.joinedAt)),
       db
         .select()
         .from(schema.scenarioAttempts)
-        .where(eq(schema.scenarioAttempts.submitted, true)),
-      db.select().from(schema.individualScaffolds),
-      rater
-        ? db.select().from(schema.rubricScores).where(eq(schema.rubricScores.rater, rater))
-        : Promise.resolve([]),
+        .where(
+          and(
+            eq(schema.scenarioAttempts.sessionId, session.id),
+            eq(schema.scenarioAttempts.submitted, true)
+          )
+        )
+        .orderBy(asc(schema.scenarioAttempts.scenarioOrder)),
+      db
+        .select()
+        .from(schema.individualScaffolds)
+        .where(eq(schema.individualScaffolds.sessionId, session.id)),
     ]);
-    const sessionCode = new Map(sessions.map((s) => [s.id, s.code]));
+    const attemptIds = attempts.map((attempt) => attempt.id);
+    const scores =
+      rater && attemptIds.length > 0
+        ? await db
+            .select()
+            .from(schema.rubricScores)
+            .where(
+              and(
+                eq(schema.rubricScores.rater, rater),
+                inArray(schema.rubricScores.attemptId, attemptIds)
+              )
+            )
+        : [];
 
     return NextResponse.json({
-      attempts: attempts
-        .sort(
-          (a, b) =>
-            a.sessionId.localeCompare(b.sessionId) || a.scenarioOrder - b.scenarioOrder
-        )
-        .map((attempt) => {
-          const scenario = getScenarioById(attempt.scenarioId);
-          return {
-            id: attempt.id,
-            sessionCode: sessionCode.get(attempt.sessionId) ?? "",
-            scenarioOrder: attempt.scenarioOrder,
-            scenarioTitle: scenario?.title ?? attempt.scenarioId,
-            scenarioDescription: scenario?.description ?? "",
-            aiTypesUsed: [
-              ...new Set(
-                scaffolds
-                  .filter(
-                    (s) =>
-                      s.sessionId === attempt.sessionId &&
-                      s.scenarioOrder === attempt.scenarioOrder
-                  )
-                  .map((s) => s.scaffoldingType)
-              ),
-            ],
-            finalAnswer: attempt.finalAnswer,
-            scores: scores.filter((score) => score.attemptId === attempt.id),
-          };
-        }),
+      sessionCode: session.code,
+      members: members.map((member) => ({ id: member.id, name: member.displayName })),
+      attempts: attempts.map((attempt) => {
+        const scenario = getScenarioById(attempt.scenarioId);
+        return {
+          id: attempt.id,
+          scenarioOrder: attempt.scenarioOrder,
+          scenarioTitle: scenario?.title ?? attempt.scenarioId,
+          scenarioDescription: scenario?.description ?? "",
+          support: members.map((member) => ({
+            participantId: member.id,
+            requests: scaffolds
+              .filter(
+                (s) =>
+                  s.participantId === member.id && s.scenarioOrder === attempt.scenarioOrder
+              )
+              .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+              .map((s) => ({ type: s.scaffoldingType, selected: s.selected })),
+          })),
+          finalAnswer: attempt.finalAnswer,
+          scores: scores.filter((score) => score.attemptId === attempt.id),
+        };
+      }),
     });
   } catch (error) {
     console.error("Rubric fetch error:", error);

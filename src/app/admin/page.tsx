@@ -95,6 +95,7 @@ export default function AdminPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [groups, setGroups] = useState<GroupSummary[] | null>(null);
   const [selected, setSelected] = useState("");
+  const [deleteCode, setDeleteCode] = useState("");
 
   const run = async (action: () => Promise<void>) => {
     setError(null);
@@ -119,17 +120,21 @@ export default function AdminPage() {
 
   const deleteGroup = () =>
     run(async () => {
-      const confirm = window.prompt(
-        `This permanently deletes group ${selected} and everything recorded for it. Type ${selected} to confirm.`
-      );
-      if (confirm === null) return;
-      await adminFetch(
-        `/api/admin/sessions?session=${encodeURIComponent(selected)}`,
-        password,
-        { method: "DELETE", body: JSON.stringify({ confirm }) }
-      );
-      await fetchGroups("");
-      setNotice(`Group ${selected} deleted.`);
+      const code = deleteCode.trim().toUpperCase();
+      if (
+        !window.confirm(
+          `This permanently deletes group ${code} and everything recorded for it. Continue?`
+        )
+      ) {
+        return;
+      }
+      await adminFetch(`/api/admin/sessions?session=${encodeURIComponent(code)}`, password, {
+        method: "DELETE",
+        body: JSON.stringify({ confirm: code }),
+      });
+      setDeleteCode("");
+      if (groups) await fetchGroups(selected === code ? "" : selected);
+      setNotice(`Group ${code} deleted.`);
     });
 
   const deleteAll = () =>
@@ -237,35 +242,48 @@ export default function AdminPage() {
           ))}
         </div>
 
-        {groups && (
-          <div className="mt-8 rounded-xl border border-red-200 bg-red-50/50 p-4">
-            <h2 className="font-semibold text-red-800">Clean up data</h2>
-            <p className="mt-1 text-sm text-red-700">
-              Deleting cannot be undone. Download anything you need first.
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={deleteGroup}
-                disabled={!selectedGroup}
-                className="rounded-lg border border-red-300 bg-white px-4 py-2 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
-              >
-                Delete group {selectedGroup?.code ?? ""}
-              </button>
-              <button
-                type="button"
-                onClick={deleteAll}
-                disabled={groups.length === 0}
-                className="rounded-lg bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700 disabled:opacity-50"
-              >
-                Delete all groups
-              </button>
-            </div>
+        <div className="mt-8 rounded-xl border border-red-200 bg-red-50/50 p-4">
+          <h2 className="font-semibold text-red-800">Clean up data</h2>
+          <p className="mt-1 text-sm text-red-700">
+            Deleting cannot be undone. Download anything you need first.
+          </p>
+          <div className="mt-3 flex flex-wrap items-end gap-2">
+            <label className="space-y-1">
+              <span className="block text-sm text-red-800">Group ID to delete</span>
+              <input
+                value={deleteCode}
+                onChange={(e) => setDeleteCode(e.target.value.toUpperCase())}
+                placeholder="GROUP-ABCD"
+                list="delete-group-codes"
+                className="rounded-lg border border-red-300 bg-white px-3 py-2 uppercase"
+              />
+              <datalist id="delete-group-codes">
+                {groups?.map((group) => (
+                  <option key={group.code} value={group.code} />
+                ))}
+              </datalist>
+            </label>
+            <button
+              type="button"
+              onClick={deleteGroup}
+              disabled={!password || !deleteCode.trim()}
+              className="rounded-lg border border-red-300 bg-white px-4 py-2 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
+            >
+              Delete group
+            </button>
+            <button
+              type="button"
+              onClick={deleteAll}
+              disabled={!password}
+              className="rounded-lg bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700 disabled:opacity-50"
+            >
+              Delete all groups
+            </button>
           </div>
-        )}
+        </div>
       </div>
 
-      <RubricScoring password={password} />
+      <RubricScoring password={password} groupCodes={groups?.map((group) => group.code) ?? []} />
     </div>
   );
 }

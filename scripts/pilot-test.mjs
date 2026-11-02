@@ -352,13 +352,21 @@ async function main() {
   }
   console.log("Post-tests and end-of-study reflections recorded");
 
-  const rubric = await request(`/api/admin/rubric?rater=pilot`, {
+  const rubric = await request(`/api/admin/rubric?session=${code}&rater=pilot`, {
     headers: { "x-admin-password": ADMIN_PASSWORD },
   });
-  const attempt = rubric.attempts.find((a) => a.sessionCode === code && a.scenarioOrder === 1);
+  assert(rubric.sessionCode === code, "Rubric view should load only the requested group");
+  const attempt = rubric.attempts.find((a) => a.scenarioOrder === 1);
+  const typesUsed = [
+    ...new Set(attempt.support.flatMap((member) => member.requests.map((r) => r.type))),
+  ];
   assert(
-    attempt.aiTypesUsed.sort().join(",") === "explanation,guiding_question,hint",
+    typesUsed.sort().join(",") === "explanation,guiding_question,hint",
     "Rubric view should list the AI types the members used"
+  );
+  assert(
+    attempt.support.length === rubric.members.length,
+    "Rubric view should show AI help for every member"
   );
   await request(`/api/admin/rubric`, {
     method: "POST",
