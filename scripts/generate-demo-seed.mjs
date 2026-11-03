@@ -18,8 +18,11 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { group3 } from "./demo-group-3.mjs";
 
-const outPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "seed-demo-groups.sql");
+const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
+const outPath = path.join(scriptsDir, "seed-demo-groups.sql");
+const group3Path = path.join(scriptsDir, "seed-group-3.sql");
 
 const PRE_CORRECT = [1, 3, 0, 2, 0, 3, 2, 1];
 const POST_CORRECT = [2, 0, 3, 1, 3, 1, 0, 2];
@@ -403,7 +406,7 @@ function buildGroup(spec) {
       completeness: rubric[3],
       use_of_examples: rubric[4],
       depth: rubric[5],
-      notes: q(rubricNote(spec.code, scenario.order, rubric)),
+      notes: q((spec.note ?? rubricNote)(spec.code, scenario.order, rubric)),
       created_at: q(iso(rubricAt)),
       updated_at: q(iso(rubricAt)),
     });
@@ -1368,3 +1371,29 @@ DELETE FROM sessions WHERE code IN ('GROUP-PNGT', 'GROUP-MARA', 'GROUP-7HQM', 'G
 
 fs.writeFileSync(outPath, `${header}${sql.join("\n")}\nCOMMIT;\n`);
 console.log(`Wrote ${path.basename(outPath)} (${sql.length} inserts)`);
+
+sql.length = 0;
+buildGroup(group3);
+
+const group3Header = `-- Demo data for a third finished group. Safe to run more than once:
+-- it deletes this code, then inserts the group again.
+-- Other groups in the database, including GROUP-7HQM and GROUP-R4WK, are left as they are.
+-- active: ${group3.code}
+--
+-- ${group3.code}  ${group3.names.join(", ")}
+--   Monday 2 Nov 2026, from 15:38 UTC+2. Pre-test 4, 3 and 4 of 8. All three
+--   request the full AI answer on scenarios 1-3 (too revealing on 1 and 3); on 4
+--   two take the full answer and Papouris asks for feedback; medium help by all
+--   three on 5 and by one on 6, a hint and a question on 7 and on 8, no AI on 9
+--   and 10. All three write every answer except scenario 8 (two).
+--
+-- Rubric rows are scored the next evening by rater "P. Palat".
+-- Times are UTC.
+
+PRAGMA foreign_keys = ON;
+BEGIN;
+DELETE FROM sessions WHERE code = '${group3.code}';
+`;
+
+fs.writeFileSync(group3Path, `${group3Header}${sql.join("\n")}\nCOMMIT;\n`);
+console.log(`Wrote ${path.basename(group3Path)} (${sql.length} inserts)`);

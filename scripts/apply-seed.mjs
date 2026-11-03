@@ -1,12 +1,14 @@
 /**
- * Applies scripts/seed-demo-groups.sql.
+ * Applies a demo seed file (default scripts/seed-demo-groups.sql).
  *
  * Locally:
  *   node scripts/apply-seed.mjs
  *   node scripts/apply-seed.mjs data/research.db
+ *   node scripts/apply-seed.mjs data/research.db seed-group-3.sql
  *
- * On Railway (DATABASE_URL=file:/data/research.db), from the app directory:
- *   node scripts/apply-seed.mjs
+ * On Railway, from the app directory:
+ *   node scripts/apply-seed.mjs /data/research.db
+ *   node scripts/apply-seed.mjs /data/research.db seed-group-3.sql
  */
 import fs from "node:fs";
 import Database from "better-sqlite3";
@@ -21,9 +23,14 @@ if (!fs.existsSync(file)) {
   process.exit(1);
 }
 
-const sql = fs.readFileSync(new URL("./seed-demo-groups.sql", import.meta.url), "utf8");
+const seedFile = new URL(`./${process.argv[3] ?? "seed-demo-groups.sql"}`, import.meta.url);
+if (!fs.existsSync(seedFile)) {
+  console.error(`Seed file not found: ${seedFile.pathname}`);
+  process.exit(1);
+}
+const sql = fs.readFileSync(seedFile, "utf8");
 const active = sql.match(/^-- active: (.+)$/m)?.[1].split(/\s+/).filter(Boolean) ?? [];
-if (active.length !== 2) {
+if (active.length === 0) {
   console.error("Seed file is missing the active group codes.");
   process.exit(1);
 }
@@ -48,7 +55,7 @@ for (const group of groups) {
     `${group.code}: ${group.members} members, ${group.finished} finished scenarios, completed ${group.completed_at}`
   );
 }
-if (groups.length !== 2 || groups.some((group) => group.finished !== 10)) {
-  console.error("Seed did not create two finished groups.");
+if (groups.length !== active.length || groups.some((group) => group.finished !== 10)) {
+  console.error(`Seed did not create ${active.length} finished group(s).`);
   process.exit(1);
 }
