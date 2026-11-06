@@ -38,20 +38,20 @@
   {
     "id": "scenario-05",
     "order": 5,
-    "title": "Choosing Among Solutions",
-    "taskType": "solutions",
-    "expectedDiscussionMinutes": 9,
-    "description": "A teacher can introduce one support for group work next term: a shared online document with edit history, structured group roles, or an AI assistant that groups can ask for hints and feedback. Choose one and explain why it should be prioritised over the others.",
-    "promptForGroup": "Define what \"best\" means for your group (learning, participation, fairness, effort). Compare the options using those criteria."
+    "title": "Learning Activity – Understanding Different Types of Learning Regulation",
+    "taskType": "explain",
+    "expectedDiscussionMinutes": 10,
+    "description": "When students work individually or in groups, they use different strategies to manage their learning, overcome difficulties, and achieve their goals.\n\n• Self-Regulated Learning (SRL): A student takes responsibility for their own learning by setting goals, monitoring their understanding, identifying difficulties, and adjusting their approach when necessary.\n\n• Co-Regulated Learning (CoRL): One student helps another manage or improve their learning, for example, by providing guidance, asking questions, or helping them recognise mistakes.\n\n• Socially Shared Regulation of Learning (SSRL): Group members work together to set common goals, monitor their collective progress, identify challenges, and adjust their strategies to achieve a shared learning outcome.",
+    "promptForGroup": "Imagine a group of three students working together on a difficult assignment. Explain how Self-Regulated Learning (SRL), Co-Regulated Learning (CoRL), and Socially Shared Regulation of Learning (SSRL) could each occur during this activity. Provide one practical example of each and explain how these different approaches can contribute to successful collaborative learning."
   },
   {
     "id": "scenario-06",
     "order": 6,
-    "title": "Reflecting on Learning",
+    "title": "Reflecting on Meaningful Participation",
     "taskType": "reflection",
-    "expectedDiscussionMinutes": 6,
-    "description": "Reflect on a time when your group struggled to understand a new topic in class. Discuss what helped or hindered your learning and what you would do differently next time.",
-    "promptForGroup": "Share specific strategies that worked or failed. Connect your experience to how groups learn together."
+    "expectedDiscussionMinutes": 8,
+    "description": "Visible activity, such as the number of messages sent or the amount of text written, does not always show how much a contribution helped the group learn.",
+    "promptForGroup": "Does contributing more messages or writing more of the final answer necessarily mean that someone participated more meaningfully? Reflect on what makes a contribution valuable to group learning and explain how members can help each other develop a better understanding, even when they contribute different amounts."
   },
   {
     "id": "scenario-07",
@@ -68,8 +68,8 @@
     "title": "Data Interpretation",
     "taskType": "case_study",
     "expectedDiscussionMinutes": 8,
-    "description": "A course compared students who studied in small groups with students who studied alone. The group students scored 12% higher on the final exam, but 45% of them said the workload in their group was unfair. Your group must interpret these results and explain what the data does and does not show.",
-    "promptForGroup": "Avoid jumping to conclusions. What alternative explanations exist (for example, who chose to join groups)? What additional data would you want?"
+    "description": "Students studying in groups scored 12% higher than students studying alone. However, 45% of students in groups reported unfair workloads.",
+    "promptForGroup": "Do these results prove that studying in groups leads to better learning? Answer Yes or No and briefly explain why."
   },
   {
     "id": "scenario-09",
@@ -77,8 +77,8 @@
     "title": "Designing a Process",
     "taskType": "solutions",
     "expectedDiscussionMinutes": 9,
-    "description": "Your group must design a fair process for dividing presentation topics among four members when everyone has different strengths and schedule constraints.",
-    "promptForGroup": "Propose a process that is transparent and equitable. How will you handle disagreement about workload?"
+    "description": "Four students must divide the work for a group presentation. Some students have more free time or experience than others.",
+    "promptForGroup": "Is giving every student exactly one topic always a fair way to divide the work? Answer Yes or No, briefly explain why, and suggest one way to make the process fairer."
   },
   {
     "id": "scenario-10",
@@ -86,7 +86,7 @@
     "title": "Synthesis and Recommendation",
     "taskType": "reflection",
     "expectedDiscussionMinutes": 10,
-    "description": "Looking back at collaborative learning in general, your group must write a short recommendation for teachers: one practice to encourage and one practice to avoid when using AI in group work.",
-    "promptForGroup": "Draw on your experience in this activity and prior group work. Be specific about why each practice matters."
+    "description": "Think about how your group used AI assistance during the activities.",
+    "promptForGroup": "Should groups always follow AI suggestions when completing an assignment? Answer Yes or No and briefly explain your answer. Suggest one good practice for using AI in group work."
   }
 ]

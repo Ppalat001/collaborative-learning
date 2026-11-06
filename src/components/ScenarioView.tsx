@@ -299,7 +299,7 @@ export function ScenarioView({
             {collaboration.participantCount} online
           </div>
         </div>
-        <p className="mt-4 text-slate-700">{scenario.description}</p>
+        <p className="mt-4 whitespace-pre-line text-slate-700">{scenario.description}</p>
         <p className="mt-3 rounded-xl bg-slate-50 p-4 text-sm text-slate-700">
           <span className="font-medium">Discuss:</span> {scenario.promptForGroup}
         </p>

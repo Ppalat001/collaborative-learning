@@ -129,21 +129,21 @@ const scenarios = [
     readyAt: 600,
     chat: [
       [0, 40, "No full answers from now. We saw it decides for us."],
-      [1, 100, "Criteria: learning, fair participation, and how much effort it is for the teacher."],
-      [2, 165, "Shared document shows who did what. That helps fairness most."],
-      [1, 230, "Roles help participation in the meeting, not only in the document."],
-      [0, 430, "The explanation says the AI assistant is risky as the first support. Agrees with us."],
-      [1, 470, "Feedback says compare the document and roles using our own criteria. Adding that."],
+      [1, 100, "SRL is one student managing their own learning. CoRL is help from another student."],
+      [2, 165, "SSRL is all three of us checking the group plan. We need a clear example for each."],
+      [1, 230, "Lets use one difficult research assignment for all three examples."],
+      [0, 430, "The explanation confirms that the difference is who controls the regulation."],
+      [1, 470, "Feedback says connect each example to successful collaboration. Adding that."],
     ],
     ai: [
-      help(0, "explanation", 270, 1300, "To choose well, rank the criteria first. A support that makes participation visible helps fairness and lets the teacher react early. A support that produces content quickly can reduce discussion if it is introduced before groups have habits of working together."),
-      help(2, "example", 320, 1400, "Analogy, not your answer: a sports team that records every training session can see who keeps missing it. Visibility changes behaviour before the match, not after."),
-      help(1, "feedback", 390, 1500, "Strength: you define what best means before comparing. Revise: show why the shared document beats roles on your own criteria, not only what the document records."),
+      help(0, "explanation", 270, 1300, "Distinguish the processes by who regulates learning: the individual in SRL, one person supporting another in CoRL, and the group collectively in SSRL. They can all occur during the same assignment."),
+      help(2, "example", 320, 1400, "Analogy, not your answer: one player reviews their own performance, a teammate gives them a corrective prompt, and the whole team reviews its strategy and agrees to change it."),
+      help(1, "feedback", 390, 1500, "Strength: you have one example for each level of regulation. Revise: explain how each example contributes to the group's successful learning, not only what happens."),
     ],
     segments: [
-      { who: 1, text: "For us best means learning and fair participation, with reasonable effort for the teacher." },
-      { who: 2, text: "We choose the shared online document with edit history, because it shows who contributed and when, so a free rider or a takeover is visible early." },
-      { who: 0, text: "Roles help the meeting, but they are not visible afterwards. The AI assistant is useful, but if it is the first support, groups may let it write the work instead of discussing it." },
+      { who: 1, text: "SRL happens when one student notices they do not understand a source, plans to reread it and checks whether their understanding improved." },
+      { who: 2, text: "CoRL happens when a teammate asks that student to explain the source and points out a missed assumption, helping the student correct their approach." },
+      { who: 0, text: "SSRL happens when all three set a shared goal, monitor whether the assignment is on track and change their plan together. These processes support personal responsibility, peer help and coordinated group progress." },
     ],
   },
   {
@@ -152,19 +152,19 @@ const scenarios = [
     ready: [0, 1, 2],
     readyAt: 560,
     chat: [
-      [2, 45, "In maths last year we were stuck on probability for a week."],
-      [1, 110, "What helped me was one person solving one example slowly on the board."],
-      [0, 175, "What hindered us was that everyone pretended to understand, so nobody asked."],
-      [1, 240, "I will ask for feedback on what we have. Only feedback, we know the rest."],
-      [2, 430, "Feedback says add what we would change. Lets write the next-time part together."],
+      [2, 45, "More messages cannot automatically mean better participation."],
+      [1, 110, "One short question can expose a problem that ten repeated points do not."],
+      [0, 175, "Writing more may just mean one person became the recorder."],
+      [1, 240, "I will ask for feedback on our reasoning. Only feedback, we know the rest."],
+      [2, 430, "Feedback says explain how we help each other understand. Lets add that."],
     ],
     ai: [
-      help(1, "feedback", 290, 1600, "Strength: you name a specific moment and a real cause. Revise: you describe what helped, but not yet what you would change next time and why it would help the group learn."),
+      help(1, "feedback", 290, 1600, "Strength: you distinguish contribution quantity from contribution value. Revise: explain how members respond to a useful contribution and turn it into shared understanding."),
     ],
     segments: [
-      { who: 2, text: "When our group was stuck on probability, the biggest problem was that everyone pretended to understand, so nobody asked a question." },
-      { who: 1, text: "What helped was one member solving one example slowly on the board while we stopped her at every step we did not get." },
-      { who: 0, text: "Next time we would start each meeting by saying one thing we do not understand, because groups learn when confusion is said out loud, not hidden." },
+      { who: 2, text: "Contributing more messages or text does not necessarily mean participating more meaningfully. A quiet member may ask one question that reveals a mistaken assumption." },
+      { who: 1, text: "A valuable contribution moves the group's understanding forward by explaining a reason, connecting ideas, challenging a claim or inviting another member to clarify." },
+      { who: 0, text: "Members help one another by listening, asking follow-up questions, giving constructive feedback and checking that everyone can explain the shared answer, even when their visible contributions are unequal." },
     ],
   },
   {
@@ -208,7 +208,7 @@ const scenarios = [
       help(0, "guiding_question", 335, 950, "What would you need to know about the students before the course to rule out that the groups were simply stronger?"),
     ],
     segments: [
-      { who: 0, text: "The data shows that group students scored 12% higher, but it does not show that group work caused it, because students chose whether to join groups." },
+      { who: 0, text: "No. The data shows that group students scored 12% higher, but it does not show that group work caused it, because students chose whether to join groups." },
       { who: 1, text: "Motivated or stronger students may have joined groups. The 45% who felt the workload was unfair also suggests some members did more work. We would want earlier grades for both groups and each member's contribution in the group." },
     ],
   },
@@ -226,7 +226,7 @@ const scenarios = [
     ],
     ai: [],
     segments: [
-      { who: 0, text: "Everyone first writes down their availability and which topics they feel strong in, so the information is visible to the whole group." },
+      { who: 0, text: "No. Exactly one topic each is not always fair because topics vary in difficulty and members have different time and experience. Everyone first writes down availability and strengths." },
       { who: 2, text: "Each member then picks two preferred topics. If two people want the same topic, we compare who has the lighter workload so far." },
       { who: 1, text: "To stay fair, the hardest topic rotates between presentations, and we have a short check-in halfway to see if anyone needs help or the workload changed." },
     ],
@@ -245,7 +245,7 @@ const scenarios = [
     ],
     ai: [],
     segments: [
-      { who: 0, text: "Teachers should encourage AI support that gives hints or questions after the group has written its own draft, because the group still has to decide and explain the answer." },
+      { who: 0, text: "No. Groups should not always follow AI suggestions because the AI may be wrong or may replace their reasoning. A good practice is to request hints or questions after the group has a draft and verify the response before using it." },
       { who: 1, text: "They should avoid letting groups ask for a full AI answer before discussing. In our first tasks the full answer arrived first and the discussion became editing its text." },
       { who: 2, text: "It also makes quieter members stop talking, because the AI answer already sounds better than their own idea." },
     ],
@@ -403,14 +403,14 @@ export const group3 = {
   note,
   profiles: [
     {
-      pre: [1, 3, 2, 2, 1, 0, 2, 0],
+      pre: [1, 3, 2, 2, 0, 0, 3, 0],
       preScore: 4,
       preFinishedMin: 11,
       preOpen: [
         "Working on the same thing together and talking about it.",
         "To help when the group is stuck, not do it for us.",
       ],
-      post: [2, 0, 3, 1, 3, 1, 2, 2],
+      post: [2, 0, 3, 1, 2, 0, 2, 3],
       postScore: 7,
       postFinishedMin: 4,
       postOpen: [
@@ -432,14 +432,14 @@ export const group3 = {
       },
     },
     {
-      pre: [1, 0, 0, 1, 2, 3, 0, 0],
+      pre: [1, 0, 0, 1, 2, 2, 0, 0],
       preScore: 3,
       preFinishedMin: 13,
       preOpen: [
         "Everyone helps and understands the topic, not only their part.",
         "Give ideas or check our work.",
       ],
-      post: [2, 0, 1, 1, 3, 1, 0, 0],
+      post: [2, 0, 1, 1, 2, 0, 1, 0],
       postScore: 6,
       postFinishedMin: 6,
       postOpen: [
@@ -461,14 +461,14 @@ export const group3 = {
       },
     },
     {
-      pre: [0, 3, 0, 1, 0, 1, 3, 1],
+      pre: [0, 3, 0, 1, 1, 1, 2, 1],
       preScore: 4,
       preFinishedMin: 9,
       preOpen: [
         "When the group discusses and decides together.",
         "Maybe hints, I am not sure.",
       ],
-      post: [2, 0, 3, 0, 3, 1, 0, 2],
+      post: [2, 0, 3, 0, 2, 0, 1, 3],
       postScore: 7,
       postFinishedMin: 3,
       postOpen: [

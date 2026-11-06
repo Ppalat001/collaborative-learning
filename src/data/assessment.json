@@ -54,48 +54,48 @@
       {
         "id": "pre-5",
         "concept": "choosing_support",
-        "text": "Two group members strongly disagree and the discussion has stopped. Which AI support fits best?",
+        "text": "A group has written an answer that includes some correct ideas but also contains gaps in its explanation. The members want to improve their answer without having AI rewrite it. Which type of support would be most appropriate?",
         "options": [
-          "Help with disagreement, so the group compares positions using shared criteria",
-          "A full expert answer, so the disagreement no longer matters",
-          "No support; the group should vote immediately",
-          "Splitting the task, so each member answers separately"
+          "A brief explanation of the main concept to strengthen their understanding.",
+          "Feedback identifying weaknesses in their current answer and areas that need further reasoning.",
+          "An example of a similar problem showing how a strong answer could be developed.",
+          "A detailed explanation of how the problem should be solved, without providing the final answer."
         ],
-        "correctIndex": 0
+        "correctIndex": 1
       },
       {
         "id": "pre-6",
         "concept": "overreliance",
-        "text": "What is the main risk of a group regularly asking AI for complete answers?",
+        "text": "A group is working on a difficult problem. Members are exploring different approaches, testing ideas, and gradually making progress, although they have not reached an answer. What should determine whether AI assistance is needed?",
         "options": [
-          "The answers are usually too short",
-          "The group finishes too early",
-          "AI answers are always incorrect",
-          "Members stop reasoning for themselves and depend on the AI"
-        ],
-        "correctIndex": 3
-      },
-      {
-        "id": "pre-7",
-        "concept": "group_agency",
-        "text": "In AI-supported group work, keeping the group's agency means that:",
-        "options": [
-          "The AI decides which step the group should do next",
-          "The teacher chooses all AI support in advance",
-          "The group decides together what goes into its answer, even when members use AI help",
-          "Whatever the AI says is copied into the group's answer"
+          "Whether the group has spent more time than expected on the problem.",
+          "Whether the group has identified a possible solution but has not yet agreed on it.",
+          "Whether the difficulty is preventing further progress rather than encouraging useful exploration.",
+          "Whether the group could complete the task more quickly by receiving additional guidance."
         ],
         "correctIndex": 2
       },
       {
+        "id": "pre-7",
+        "concept": "group_agency",
+        "text": "During a collaborative activity, all members contribute to the discussion, but some send significantly fewer messages than others. Which observation would provide the strongest evidence of meaningful collaboration?",
+        "options": [
+          "Each member contributes approximately the same amount of written content to the final answer.",
+          "Members distribute tasks according to their knowledge and complete their assigned responsibilities.",
+          "Members have similar opportunities to express their opinions during the discussion.",
+          "Members consider, question, and build upon one another's ideas when developing their answer."
+        ],
+        "correctIndex": 3
+      },
+      {
         "id": "pre-8",
         "concept": "disagreement",
-        "text": "When group members disagree about an answer, the most productive response is to:",
+        "text": "A group receives an AI-generated explanation that seems convincing but differs from information the members previously discussed. What is the most appropriate next step?",
         "options": [
-          "Accept the opinion of the most confident member",
-          "Explain the reasoning behind each view and look for evidence together",
-          "Avoid the topic to keep the group friendly",
-          "Submit both answers and let the teacher choose"
+          "Request a second AI explanation and compare the two responses before selecting the most convincing one.",
+          "Examine the AI's reasoning against the available evidence and decide whether its suggestions are justified.",
+          "Incorporate the AI's explanation while noting that some parts may require further verification.",
+          "Compare the AI explanation with the group's original answer and retain whichever provides more detailed reasoning."
         ],
         "correctIndex": 1
       }
@@ -107,7 +107,7 @@
       },
       {
         "id": "open_ai_role",
-        "text": "How should AI support be used in group work so that the group still does the thinking?"
+        "text": "What is the difference between self-regulated learning, co-regulated learning, and socially shared regulation of learning? Explain how these three processes differ in a group learning environment and provide an example of each."
       }
     ]
   },
@@ -166,50 +166,50 @@
       {
         "id": "post-5",
         "concept": "choosing_support",
-        "text": "A group has discussed for a long time and lost track of what they agreed. Which AI support fits best?",
+        "text": "A group has drafted its recommendation, but the draft does not explain why the other options were rejected. The members want help improving that draft rather than receiving a new answer. Which support is most appropriate?",
         "options": [
-          "A full expert answer",
-          "A small hint about the topic",
-          "Splitting the task among members",
-          "A summary of the discussion so far"
+          "A full explanation of the preferred recommendation, without writing the group's final paragraph.",
+          "An example from another subject showing how alternatives can be compared.",
+          "Feedback on the draft that identifies the missing justification and asks the group to supply it.",
+          "A brief definition of every option so the group can begin the discussion again."
         ],
-        "correctIndex": 3
+        "correctIndex": 2
       },
       {
         "id": "post-6",
         "concept": "overreliance",
-        "text": "After receiving a full answer from the AI, what should a student do to keep learning?",
+        "text": "A group is uncertain, but its members are still proposing reasons, challenging them and revising their idea. Which judgement best decides whether they should ask the AI for help?",
         "options": [
-          "Paste the AI answer into the group answer unchanged, because it is correct",
-          "Explain the answer in their own words and check whether they agree with it",
-          "Ask the AI for a second full answer to compare",
-          "Move on to the next task immediately"
-        ],
-        "correctIndex": 1
-      },
-      {
-        "id": "post-7",
-        "concept": "group_agency",
-        "text": "Why should every member agree that the group answer is ready before the group moves on?",
-        "options": [
-          "So the answer reflects the whole group's thinking and everyone stays responsible for it",
-          "Because the software only works when several people press a button",
-          "So the teacher can see who is the leader",
-          "So the member who types fastest can decide for the group"
+          "They should ask only if the uncertainty has stopped them from making any further progress.",
+          "They should ask because uncertainty shows that their current ideas are not good enough.",
+          "They should ask whenever the scenario takes longer than the suggested discussion time.",
+          "They should ask so that the AI can choose the strongest idea they have already proposed."
         ],
         "correctIndex": 0
       },
       {
+        "id": "post-7",
+        "concept": "group_agency",
+        "text": "Two members send many chat messages while the third sends fewer. Which result best shows that the group still collaborated meaningfully?",
+        "options": [
+          "The three members finish with almost equal shares of the final text.",
+          "The third member's suggestion is discussed, questioned and used to change the group's answer.",
+          "The group divides the remaining writing so each member adds the same number of sentences.",
+          "Every member receives an equal opportunity to send a message before submission."
+        ],
+        "correctIndex": 1
+      },
+      {
         "id": "post-8",
         "concept": "disagreement",
-        "text": "Why can disagreement in a group improve learning?",
+        "text": "The AI gives a clear explanation, but it contradicts an example the group discussed earlier. What should the group do next?",
         "options": [
-          "It shows that the task is too difficult",
-          "It lets the most confident member take control",
-          "Explaining and defending different views pushes members to examine their reasoning more deeply",
-          "It reduces the time needed to finish the task"
+          "Accept the AI explanation because it is clearer than the group's example.",
+          "Ask the AI to explain the same point again in more detail before deciding.",
+          "Keep both ideas in the answer so that neither the AI nor the group is rejected.",
+          "Check the AI explanation against the example and the other available evidence before deciding what to keep."
         ],
-        "correctIndex": 2
+        "correctIndex": 3
       }
     ],
     "openQuestions": [
@@ -219,7 +219,7 @@
       },
       {
         "id": "open_ai_role",
-        "text": "How should AI support be used in group work so that the group still does the thinking?"
+        "text": "What is the difference between self-regulated learning, co-regulated learning, and socially shared regulation of learning? Explain how these three processes differ in a group learning environment and provide an example of each."
       }
     ]
   }

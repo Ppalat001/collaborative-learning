@@ -24,8 +24,8 @@ const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
 const outPath = path.join(scriptsDir, "seed-demo-groups.sql");
 const group3Path = path.join(scriptsDir, "seed-group-3.sql");
 
-const PRE_CORRECT = [1, 3, 0, 2, 0, 3, 2, 1];
-const POST_CORRECT = [2, 0, 3, 1, 3, 1, 0, 2];
+const PRE_CORRECT = [1, 3, 0, 2, 1, 2, 3, 1];
+const POST_CORRECT = [2, 0, 3, 1, 2, 0, 1, 3];
 const PRE_IDS = ["pre-1", "pre-2", "pre-3", "pre-4", "pre-5", "pre-6", "pre-7", "pre-8"];
 const POST_IDS = ["post-1", "post-2", "post-3", "post-4", "post-5", "post-6", "post-7", "post-8"];
 
@@ -573,20 +573,20 @@ const team1Scenarios = [
     ready: [0, 1, 2],
     readyAt: 320,
     chat: [
-      [0, 30, "shared doc, roles or ai?"],
+      [0, 30, "srl corl and ssrl examples?"],
       [1, 45, "full answer"],
-      [2, 240, "why not ai first?"],
-      [0, 262, "because the group lets it write the answer"],
+      [2, 240, "so srl is one person and ssrl is all of us?"],
+      [0, 262, "yes and corl is one person helping another"],
     ],
     ai: [
-      full(0, 65, 1700, "Prioritise a shared online document with edit history. It makes contributions visible. Structured roles are useful next, but an AI assistant should not be the first support because groups may let it write the answer."),
-      full(1, 75, 1800, "Prioritise the shared online document with edit history, because it makes everyone's contribution visible. Structured roles come second. An AI assistant should not come first, since groups tend to let it write the answer."),
-      full(2, 100, 1600, "A shared document with edit history should come first: contributions are visible. Roles are useful next. Putting the AI assistant first risks the group letting it write the answer."),
+      full(0, 65, 1700, "SRL occurs when one student notices a gap, sets a personal goal and changes strategy. CoRL occurs when one student helps another regulate learning, for example by asking a question that reveals a mistake. SSRL occurs when the whole group agrees on a goal, monitors progress and changes its shared plan."),
+      full(1, 75, 1800, "Self-regulation is individual: a student checks their own understanding and adjusts. Co-regulation is interpersonal: one member prompts or guides another. Socially shared regulation is collective: all members set goals, monitor the group and adapt their approach together."),
+      full(2, 100, 1600, "Example: one student rereads a difficult source after noticing confusion (SRL); a peer asks them to explain a step and helps correct it (CoRL); all three review whether their answer meets the criteria and agree to reorganise it (SSRL)."),
     ],
     segments: [
       {
         who: 0,
-        text: "Prioritise a shared online document with edit history because contributions are visible. Roles second. AI assistant should not be first or the group lets it write the answer.",
+        text: "SRL is when one student notices they do not understand and changes how they study. CoRL is when a teammate asks questions or points out a mistake. SSRL is when all three set a goal, check progress and change their plan together.",
       },
     ],
   },
@@ -594,16 +594,16 @@ const team1Scenarios = [
     order: 6,
     ready: [2, 0, 1],
     readyAt: 270,
-    chat: [[2, 35, "i write this one"]],
+    chat: [[2, 35, "i write this one. less messages can still be useful"]],
     ai: [
-      full(2, 60, 1400, "What helped was explaining the stuck point to each other. What hindered was waiting for one person to finish the section alone. Next time the group should stop and retell the idea before moving on."),
-      full(0, 80, 1500, "Helpful: explaining the point where you were stuck to each other. Hindering: waiting for one person to finish a section alone. Next time, stop and have someone retell the idea before moving on."),
-      full(1, 95, 1300, "Explaining the stuck point to each other helped most. Waiting while one member finished alone hindered the group. Next time pause and retell the idea before continuing."),
+      full(2, 60, 1400, "More messages or more writing do not necessarily mean more meaningful participation. A short question can reveal confusion, connect two ideas or help another member explain. Members support learning by listening, asking for reasons and checking that everyone understands."),
+      full(0, 80, 1500, "Quantity measures visible activity, not the learning value of a contribution. A member who asks one important question, challenges an assumption or explains a difficult point may contribute more meaningfully than someone who writes many sentences."),
+      full(1, 95, 1300, "Meaningful participation changes the group's understanding. Members can help one another by inviting quieter views, asking follow-up questions, explaining reasoning and checking whether everyone can restate the shared answer."),
     ],
     segments: [
       {
         who: 2,
-        text: "What helped was explaining the stuck point to each other. Waiting for one person hindered us. Next time stop and retell the idea.",
+        text: "More messages or writing does not always mean more meaningful participation. One useful question can reveal confusion or improve the answer. Members help learning by listening, asking for reasons and checking that everyone understands.",
       },
     ],
   },
@@ -643,7 +643,7 @@ const team1Scenarios = [
     segments: [
       {
         who: 1,
-        text: "The data shows an association, not that group work caused the higher score. Students who chose groups may already have been stronger. The 45% unfair workload means participation was unequal.",
+        text: "No. The data shows an association, not that group work caused the higher score. Students who chose groups may already have been stronger. The 45% unfair workload means participation was unequal.",
       },
     ],
   },
@@ -680,7 +680,7 @@ const team1Scenarios = [
       },
     ],
     segments: [
-      { who: 0, text: "A fair process states the criteria first, like interest, workload and schedule." },
+      { who: 0, text: "No. Giving everyone exactly one topic is not always fair because topics require different effort and members have different time and experience. A fair process states the criteria first, like interest, workload and schedule." },
       { who: 1, text: "Then we compare options against those criteria, not the loudest person." },
       { who: 2, text: "If two want the same topic, use the criteria again." },
     ],
@@ -712,7 +712,7 @@ const team1Scenarios = [
       },
     ],
     segments: [
-      { who: 0, text: "Encourage AI that asks the group to explain their reasoning." },
+      { who: 0, text: "No. Groups should not always follow AI suggestions because the response may be wrong or may replace their reasoning. A good practice is to use AI to ask questions and then check its suggestion against evidence." },
       { who: 1, text: "Avoid AI use that replaces the discussion. Support is not substitution. Like a calculator for checking, not for skipping the problem." },
     ],
   },
@@ -846,10 +846,10 @@ const team2Scenarios = [
     readyAt: 640,
     chat: [
       [0, 40, "No full answer this time. We already saw that it writes the conclusion for us."],
-      [1, 110, "Criteria first: learning, participation, fairness, effort."],
-      [2, 180, "Shared document shows who wrote what. Roles share the talk. AI is useful but we just watched it take over."],
-      [0, 260, "Explanation and an example, not the choice itself."],
-      [1, 460, "Good. The example is about study methods, not our three options. We can choose."],
+      [1, 110, "SRL is what one student does for their own learning. CoRL is one helping another."],
+      [2, 180, "And SSRL belongs to the whole group. We need one practical example of each."],
+      [0, 260, "Explanation and an example, not our final answer."],
+      [1, 460, "Good. The example separates individual, peer and whole-group regulation."],
     ],
     ai: [
       {
@@ -859,7 +859,7 @@ const team2Scenarios = [
         selected: true,
         latency: 1200,
         response:
-          "Choosing well means defining what best means before comparing. A support is stronger when it makes participation visible and still leaves the decision with the group.",
+          "SRL is regulated by the individual learner, CoRL is temporarily supported by another person, and SSRL is jointly regulated by the group. The key difference is who owns the goals, monitoring and adjustment.",
       },
       {
         who: 1,
@@ -868,7 +868,7 @@ const team2Scenarios = [
         selected: true,
         latency: 1400,
         response:
-          "Analogy, not the answer: students comparing three study methods usually list their constraints first, then drop the option that fails the most important constraint.",
+          "Analogy, not your answer: during revision, one learner changes their own study plan; a peer asks questions that help that learner notice a gap; the whole study group then agrees to change its shared schedule after checking progress.",
       },
       {
         who: 2,
@@ -877,13 +877,13 @@ const team2Scenarios = [
         selected: true,
         latency: 1300,
         response:
-          "A good comparison starts by agreeing what best means: learning, fair participation, effort. Then check each support against those criteria. Supports that make contributions visible usually serve learning better than those that produce the answer.",
+          "The processes can occur in the same activity. An individual may self-monitor, a peer may guide another member, and the group may collectively monitor whether its shared strategy is working. Each supports collaboration at a different social level.",
       },
     ],
     segments: [
-      { who: 1, text: "Best means learning and fair participation, not the least effort. We listed those criteria before comparing." },
-      { who: 0, text: "A shared document with edit history makes participation visible, and the decision stays with us." },
-      { who: 2, text: "Roles help the talk, and an AI assistant is useful later, but this activity showed it can take over if it is the first support. So we prioritise the shared document." },
+      { who: 1, text: "SRL is individual: a student notices they do not understand one source, sets a goal to reread it and checks their understanding afterwards." },
+      { who: 0, text: "CoRL is one member supporting another, for example by asking them to explain a step and helping them recognise a mistake." },
+      { who: 2, text: "SSRL is collective: all three agree on the assignment goal, check whether the shared plan is working and change roles together. The three levels help the individual, a peer and the whole group regulate learning." },
     ],
   },
   {
@@ -891,11 +891,11 @@ const team2Scenarios = [
     ready: [2, 0, 1],
     readyAt: 600,
     chat: [
-      [2, 40, "Last year our group froze on statistics. Silence made it worse."],
-      [0, 100, "What helped me was one person explaining the stuck step with a small example."],
-      [1, 170, "What failed was splitting the chapter so I never heard their confusion."],
-      [0, 240, "Feedback on this, not a full reflection written for us."],
-      [1, 430, "It named a strength and one gap. Fair. Ill add the next-time line."],
+      [2, 40, "Message count alone cannot show whether the idea helped."],
+      [0, 100, "A quiet member might ask the question that changes the whole answer."],
+      [1, 170, "And writing a lot can just mean being the recorder, not understanding more."],
+      [0, 240, "Feedback on our reasoning, not a full reflection written for us."],
+      [1, 430, "It says add how members help each other understand. Ill add that part."],
     ],
     ai: [
       {
@@ -905,7 +905,7 @@ const team2Scenarios = [
         selected: true,
         latency: 1500,
         response:
-          "Strength: you are using a real class moment, not a vague claim. Revise: say what you would do differently in the first ten minutes, not only what failed.",
+          "Strength: you distinguish visible quantity from the value of an idea. Revise: explain how members can respond to one another so that a contribution develops shared understanding.",
       },
       {
         who: 2,
@@ -914,13 +914,13 @@ const team2Scenarios = [
         selected: true,
         latency: 1400,
         response:
-          "Example, not your answer: a group stuck on a proof started each meeting with every member naming the step they did not understand. Within a week the quiet member was explaining steps to the others.",
+          "Example, not your answer: one member speaks only twice but asks the group to justify its assumption. The question reveals an error, and the others revise their reasoning together.",
       },
     ],
     segments: [
-      { who: 2, text: "When we froze on statistics, silence hindered us. One person explaining the stuck step with a small example on the board is what finally helped." },
-      { who: 0, text: "Splitting the chapter meant I never heard their confusion, so I could not tell whether my section even fitted theirs." },
-      { who: 1, text: "Next time, in the first ten minutes, each person would say what they do not understand before anyone writes, and we would not leave the room until all three could restate it." },
+      { who: 2, text: "More messages or more writing does not necessarily mean more meaningful participation. A member may write a lot because they are recording ideas, while a quieter member may ask the question that changes the reasoning." },
+      { who: 0, text: "A contribution is valuable when it helps the group notice a gap, connect ideas, justify a claim or reach shared understanding." },
+      { who: 1, text: "Members can help one another by inviting explanations, asking follow-up questions, giving constructive feedback and checking that everyone can explain the final answer, even when their visible contributions differ." },
     ],
   },
   {
@@ -980,7 +980,7 @@ const team2Scenarios = [
       },
     ],
     segments: [
-      { who: 2, text: "The 12% is an association, not proof that group work caused the higher score. The study does not say the groups were formed at random." },
+      { who: 2, text: "No. The 12% is an association, not proof that group work caused the higher score. The study does not say the groups were formed at random." },
       { who: 0, text: "Students who chose groups may already have been stronger or more motivated, so we would need their earlier scores before calling this an effect of collaboration." },
       { who: 1, text: "The 45% who called the workload unfair show that the average hides unequal participation. We would also want each member's contribution, not only the group exam score." },
     ],
@@ -1008,7 +1008,7 @@ const team2Scenarios = [
       },
     ],
     segments: [
-      { who: 0, text: "The process is transparent: everyone writes down strengths and schedule limits first, before any topic is claimed." },
+      { who: 0, text: "No. Exactly one topic each is not always fair because topics differ in difficulty and members have different time or experience. Everyone first writes down strengths and schedule limits before any topic is claimed." },
       { who: 2, text: "Then each person proposes two topics they can actually prepare, and we compare the set against an even workload." },
       { who: 1, text: "If we disagree, we return to those criteria instead of giving the topic to the most confident person. The hint was not needed; we hid it." },
     ],
@@ -1027,7 +1027,7 @@ const team2Scenarios = [
     ],
     ai: [],
     segments: [
-      { who: 2, text: "Encourage AI that asks the group a question or gives a hint after a draft exists, because today that was enough once we knew the topic." },
+      { who: 2, text: "No. Groups should not always follow AI suggestions because an answer can be incorrect, too direct or inconsistent with their evidence. A good practice is to ask for a question or hint after a draft exists, then verify the response before using it." },
       { who: 0, text: "Also encourage holding the answer until every member can explain it. Early on we could not, because the full answer arrived first." },
       { who: 1, text: "Avoid treating a full AI answer as the group's work. A pasted paragraph looks finished and stops the discussion, which is the practice we would drop." },
     ],
@@ -1158,11 +1158,11 @@ const team1 = {
   rubric: rubricTeam1,
   profiles: [
     {
-      pre: [0, 1, 0, 2, 1, 0, 3, 1],
+      pre: [0, 1, 0, 2, 0, 0, 2, 1],
       preScore: 3,
       preFinishedMin: 8,
       preOpen: ["helping each other i guess", "just ask the ai when we dont know"],
-      post: [2, 0, 3, 0, 0, 1, 0, 0],
+      post: [2, 0, 3, 0, 0, 0, 1, 0],
       postScore: 5,
       postFinishedMin: 2,
       postOpen: [
@@ -1184,11 +1184,11 @@ const team1 = {
       },
     },
     {
-      pre: [1, 0, 2, 0, 1, 3, 3, 0],
+      pre: [1, 0, 2, 0, 0, 2, 2, 0],
       preScore: 2,
       preFinishedMin: 11,
       preOpen: ["talking maybe, not only splitting the work", "idk, maybe hints"],
-      post: [2, 2, 1, 1, 0, 1, 3, 2],
+      post: [2, 2, 1, 1, 0, 0, 3, 3],
       postScore: 4,
       postFinishedMin: 4,
       postOpen: [
@@ -1210,11 +1210,11 @@ const team1 = {
       },
     },
     {
-      pre: [0, 2, 0, 0, 1, 2, 3, 3],
+      pre: [0, 2, 0, 0, 0, 3, 2, 3],
       preScore: 1,
       preFinishedMin: 6,
       preOpen: ["", ""],
-      post: [0, 0, 3, 1, 0, 0, 0, 1],
+      post: [0, 0, 3, 1, 0, 1, 1, 1],
       postScore: 4,
       postFinishedMin: 6,
       postOpen: [
@@ -1250,14 +1250,14 @@ const team2 = {
   rubric: rubricTeam2,
   profiles: [
     {
-      pre: [1, 3, 0, 2, 1, 1, 0, 1],
+      pre: [1, 3, 0, 2, 0, 1, 0, 1],
       preScore: 5,
       preFinishedMin: 12,
       preOpen: [
         "Everyone works on the same problem and explains it to each other.",
         "AI should give a push, not the final text.",
       ],
-      post: [2, 0, 3, 1, 3, 1, 0, 2],
+      post: [2, 0, 3, 1, 2, 0, 1, 3],
       postScore: 8,
       postFinishedMin: 3,
       postOpen: [
@@ -1279,14 +1279,14 @@ const team2 = {
       },
     },
     {
-      pre: [1, 1, 1, 2, 0, 3, 1, 0],
+      pre: [1, 1, 1, 2, 1, 2, 1, 0],
       preScore: 4,
       preFinishedMin: 14,
       preOpen: [
         "We need each other to finish, not just divide the pages.",
         "Use it when we are stuck, then discuss what it said.",
       ],
-      post: [2, 0, 3, 1, 1, 1, 0, 2],
+      post: [2, 0, 3, 1, 1, 0, 1, 3],
       postScore: 7,
       postFinishedMin: 5,
       postOpen: [
@@ -1308,11 +1308,11 @@ const team2 = {
       },
     },
     {
-      pre: [1, 0, 0, 0, 1, 2, 3, 1],
+      pre: [1, 0, 0, 0, 0, 3, 2, 1],
       preScore: 3,
       preFinishedMin: 10,
       preOpen: ["Talking together about one answer.", "Not sure. Maybe small hints."],
-      post: [2, 0, 3, 0, 1, 1, 0, 2],
+      post: [2, 0, 3, 0, 1, 0, 1, 3],
       postScore: 6,
       postFinishedMin: 7,
       postOpen: [

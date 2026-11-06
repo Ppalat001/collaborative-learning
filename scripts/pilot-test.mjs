@@ -67,11 +67,11 @@ const NO_AI_RATINGS = {
 // Pre-test: 6 of 8 correct (pre-1 and pre-6 wrong). Post-test: all 8 correct.
 const PRE_ANSWERS = {
   "pre-1": 0, "pre-2": 3, "pre-3": 0, "pre-4": 2,
-  "pre-5": 0, "pre-6": 0, "pre-7": 2, "pre-8": 1,
+  "pre-5": 1, "pre-6": 0, "pre-7": 3, "pre-8": 1,
 };
 const POST_ANSWERS = {
   "post-1": 2, "post-2": 0, "post-3": 3, "post-4": 1,
-  "post-5": 3, "post-6": 1, "post-7": 0, "post-8": 2,
+  "post-5": 2, "post-6": 0, "post-7": 1, "post-8": 3,
 };
 
 const OPEN_ANSWERS = {
