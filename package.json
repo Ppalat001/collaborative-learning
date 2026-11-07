@@ -14,7 +14,13 @@
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
     "db:check": "tsx scripts/check-db.ts",
-    "pilot:test": "node scripts/pilot-test.mjs"
+    "pilot:test": "node scripts/pilot-test.mjs",
+    "pilot:v2": "node scripts/pilot-adaptive-v2.mjs",
+    "pilot:isolated": "node scripts/pilot-isolated.mjs",
+    "test": "node scripts/run-tests.mjs",
+    "db:inspect": "node scripts/inspect-db.mjs",
+    "db:verify": "node scripts/verify-research-integrity.mjs",
+    "db:rehearse": "node scripts/rehearse-migration.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^12.10.0",

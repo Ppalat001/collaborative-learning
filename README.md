@@ -51,7 +51,7 @@ Open [http://localhost:3000](http://localhost:3000)
 
 1. The first student enters their name and clicks **Create session**; the lobby shows the group ID to share
 2. The other students (2–4 in total) join with the group ID and their own name; a name is required and must be unique within the group
-3. Group records informed consent in the lobby
+3. Group records informed consent in the lobby (in V2 groups each member consents on their own device, and the scenarios start only when every member has consented and finished the pre-test)
 4. Each participant completes the **pre-test** individually (no Skype, Zoom or other external calls; tests are individual)
 5. For each scenario:
    - Read the task
@@ -84,13 +84,25 @@ On `/admin` after loading the groups, **Delete group** removes the chosen group 
 
 Research instruments (survey items, end-of-study questions, rubric criteria) are defined in `src/lib/instruments.ts`.
 
-## Pilot testing
+## Adaptive Scaffolding V2
 
-With the server running:
+The current version of the platform for new groups: per-person consent, a server-side start gate with a frozen roster (2–4 members), a shared AI group facilitator (on request and, by condition, proactive offers that members accept or dismiss), optional private proactive offers with adaptive fading, and logging of every decision including decisions not to intervene. The nine private AI options are unchanged.
+
+It is **on by default**: with no `ADAPTIVE_V2_*` variables, every new group (home page and `/admin`) is a V2 group in the `dual_adaptive` condition. Groups created before V2 (legacy groups) never change and keep working as before. Researchers can also create V2 groups with a chosen condition on `/admin`, where a dashboard shows each group's decisions, interventions, responses and warnings, and separate versioned V2 CSV exports (per group or all V2 groups) are available. `ADAPTIVE_V2_ENABLED=false` switches back to the original platform for new groups.
+
+Documentation: [`docs/adaptive-scaffolding-v2/`](./docs/adaptive-scaffolding-v2/) (audit, plan, research protocol and measures, data dictionary and migrations, test report, researcher operating guide with Railway rollout, status). Settings are listed in `.env.example`.
+
+## Testing
 
 ```bash
-npm run pilot:test
+npm test                 # unit + integration tests on a disposable SQLite database
+npm run build
+npm run pilot:isolated   # production server on a throwaway database: original pilot (V2 switched off) + V2 pilot (defaults)
+npm run db:rehearse      # rehearse the schema push on a copy of data/research.db (source untouched)
+npm run db:verify        # read-only research-integrity check
 ```
+
+`npm run pilot:test` (original flow; needs a server started with `ADAPTIVE_V2_ENABLED=false`) and `npm run pilot:v2` (needs `ADAPTIVE_V2_ALLOW_TEST_POLICY=true`) run against an already running server and write into its database.
 
 See [PILOT.md](./PILOT.md) for a full pilot checklist with real student groups.
 
@@ -126,12 +138,14 @@ The app needs a long-running Node process (for Socket.io) and a persistent disk 
 3. Set **Variables**:
    - `DATABASE_URL=file:/data/research.db`
    - `ADMIN_PASSWORD=<strong password>` (admin exports are disabled in production without it)
-   - `OPENAI_API_KEY=<key>` (optional; mock AI otherwise)
+   - `OPENAI_API_KEY=<key>` (without it, AI support is demo text, recorded as mock)
    - `OPENAI_MODEL=<model>` (optional; defaults to `gpt-4o-mini`)
    - `OPENAI_BASE_URL=<url>` (optional; for OpenAI-compatible providers such as OpenRouter or Groq)
 4. **Settings → Networking**: generate a Railway domain or add your custom domain and create the DNS record Railway shows.
 5. Keep the service at **1 replica**: live room state and Socket.io rooms are held in memory.
 
 Avoid redeploying during a live study session: connected clients reconnect automatically and saved data is kept, but in-progress live state is reset.
+
+For the Adaptive Scaffolding V2 release (backup, deploy, verify, first groups) follow [`06-researcher-operating-guide.md`](./docs/adaptive-scaffolding-v2/06-researcher-operating-guide.md).
 
 Locally nothing changes: `npm run dev` (or `npm run build && npm start`) uses `./data/research.db` and binds to `127.0.0.1:3000`.

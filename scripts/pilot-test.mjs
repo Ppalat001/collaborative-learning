@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
- * Pilot validation script — simulates core research flow without a browser.
- * Run after starting the server: npm run dev
- * Then: npm run pilot:test
+ * Pilot validation script — simulates the original (legacy) research flow without a browser.
+ * Home-page groups are V2 by default, so start the server with V2 switched off:
+ *   ADAPTIVE_V2_ENABLED=false npm run dev
+ * Then: npm run pilot:test   (or run both via `npm run pilot:isolated legacy`)
  */
 
 const BASE = process.env.PILOT_BASE_URL ?? "http://localhost:3000";
@@ -132,6 +133,11 @@ async function main() {
   const session = await request("/api/sessions", { method: "POST" });
   const code = session.code;
   console.log("Created session:", code);
+  if ((await request(`/api/sessions/${code}`)).v2) {
+    throw new Error(
+      "The server creates V2 groups from the home page. This script tests the legacy flow: start the server with ADAPTIVE_V2_ENABLED=false."
+    );
+  }
 
   const joinA = await request(`/api/sessions/${code}/join`, post({ displayName: "Pilot-A" }));
   const joinB = await request(`/api/sessions/${code}/join`, post({ displayName: "Pilot-B" }));

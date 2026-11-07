@@ -3,6 +3,8 @@ import next from "next";
 import { parse } from "url";
 import { Server as SocketServer } from "socket.io";
 import { initSocketHandlers } from "./src/lib/socket";
+import { setRealtimeServer } from "./src/lib/realtime/emit";
+import { getOrchestrator } from "./src/lib/intervention/InterventionOrchestrator";
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = process.env.HOSTNAME ?? "localhost";
@@ -26,6 +28,9 @@ app.prepare().then(() => {
   });
 
   initSocketHandlers(io);
+  setRealtimeServer(io);
+  // Only evaluates scenario rooms with connected V2 members; idle for legacy groups.
+  getOrchestrator().startScheduler(Number(process.env.ADAPTIVE_V2_SCHEDULER_MS) || 5000);
 
   // Containers (Railway) must bind to all interfaces to be reachable.
   const host = process.env.HOST ?? (dev ? "127.0.0.1" : "0.0.0.0");

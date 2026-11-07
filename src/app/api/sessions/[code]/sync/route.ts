@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { authorizeParticipant, loadSessionContext } from "@/lib/auth/routeAuth";
+import { getOrchestrator } from "@/lib/intervention/InterventionOrchestrator";
 import {
   getParticipantInSession,
   getSessionByCode,
@@ -70,12 +72,19 @@ export async function POST(
     const body = await request.json();
     const scenarioOrder = Number(body.scenarioOrder ?? 1);
 
-    const session = await getSessionByCode(code);
-    if (!session) {
-      return NextResponse.json({ error: "Session not found" }, { status: 404 });
-    }
+    const loaded = await loadSessionContext(code);
+    if (!loaded.ok) return loaded.response;
+    const { session, assignment } = loaded.ctx;
 
-    const participant = await getParticipantInSession(session.id, body.participantId);
+    let participant = await getParticipantInSession(session.id, body.participantId);
+    if (assignment) {
+      // V2: only authenticated roster members may edit the shared answer.
+      const auth = await authorizeParticipant(request, code, body.participantId, {
+        requireScenarioAccess: true,
+      });
+      if (!auth.ok) return auth.response;
+      participant = auth.participant;
+    }
     const fields = parseFields(body.fields ?? body);
     const edits = parseEdits(body.edits);
 
@@ -89,6 +98,16 @@ export async function POST(
     );
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: result.status });
+    }
+
+    if (assignment && participant && edits.some((e) => e.charsAdded > 0 || e.charsRemoved > 0)) {
+      getOrchestrator().onHumanActivity({
+        sessionId: session.id,
+        sessionCode: session.code,
+        scenarioOrder,
+        participantId: participant.id,
+        kind: "edit",
+      });
     }
 
     return NextResponse.json({ ok: true });

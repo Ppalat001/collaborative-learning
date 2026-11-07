@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { describeAiError, generateScaffoldResponse } from "@/lib/ai/scaffold";
+import { authorizeParticipant, loadSessionContext } from "@/lib/auth/routeAuth";
+import { adaptiveEngine } from "@/lib/intervention/AdaptiveScaffoldingEngine";
+import { checkV2PrivateSupportGate } from "@/lib/services/interventions";
 import {
   formatTranscript,
   getDiscussionMessages,
   getIndividualScaffold,
   getOrCreateAttempt,
-  getParticipantInSession,
-  getSessionByCode,
   saveIndividualScaffold,
   setIndividualScaffoldSelected,
   toIndividualScaffold,
@@ -40,21 +41,18 @@ export async function POST(
       return NextResponse.json({ error: "Invalid support type" }, { status: 400 });
     }
 
-    const session = await getSessionByCode(code);
-    if (!session) {
-      return NextResponse.json({ error: "Session not found" }, { status: 404 });
-    }
+    const loaded = await loadSessionContext(code);
+    if (!loaded.ok) return loaded.response;
     const scenario = getScenarioByOrder(scenarioOrder);
     if (!scenario) {
       return NextResponse.json({ error: "Scenario not found" }, { status: 404 });
     }
-    const participant = await getParticipantInSession(session.id, body.participantId);
-    if (!participant) {
-      return NextResponse.json(
-        { error: "Join the session on this device before choosing AI support" },
-        { status: 403 }
-      );
-    }
+    const auth = await authorizeParticipant(request, code, body.participantId, {
+      missingMessage: "Join the session on this device before choosing AI support",
+      requireScenarioAccess: true,
+    });
+    if (!auth.ok) return auth.response;
+    const { session, participant, assignment } = auth;
 
     const existing = await getIndividualScaffold(participant.id, scenarioOrder, scaffoldingType);
 
@@ -91,6 +89,10 @@ export async function POST(
         { error: "This scenario is finished, so no new AI support can be requested" },
         { status: 409 }
       );
+    }
+    if (assignment) {
+      const gate = await checkV2PrivateSupportGate(assignment, participant.id, scenarioOrder);
+      if (gate) return NextResponse.json({ error: gate.error, code: gate.code }, { status: gate.status });
     }
 
     const discussionText = formatTranscript(
@@ -135,6 +137,15 @@ export async function POST(
       },
       participant.id
     );
+
+    if (assignment) {
+      await adaptiveEngine.recordOutcome({
+        sessionId: session.id,
+        participantId: participant.id,
+        scenarioOrder,
+        chosenSupportType: scaffoldingType,
+      });
+    }
 
     return NextResponse.json({ scaffold: toIndividualScaffold(row), cached: false });
   } catch (error) {

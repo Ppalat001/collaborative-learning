@@ -1,22 +1,9 @@
-import OpenAI from "openai";
+import { callResponsesApi, readApiKey } from "@/lib/ai/provider";
 import {
   buildScaffoldRequest,
   getMockScaffoldResponse,
 } from "@/lib/prompts";
 import type { ScaffoldingType, Scenario } from "@/lib/types";
-
-/** Railway values are sometimes saved with quotes or a "Bearer " prefix. */
-function readApiKey(): string {
-  let key = process.env.OPENAI_API_KEY?.trim() ?? "";
-  if (
-    (key.startsWith('"') && key.endsWith('"')) ||
-    (key.startsWith("'") && key.endsWith("'"))
-  ) {
-    key = key.slice(1, -1).trim();
-  }
-  if (key.toLowerCase().startsWith("bearer ")) key = key.slice(7).trim();
-  return key;
-}
 
 export function describeAiError(error: unknown): string {
   const status =
@@ -70,8 +57,7 @@ export async function generateScaffoldResponse(
     };
   }
 
-  const apiKey = readApiKey();
-  if (!apiKey) {
+  if (!readApiKey()) {
     return {
       response: getMockScaffoldResponse(scaffoldingType, scenario),
       model: "mock",
@@ -82,55 +68,13 @@ export async function generateScaffoldResponse(
     };
   }
 
-  // Any OpenAI-compatible provider (OpenRouter, Gemini, Groq) works via OPENAI_BASE_URL.
-  const baseURL = process.env.OPENAI_BASE_URL?.trim() || undefined;
-  const client = new OpenAI({ apiKey, baseURL });
-  const model = process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
-  const start = Date.now();
-
   // Current models (including gpt-6-luna) answer through /v1/responses, not chat completions.
-  const options: {
-    max_output_tokens?: number;
-    reasoning?: { effort: "none" };
-  } = {
-    max_output_tokens: 800,
-    reasoning: { effort: "none" },
-  };
-
-  let created: Awaited<ReturnType<typeof client.responses.create>> | undefined;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      created = await client.responses.create({
-        model,
-        instructions: system,
-        input: user,
-        store: false,
-        ...options,
-      });
-      break;
-    } catch (error) {
-      const unsupported =
-        error instanceof Error ? error.message.match(/Unsupported parameter: '([^']+)'/) : null;
-      const name = unsupported?.[1];
-      if (name === "max_output_tokens" || name === "reasoning") {
-        delete options[name];
-        continue;
-      }
-      throw error;
-    }
-  }
-  if (!created || !("output_text" in created)) {
-    throw new Error("The AI returned no response");
-  }
-
-  const response =
-    created.output_text.trim() ||
-    "Unable to generate a response. Please continue your discussion.";
+  const result = await callResponsesApi({ system, user, maxOutputTokens: 800 });
 
   return {
-    response,
-    model,
-    latencyMs: Date.now() - start,
+    response: result.text || "Unable to generate a response. Please continue your discussion.",
+    model: result.model,
+    latencyMs: result.latencyMs,
     systemPrompt: system,
     userPrompt: user,
     mocked: false,

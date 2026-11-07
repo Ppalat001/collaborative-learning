@@ -5,7 +5,10 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AssessmentForm } from "@/components/AssessmentForm";
 import { NoExternalCallsNote } from "@/components/NoExternalCallsNote";
+import { ResearchConsentForm } from "@/components/ResearchConsentForm";
+import { V2LobbyPanel, type V2LobbyInfo } from "@/components/V2LobbyPanel";
 import { useStoredParticipant } from "@/hooks/useStoredParticipant";
+import { participantHeaders } from "@/lib/client/participant";
 import { getAssessment } from "@/lib/utils/assessment";
 
 interface SessionInfo {
@@ -68,6 +71,8 @@ export default function SessionLobbyPage() {
   const [consentChecked, setConsentChecked] = useState(false);
   const participantId = useStoredParticipant().id;
   const [preTestCompleted, setPreTestCompleted] = useState(false);
+  const [v2, setV2] = useState<V2LobbyInfo | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const preTest = getAssessment("pre");
 
   useEffect(() => {
@@ -78,20 +83,25 @@ export default function SessionLobbyPage() {
         setSession(data.session);
         setParticipants(data.participants);
         setTotalScenarios(data.totalScenarios);
+        setV2(data.v2 ?? null);
       }
       setLoading(false);
     }
     load();
     const interval = setInterval(load, 3000);
     return () => clearInterval(interval);
-  }, [code]);
+  }, [code, reloadKey]);
+
+  const me = v2?.readiness.members.find((m) => m.id === participantId) ?? null;
+  const myConsentActive = !!me?.consented && !me.withdrawn;
 
   useEffect(() => {
     async function checkPreTest() {
       const id = participantId ?? localStorage.getItem("participantId");
       if (!id) return;
       const res = await fetch(
-        `/api/sessions/${code}/assessment?participantId=${encodeURIComponent(id)}&type=pre`
+        `/api/sessions/${code}/assessment?participantId=${encodeURIComponent(id)}&type=pre`,
+        { headers: participantHeaders(false) }
       );
       const data = await res.json();
       if (res.ok && data.completed) {
@@ -99,7 +109,30 @@ export default function SessionLobbyPage() {
       }
     }
     checkPreTest();
-  }, [code, participantId]);
+  }, [code, participantId, myConsentActive]);
+
+  const submitPreTest = async (
+    answers: Record<string, number>,
+    openAnswers: Record<string, string>
+  ): Promise<string | null> => {
+    const id = participantId ?? localStorage.getItem("participantId");
+    const res = await fetch(`/api/sessions/${code}/assessment`, {
+      method: "POST",
+      headers: participantHeaders(),
+      body: JSON.stringify({
+        assessmentType: "pre",
+        answers,
+        openAnswers,
+        participantId: id,
+      }),
+    });
+    if (res.ok) {
+      setPreTestCompleted(true);
+      return null;
+    }
+    const data = await res.json().catch(() => ({}));
+    return data.error ?? "Failed to save the pre-test";
+  };
 
   const giveConsent = async () => {
     await fetch(`/api/sessions/${code}/consent`, { method: "POST" });
@@ -167,7 +200,47 @@ export default function SessionLobbyPage() {
         </ul>
       </section>
 
-      {!session.consentGiven && (
+      {v2 && (
+        <>
+          {!me && (
+            <p className="mt-6 rounded-xl bg-slate-100 p-4 text-sm text-slate-700">
+              This device has not joined this group. Join with the group ID from the home page first.
+            </p>
+          )}
+          {participantId && me && !me.consented && !me.withdrawn && !v2.readiness.started && (
+            <ResearchConsentForm
+              code={code}
+              participantId={participantId}
+              onConsented={() => setReloadKey((key) => key + 1)}
+            />
+          )}
+          {myConsentActive && !preTestCompleted && !v2.readiness.started && (
+            <section className="mt-6">
+              <AssessmentForm
+                title={preTest.title}
+                description={preTest.description}
+                questions={preTest.questions}
+                openQuestions={preTest.openQuestions}
+                submitLabel="Submit pre-test"
+                onSubmit={async (answers, openAnswers) => {
+                  const error = await submitPreTest(answers, openAnswers);
+                  if (!error) setReloadKey((key) => key + 1);
+                  return error;
+                }}
+              />
+            </section>
+          )}
+          <V2LobbyPanel
+            code={code}
+            info={v2}
+            participantId={participantId}
+            onStarted={startStudy}
+            onChanged={() => setReloadKey((key) => key + 1)}
+          />
+        </>
+      )}
+
+      {!v2 && !session.consentGiven && (
         <section className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-6">
           <h2 className="font-semibold text-slate-900">Informed consent</h2>
           <p className="mt-2 text-sm text-slate-700">
@@ -195,7 +268,7 @@ export default function SessionLobbyPage() {
         </section>
       )}
 
-      {session.consentGiven && !preTestCompleted && (
+      {!v2 && session.consentGiven && !preTestCompleted && (
         <section className="mt-6">
           <AssessmentForm
             title={preTest.title}
@@ -203,25 +276,7 @@ export default function SessionLobbyPage() {
             questions={preTest.questions}
             openQuestions={preTest.openQuestions}
             submitLabel="Submit pre-test"
-            onSubmit={async (answers, openAnswers) => {
-              const id = participantId ?? localStorage.getItem("participantId");
-              const res = await fetch(`/api/sessions/${code}/assessment`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  assessmentType: "pre",
-                  answers,
-                  openAnswers,
-                  participantId: id,
-                }),
-              });
-              if (res.ok) {
-                setPreTestCompleted(true);
-                return null;
-              }
-              const data = await res.json().catch(() => ({}));
-              return data.error ?? "Failed to save the pre-test";
-            }}
+            onSubmit={submitPreTest}
           />
         </section>
       )}
@@ -237,19 +292,21 @@ export default function SessionLobbyPage() {
           <li>After everyone agrees, reflect on the answer, then rate the scenario</li>
           <li>Complete a brief post-test and questionnaire after all scenarios</li>
         </ol>
-        {session.consentGiven && !preTestCompleted && (
+        {!v2 && session.consentGiven && !preTestCompleted && (
           <p className="mt-4 text-sm text-amber-700">
             Complete your pre-test above before the group begins scenarios.
           </p>
         )}
-        <button
-          type="button"
-          onClick={startStudy}
-          disabled={!canBegin}
-          className="mt-5 rounded-lg bg-indigo-600 px-5 py-2.5 text-white hover:bg-indigo-700 disabled:opacity-50"
-        >
-          {session.completedAt ? "Review activity" : "Begin scenarios"}
-        </button>
+        {!v2 && (
+          <button
+            type="button"
+            onClick={startStudy}
+            disabled={!canBegin}
+            className="mt-5 rounded-lg bg-indigo-600 px-5 py-2.5 text-white hover:bg-indigo-700 disabled:opacity-50"
+          >
+            {session.completedAt ? "Review activity" : "Begin scenarios"}
+          </button>
+        )}
       </section>
     </div>
   );

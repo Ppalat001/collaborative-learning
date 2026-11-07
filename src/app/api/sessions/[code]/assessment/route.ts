@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
+import { authorizeParticipant, loadSessionContext } from "@/lib/auth/routeAuth";
 import {
   getParticipantAssessment,
-  getSessionByCode,
   saveAssessment,
 } from "@/lib/services/sessions";
 import {
@@ -20,13 +20,16 @@ export async function GET(
     const participantId = searchParams.get("participantId");
     const assessmentType = searchParams.get("type") === "post" ? "post" : "pre";
 
-    const session = await getSessionByCode(code);
-    if (!session) {
-      return NextResponse.json({ error: "Session not found" }, { status: 404 });
-    }
+    const loaded = await loadSessionContext(code);
+    if (!loaded.ok) return loaded.response;
+    const { session, assignment } = loaded.ctx;
 
     if (!participantId) {
       return NextResponse.json({ completed: false });
+    }
+    if (assignment) {
+      const auth = await authorizeParticipant(request, code, participantId);
+      if (!auth.ok) return auth.response;
     }
 
     const assessment = await getParticipantAssessment(
@@ -55,11 +58,29 @@ export async function POST(
     const body = await request.json();
     const assessmentType = body.assessmentType === "post" ? "post" : "pre";
     const answers = body.answers as Record<string, number>;
-    const participantId = body.participantId ? String(body.participantId) : undefined;
+    let participantId = body.participantId ? String(body.participantId) : undefined;
 
-    const session = await getSessionByCode(code);
-    if (!session) {
-      return NextResponse.json({ error: "Session not found" }, { status: 404 });
+    const loaded = await loadSessionContext(code);
+    if (!loaded.ok) return loaded.response;
+    const { session, assignment } = loaded.ctx;
+
+    if (assignment) {
+      // V2: only the consenting member themself; the post-test only after the group started.
+      const auth = await authorizeParticipant(request, code, participantId, {
+        requireConsent: assessmentType === "pre",
+        requireScenarioAccess: assessmentType === "post",
+      });
+      if (!auth.ok) return auth.response;
+      participantId = auth.participant.id;
+      if (assessmentType === "pre" && assignment.rosterFrozenAt) {
+        const existing = await getParticipantAssessment(session.id, participantId, "pre");
+        if (!existing) {
+          return NextResponse.json(
+            { error: "The pre-test closes when the group starts the scenarios" },
+            { status: 409 }
+          );
+        }
+      }
     }
 
     const openAnswers = parseOpenAnswers(assessmentType, body.openAnswers);

@@ -36,6 +36,7 @@ export async function POST(
         displayName: result.participant.displayName,
         anonymousId: result.participant.anonymousId,
       },
+      participantToken: result.token,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to join session";

@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AssessmentForm } from "@/components/AssessmentForm";
 import { NoExternalCallsNote } from "@/components/NoExternalCallsNote";
+import { participantHeaders } from "@/lib/client/participant";
 import { FINAL_REFLECTION_QUESTIONS } from "@/lib/instruments";
 import { getAssessment } from "@/lib/utils/assessment";
 
@@ -23,9 +24,10 @@ export default function CompletePage() {
       const participantId = localStorage.getItem("participantId");
       if (participantId) {
         const id = encodeURIComponent(participantId);
+        const headers = participantHeaders(false);
         const [assessmentRes, reflectionRes] = await Promise.all([
-          fetch(`/api/sessions/${code}/assessment?participantId=${id}&type=post`),
-          fetch(`/api/sessions/${code}/reflection?participantId=${id}`),
+          fetch(`/api/sessions/${code}/assessment?participantId=${id}&type=post`, { headers }),
+          fetch(`/api/sessions/${code}/reflection?participantId=${id}`, { headers }),
         ]);
         const assessment = await assessmentRes.json();
         const reflection = await reflectionRes.json();
@@ -66,7 +68,7 @@ export default function CompletePage() {
               const participantId = localStorage.getItem("participantId");
               const res = await fetch(`/api/sessions/${code}/assessment`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: participantHeaders(),
                 body: JSON.stringify({
                   assessmentType: "post",
                   answers,
@@ -114,7 +116,7 @@ export default function CompletePage() {
             }
             const res = await fetch(`/api/sessions/${code}/reflection`, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: participantHeaders(),
               body: JSON.stringify({
                 participantId: localStorage.getItem("participantId"),
                 answers,

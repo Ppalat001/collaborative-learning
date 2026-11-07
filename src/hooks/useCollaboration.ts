@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
 import { applyEdit, diffText, normalizeRuns } from "@/lib/authorship";
+import { getParticipantToken, participantHeaders } from "@/lib/client/participant";
 import { SHARED_FIELDS, type SharedField } from "@/lib/instruments";
 import type { AuthorRun, DiscussionMessage } from "@/lib/types";
 
@@ -30,7 +31,22 @@ interface UseCollaborationOptions {
   initialAuthorship: SharedAuthorship | null;
   initialMessages: DiscussionMessage[] | null;
   onReadyUpdate?: (event: ReadyEvent) => void;
+  /** V2 server events (AI facilitator, shared ideas, checkpoints, roles). */
+  onRealtimeEvent?: (event: RealtimeEventName, payload: unknown) => void;
+  /** Called after each (re)connect so V2 state can be reloaded from the database. */
+  onReconnect?: () => void;
 }
+
+export const REALTIME_EVENTS = [
+  "intervention:offered",
+  "intervention:delivered",
+  "intervention:state",
+  "intervention:feedback",
+  "ideas:shared",
+  "checkpoint:raised",
+  "roles:updated",
+] as const;
+export type RealtimeEventName = (typeof REALTIME_EVENTS)[number];
 
 const PERSIST_DELAY_MS = 800;
 
@@ -55,6 +71,8 @@ export function useCollaboration({
   initialAuthorship,
   initialMessages,
   onReadyUpdate,
+  onRealtimeEvent,
+  onReconnect,
 }: UseCollaborationOptions) {
   const [fields, setFields] = useState<SharedFields>(EMPTY_FIELDS);
   const [authorship, setAuthorship] = useState<SharedAuthorship>(EMPTY_AUTHORSHIP);
@@ -62,6 +80,7 @@ export function useCollaboration({
   const [connected, setConnected] = useState(false);
   const [participantCount, setParticipantCount] = useState(1);
   const [lastUpdatedBy, setLastUpdatedBy] = useState<string | undefined>();
+  const [denied, setDenied] = useState<string | null>(null);
 
   const socketRef = useRef<Socket | null>(null);
   const fieldsRef = useRef<SharedFields>(EMPTY_FIELDS);
@@ -70,11 +89,11 @@ export function useCollaboration({
   const dirtyFieldsRef = useRef(new Set<SharedField>());
   const pendingEditsRef = useRef<Partial<Record<SharedField, PendingEdit>>>({});
   const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const callbacksRef = useRef({ onReadyUpdate });
+  const callbacksRef = useRef({ onReadyUpdate, onRealtimeEvent, onReconnect });
 
   useEffect(() => {
-    callbacksRef.current = { onReadyUpdate };
-  }, [onReadyUpdate]);
+    callbacksRef.current = { onReadyUpdate, onRealtimeEvent, onReconnect };
+  }, [onReadyUpdate, onRealtimeEvent, onReconnect]);
 
   const applyFields = useCallback(
     (updates: Partial<SharedFields>, runs: Partial<SharedAuthorship> = {}) => {
@@ -146,7 +165,7 @@ export function useCollaboration({
       try {
         const res = await fetch(`/api/sessions/${sessionCode}/sync`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: participantHeaders(),
           keepalive: options?.keepalive,
           body: JSON.stringify({
             scenarioOrder,
@@ -179,13 +198,28 @@ export function useCollaboration({
 
     socket.on("connect", () => {
       setConnected(true);
-      socket.emit("room:join", { sessionCode, scenarioOrder, participantName });
-      fetch(`/api/sessions/${sessionCode}/scenario/${scenarioOrder}`)
+      setDenied(null);
+      socket.emit("room:join", {
+        sessionCode,
+        scenarioOrder,
+        participantName,
+        participantId,
+        participantToken: getParticipantToken(),
+      });
+      const query = participantId ? `?participantId=${encodeURIComponent(participantId)}` : "";
+      fetch(`/api/sessions/${sessionCode}/scenario/${scenarioOrder}${query}`, {
+        headers: participantHeaders(false),
+      })
         .then((res) => res.json())
         .then((data) => {
           if (Array.isArray(data.messages)) addMessages(data.messages);
+          callbacksRef.current.onReconnect?.();
         })
         .catch(console.error);
+    });
+
+    socket.on("room:denied", (payload: { reason?: string }) => {
+      setDenied(payload.reason ?? "denied");
     });
 
     socket.on("chat:message", (message: DiscussionMessage) => addMessages([message]));
@@ -229,10 +263,14 @@ export function useCollaboration({
     socket.on("participant:joined", onParticipantChange);
     socket.on("participant:left", onParticipantChange);
 
+    for (const event of REALTIME_EVENTS) {
+      socket.on(event, (payload: unknown) => callbacksRef.current.onRealtimeEvent?.(event, payload));
+    }
+
     return () => {
       socket.disconnect();
     };
-  }, [sessionCode, scenarioOrder, participantName, applyLiveFields, addMessages]);
+  }, [sessionCode, scenarioOrder, participantName, participantId, applyLiveFields, addMessages]);
 
   useEffect(() => {
     return () => {
@@ -274,7 +312,7 @@ export function useCollaboration({
   const sendMessage = async (text: string) => {
     const res = await fetch(`/api/sessions/${sessionCode}/messages`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: participantHeaders(),
       body: JSON.stringify({ scenarioOrder, participantId, text }),
     });
     const data = await res.json();
@@ -302,5 +340,7 @@ export function useCollaboration({
     participantCount,
     lastUpdatedBy,
     broadcastReady,
+    /** Set when the server refused this device for a V2 group (e.g. not signed in). */
+    denied,
   };
 }

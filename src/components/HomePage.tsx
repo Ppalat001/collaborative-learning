@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { NoExternalCallsNote } from "@/components/NoExternalCallsNote";
+import { storeParticipant } from "@/lib/client/participant";
 import { DISPLAY_NAME_MAX_LENGTH, normalizeDisplayName } from "@/lib/instruments";
 
 async function joinAs(code: string, name: string) {
@@ -14,8 +15,7 @@ async function joinAs(code: string, name: string) {
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error ?? "Failed to join session");
-  localStorage.setItem("participantName", data.participant.displayName);
-  localStorage.setItem("participantId", data.participant.id);
+  storeParticipant(data.participant, data.participantToken);
 }
 
 function NameField({

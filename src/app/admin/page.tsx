@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { ResearcherInterventionDashboard } from "@/components/ResearcherInterventionDashboard";
 import { RubricScoring } from "@/components/RubricScoring";
 
 const EXPORTS = [
@@ -59,6 +60,10 @@ interface GroupSummary {
   members: string[];
   scenariosFinished: number;
   totalScenarios: number;
+  /** false for legacy groups without an Adaptive Scaffolding V2 assignment. */
+  isV2: boolean;
+  condition: string | null;
+  started: boolean | null;
 }
 
 async function adminFetch(url: string, password: string, init?: RequestInit) {
@@ -212,6 +217,7 @@ export default function AdminPage() {
                 {groups.map((group) => (
                   <option key={group.code} value={group.code}>
                     {group.code}
+                    {group.isV2 ? ` (V2: ${group.condition})` : " (legacy)"}
                   </option>
                 ))}
               </select>
@@ -282,6 +288,14 @@ export default function AdminPage() {
           </div>
         </div>
       </div>
+
+      <ResearcherInterventionDashboard
+        password={password}
+        active={groups !== null}
+        selectedCode={selected}
+        selectedIsV2={!!selectedGroup?.isV2}
+        onGroupCreated={(code) => fetchGroups(code)}
+      />
 
       <RubricScoring password={password} groupCodes={groups?.map((group) => group.code) ?? []} />
     </div>

@@ -1,0 +1,41 @@
+{
+  "protocolVersion": "adaptive-v2-protocol-draft-1",
+  "status": "DRAFT - consent wording, contact details and retention must be approved before use with participants",
+  "consent": {
+    "version": "consent-v2-draft-1",
+    "informationSheetVersion": "info-sheet-v2-draft-1",
+    "title": "Your consent to take part",
+    "paragraphs": [
+      "This activity is part of a master's dissertation study on how and when an AI assistant should support small groups that learn together.",
+      "If you agree, the study records what you type on this platform: your test answers, your group chat messages, your edits to the shared group answer, the AI support you choose or accept, your responses to AI suggestions (for example accepting or dismissing them), and your questionnaire answers. Times are recorded in UTC.",
+      "AI processing: when you or your group ask for AI support, or accept an AI suggestion, the scenario, the relevant recorded group chat and the current shared answer are sent to the configured AI provider to generate a reply. Names are replaced by labels such as \"Member A\" where possible. The provider is asked not to store the request.",
+      "Private and shared AI: support you choose in \"AI support (just for you)\" is private; other members never see it unless you explicitly share an idea. Items in the \"Shared group facilitator\" panel are visible to everyone in your group.",
+      "Your group sees your nickname. Research data is analysed under an anonymous code, but nicknames are not full anonymity.",
+      "Taking part is voluntary. You can stop at any time and you can withdraw your consent using the link in the lobby. Withdrawal is recorded; how already collected data is handled follows the approved study protocol described in the information sheet."
+    ],
+    "checkboxes": [
+      { "id": "read_information", "text": "I have read the information above and the information sheet for this study." },
+      { "id": "ai_processing", "text": "I understand that my group's chat and shared answer may be processed by an AI provider when AI support is requested or accepted." },
+      { "id": "voluntary", "text": "I take part voluntarily and know I can stop or withdraw." }
+    ],
+    "contact": "Researcher contact: [to be inserted from the approved information sheet]",
+    "withdrawal": "To withdraw, click \"Withdraw my consent\" in the lobby or contact the researcher. Withdrawal is recorded and your later data is not collected."
+  },
+  "groupSize": {
+    "min": 2,
+    "max": 4
+  },
+  "defaultFeatures": {
+    "openingPrompt": true,
+    "checkpoints": true,
+    "roles": false,
+    "initialIdea": "off",
+    "agreementReason": "off"
+  },
+  "conditionDisclosure": {
+    "baseline_private_request": "In this session you can ask the AI privately for support in Step 2.",
+    "shared_on_demand": "In this session you can ask the AI privately for support, and your group can ask a shared AI facilitator for collaboration help that everyone sees.",
+    "proactive_group": "In this session you can ask the AI privately for support, your group can ask a shared AI facilitator for collaboration help, and the facilitator may sometimes offer the whole group a collaboration prompt. You decide whether to view or dismiss these offers.",
+    "dual_adaptive": "In this session you can ask the AI privately for support, your group can ask a shared AI facilitator for collaboration help, and the facilitator may sometimes offer the group a collaboration prompt. If you switch it on, the AI may also offer you a small private hint when you say you are stuck. You decide whether to accept or dismiss every offer."
+  }
+}

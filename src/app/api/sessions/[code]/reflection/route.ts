@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
+import { authorizeParticipant, loadSessionContext } from "@/lib/auth/routeAuth";
 import {
   getFinalReflection,
   getParticipantInSession,
-  getSessionByCode,
   saveFinalReflection,
 } from "@/lib/services/sessions";
 import { FINAL_REFLECTION_QUESTIONS } from "@/lib/instruments";
@@ -16,13 +16,16 @@ export async function GET(
   try {
     const { code } = await params;
     const participantId = new URL(request.url).searchParams.get("participantId");
-    const session = await getSessionByCode(code);
-    if (!session) {
-      return NextResponse.json({ error: "Session not found" }, { status: 404 });
-    }
+    const loaded = await loadSessionContext(code);
+    if (!loaded.ok) return loaded.response;
+    const { session, assignment } = loaded.ctx;
 
     const participant = await getParticipantInSession(session.id, participantId);
     if (!participant) return NextResponse.json({ completed: false });
+    if (assignment) {
+      const auth = await authorizeParticipant(request, code, participantId);
+      if (!auth.ok) return auth.response;
+    }
 
     const reflection = await getFinalReflection(session.id, participant.id);
     return NextResponse.json({ completed: !!reflection });
@@ -39,15 +42,13 @@ export async function POST(
   try {
     const { code } = await params;
     const body = await request.json();
-    const session = await getSessionByCode(code);
-    if (!session) {
-      return NextResponse.json({ error: "Session not found" }, { status: 404 });
-    }
-
-    const participant = await getParticipantInSession(session.id, body.participantId);
-    if (!participant) {
-      return NextResponse.json({ error: "Participant not found" }, { status: 400 });
-    }
+    const auth = await authorizeParticipant(request, code, body.participantId, {
+      missingStatus: 400,
+      missingMessage: "Participant not found",
+      requireScenarioAccess: true,
+    });
+    if (!auth.ok) return auth.response;
+    const { session, participant } = auth;
 
     const answers: Record<string, string> = {};
     for (const question of FINAL_REFLECTION_QUESTIONS) {

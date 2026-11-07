@@ -1,26 +1,37 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { DiscussionChat } from "@/components/DiscussionChat";
+import { GroupAIFacilitatorPanel } from "@/components/GroupAIFacilitatorPanel";
 import { GroupAnswerEditor, GroupAnswerNote } from "@/components/GroupAnswerEditor";
+import { GroupDiscussionStarter } from "@/components/GroupDiscussionStarter";
 import { MetacognitionPrompt, type MetacognitionAnswers } from "@/components/MetacognitionPrompt";
 import { NoExternalCallsNote } from "@/components/NoExternalCallsNote";
+import { PersonalInterventionOffer } from "@/components/PersonalInterventionOffer";
 import { ScaffoldingSelector } from "@/components/ScaffoldingSelector";
 import { SurveyForm, type SurveyAnswers } from "@/components/SurveyForm";
+import { InitialIdeaForm, ShareIdeaControl, type ShareSource } from "@/components/V2PrivateTools";
 import {
   useCollaboration,
   type ReadyEvent,
   type SharedAuthorship,
   type SharedFields,
 } from "@/hooks/useCollaboration";
-import type {
-  DiscussionMessage,
-  GroupMember,
-  IndividualScaffold,
-  Scenario,
-  ScaffoldingType,
+import { useInterventions } from "@/hooks/useInterventions";
+import { participantHeaders } from "@/lib/client/participant";
+import type { ScenarioV2State } from "@/lib/services/interventions";
+import type { publicStudyInfo } from "@/lib/services/studyV2";
+import {
+  getScaffoldingOption,
+  type DiscussionMessage,
+  type GroupMember,
+  type IndividualScaffold,
+  type Scenario,
+  type ScaffoldingType,
 } from "@/lib/types";
+
+type ScenarioV2 = ScenarioV2State & ReturnType<typeof publicStudyInfo>;
 
 interface ScenarioViewProps {
   sessionCode: string;
@@ -104,10 +115,15 @@ export function ScenarioView({
   const [loading, setLoading] = useState(true);
   const [readyBusy, setReadyBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [v2, setV2] = useState<ScenarioV2 | null>(null);
+  const [agreementReason, setAgreementReason] = useState("");
+  const [shareStart, setShareStart] = useState<ShareSource | null>(null);
 
   const fetchScenario = useCallback(async () => {
     const query = participantId ? `?participantId=${encodeURIComponent(participantId)}` : "";
-    const res = await fetch(`/api/sessions/${sessionCode}/scenario/${scenarioOrder}${query}`);
+    const res = await fetch(`/api/sessions/${sessionCode}/scenario/${scenarioOrder}${query}`, {
+      headers: participantHeaders(false),
+    });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error ?? "Failed to load scenario");
     return data;
@@ -128,6 +144,7 @@ export function ScenarioView({
         setInitialAuthorship({ finalAnswer: data.attempt.finalAnswerAuthorship ?? [] });
         setInitialMessages(data.messages ?? []);
         setSurveyCompleted(!!data.surveyCompleted);
+        setV2(data.v2 ?? null);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load");
       } finally {
@@ -151,6 +168,25 @@ export function ScenarioView({
     [members, fetchScenario]
   );
 
+  const initialInterventions = useMemo(
+    () =>
+      v2
+        ? {
+            interventions: v2.interventions,
+            sharedIdeas: v2.sharedIdeas,
+            checkpoints: v2.checkpoints?.raised ?? [],
+            roles: v2.roles?.chosen ?? [],
+          }
+        : null,
+    [v2]
+  );
+  const interventions = useInterventions({
+    sessionCode,
+    scenarioOrder,
+    participantId,
+    initial: initialInterventions,
+  });
+
   const collaboration = useCollaboration({
     sessionCode,
     scenarioOrder,
@@ -160,6 +196,8 @@ export function ScenarioView({
     initialAuthorship,
     initialMessages,
     onReadyUpdate,
+    onRealtimeEvent: v2 ? interventions.onRealtimeEvent : undefined,
+    onReconnect: v2 ? interventions.reload : undefined,
   });
   const { fields, authorship } = collaboration;
 
@@ -184,7 +222,7 @@ export function ScenarioView({
     try {
       const res = await fetch(`/api/sessions/${sessionCode}/scaffold`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: participantHeaders(),
         body: JSON.stringify({
           action: select ? "select" : "unselect",
           scenarioOrder,
@@ -221,8 +259,13 @@ export function ScenarioView({
       if (saveError) throw new Error(saveError);
       const res = await fetch(`/api/sessions/${sessionCode}/scenario/${scenarioOrder}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "ready", participantId, ready }),
+        headers: participantHeaders(),
+        body: JSON.stringify({
+          action: "ready",
+          participantId,
+          ready,
+          ...(v2 && v2.agreementReasonMode !== "off" ? { agreementReason } : {}),
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not update");
@@ -242,7 +285,7 @@ export function ScenarioView({
     setError(null);
     const res = await fetch(`/api/sessions/${sessionCode}/survey`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: participantHeaders(),
       body: JSON.stringify({
         scenarioId: scenario.id,
         participantId,
@@ -274,6 +317,20 @@ export function ScenarioView({
     setMetacognition(answers);
   };
 
+  const submitInitialIdea = async (text: string) => {
+    const data = await interventions.collaborate("initial_idea", { text });
+    if (data?.initialIdea) {
+      setV2((current) => (current ? { ...current, initialIdea: { ...current.initialIdea, ...data.initialIdea } } : current));
+    }
+  };
+
+  const setPrivateOptIn = async (value: boolean) => {
+    const data = await interventions.collaborate("preferences", { privateOffersOptIn: value });
+    if (data && typeof data.privateOptIn === "boolean") {
+      setV2((current) => (current ? { ...current, privateOptIn: data.privateOptIn } : current));
+    }
+  };
+
   if (loading || !scenario) {
     return (
       <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-slate-600">
@@ -281,6 +338,32 @@ export function ScenarioView({
       </div>
     );
   }
+
+  const ideaBlocksAi =
+    !!v2 && v2.initialIdea.mode === "required" && !v2.initialIdea.submitted && !submitted;
+  const showFacilitator =
+    !!v2 && (v2.capabilities.sharedManual || v2.capabilities.proactiveGroup || v2.capabilities.sharing);
+  const shareSources: ShareSource[] = v2?.capabilities.sharing
+    ? [
+        ...scaffolds
+          .filter((s) => s.selected && s.scaffoldingType !== "full_answer")
+          .map((s) => ({
+            sourceType: "individual_scaffold" as const,
+            sourceId: s.scaffoldingType,
+            label: getScaffoldingOption(s.scaffoldingType)?.label ?? s.scaffoldingType,
+            text: s.aiResponse,
+          })),
+        ...interventions.privateItems
+          .filter((item) => item.status === "delivered" && item.content)
+          .map((item) => ({
+            sourceType: "intervention" as const,
+            sourceId: item.id,
+            label: `Private coach: ${item.supportLabel}`,
+            text: item.content ?? "",
+          })),
+      ]
+    : [];
+  const myReady = !!participantId && readyIds.includes(participantId);
 
   return (
     <div className="space-y-6">
@@ -311,6 +394,28 @@ export function ScenarioView({
           {error}
         </div>
       )}
+      {collaboration.denied && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700">
+          Live updates are off because this device is not signed in for this group. Go back to the lobby on
+          the device you joined with.
+        </div>
+      )}
+
+      {v2 && (
+        <GroupDiscussionStarter
+          openingPrompt={v2.openingPrompt}
+          roles={v2.roles}
+          chosenRoles={interventions.roles}
+          checkpointKinds={v2.checkpoints?.kinds ?? null}
+          checkpoints={interventions.checkpoints}
+          members={members}
+          participantId={participantId}
+          locked={submitted}
+          busy={interventions.busy}
+          onChooseRole={interventions.chooseRole}
+          onRaiseCheckpoint={interventions.raiseCheckpoint}
+        />
+      )}
 
       <Step number={1} title="Group discussion">
         <DiscussionChat
@@ -321,6 +426,20 @@ export function ScenarioView({
         />
       </Step>
 
+      {v2 && showFacilitator && (
+        <GroupAIFacilitatorPanel
+          items={interventions.groupItems}
+          sharedIdeas={interventions.sharedIdeas}
+          manualTypes={v2.manualGroupSupport}
+          locked={submitted}
+          busy={interventions.busy}
+          error={interventions.error}
+          onRequest={interventions.requestGroupHelp}
+          onRespond={interventions.respond}
+          onViewed={interventions.markViewed}
+        />
+      )}
+
       <Step number={2} title="AI support (just for you)">
         <p className="mt-1 text-sm text-slate-600">
           This step is individual: only you can see the support you choose here. Select as
@@ -328,19 +447,83 @@ export function ScenarioView({
           is created once and kept, so selecting it again shows the same answer. Not
           selecting anything is fine too.
         </p>
+        {v2 && v2.initialIdea.mode !== "off" && (
+          <InitialIdeaForm
+            mode={v2.initialIdea.mode}
+            submitted={v2.initialIdea.submitted}
+            text={v2.initialIdea.text}
+            busy={interventions.busy === "initial_idea"}
+            onSubmit={submitInitialIdea}
+          />
+        )}
+        {v2?.recommendation && !v2.capabilities.proactivePrivate && (
+          <p className="mt-3 text-xs text-slate-600">
+            Suggested starting point: <strong>{v2.recommendation.label}</strong>. You can choose any option.
+          </p>
+        )}
         <div className="mt-4">
           <ScaffoldingSelector
             scaffolds={scaffolds}
             loading={loadingTypes}
             locked={submitted}
-            disabled={!participantId}
+            disabled={!participantId || ideaBlocksAi}
             onToggle={toggleSupport}
           />
         </div>
+        {v2?.capabilities.proactivePrivate && (
+          <PersonalInterventionOffer
+            items={interventions.privateItems}
+            optIn={v2.privateOptIn ?? false}
+            locked={submitted || ideaBlocksAi}
+            busy={interventions.busy}
+            recommendation={v2.recommendation}
+            onToggleOptIn={setPrivateOptIn}
+            onStuck={interventions.requestPersonal}
+            onRespond={interventions.respond}
+            onViewed={interventions.markViewed}
+            onShare={
+              v2.capabilities.sharing
+                ? (item) =>
+                    setShareStart({
+                      sourceType: "intervention",
+                      sourceId: item.id,
+                      label: `Private coach: ${item.supportLabel}`,
+                      text: item.content ?? "",
+                    })
+                : undefined
+            }
+          />
+        )}
+        {v2?.capabilities.sharing && !submitted && (
+          <ShareIdeaControl
+            key={shareStart?.sourceId ?? "share"}
+            sources={shareSources}
+            initialSource={shareStart}
+            busy={interventions.busy === "share"}
+            onShare={(source, text) => interventions.share(source.sourceType, source.sourceId, text)}
+            onClose={() => setShareStart(null)}
+          />
+        )}
+        {v2 && interventions.error && (
+          <p className="mt-3 text-sm text-red-700">{interventions.error}</p>
+        )}
       </Step>
 
       <Step number={3} title="Final group answer">
         <GroupAnswerNote />
+        {v2 && v2.agreementReasonMode !== "off" && !submitted && !myReady && (
+          <label className="mt-3 block text-sm text-slate-700">
+            Before you click &quot;I am good&quot;: in one sentence, why do you agree with this answer?
+            {v2.agreementReasonMode === "optional" && " (optional)"}
+            <textarea
+              value={agreementReason}
+              maxLength={500}
+              onChange={(e) => setAgreementReason(e.target.value)}
+              rows={2}
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+            />
+          </label>
+        )}
         <GroupAnswerEditor
           value={fields.finalAnswer}
           authorship={authorship.finalAnswer}

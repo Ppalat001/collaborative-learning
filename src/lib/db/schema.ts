@@ -1,10 +1,13 @@
 import {
+  index,
   integer,
+  real,
   sqliteTable,
   text,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 import type { AuthorRun } from "@/lib/types";
+import type { StudyFeatures } from "@/lib/intervention/types";
 
 export const sessions = sqliteTable("sessions", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -24,6 +27,8 @@ export const participants = sqliteTable("participants", {
   displayName: text("display_name").notNull(),
   anonymousId: text("anonymous_id").notNull(),
   joinedAt: text("joined_at").notNull().$defaultFn(() => new Date().toISOString()),
+  /** SHA-256 of the participant's device token; null for members who joined before tokens existed. */
+  authTokenHash: text("auth_token_hash"),
 });
 
 export const scenarioAttempts = sqliteTable("scenario_attempts", {
@@ -250,3 +255,363 @@ export const assessments = sqliteTable("assessments", {
   maxScore: integer("max_score").notNull(),
   completedAt: text("completed_at").notNull().$defaultFn(() => new Date().toISOString()),
 });
+
+// ---------------------------------------------------------------------------
+// Adaptive Scaffolding V2. Additive only: a group is a V2 group exactly when it
+// has a study_assignments row, written once at creation. Groups without one keep
+// the original behavior and are exported as "legacy".
+// ---------------------------------------------------------------------------
+
+const id = () => text("id").primaryKey().$defaultFn(() => crypto.randomUUID());
+const createdAt = () =>
+  text("created_at").notNull().$defaultFn(() => new Date().toISOString());
+const sessionRef = () =>
+  text("session_id")
+    .notNull()
+    .references(() => sessions.id, { onDelete: "cascade" });
+
+/**
+ * Condition and every instrument/policy/model version for a V2 group.
+ * Immutable after insert except the one-way roster freeze (enforced by a trigger
+ * created in src/lib/db/index.ts).
+ */
+export const studyAssignments = sqliteTable(
+  "study_assignments",
+  {
+    id: id(),
+    sessionId: sessionRef(),
+    researchCondition: text("research_condition").notNull(),
+    /** researcher_selected | configured_default | randomized */
+    assignmentMethod: text("assignment_method").notNull(),
+    /** admin | home_page */
+    createdVia: text("created_via").notNull(),
+    studyProtocolVersion: text("study_protocol_version").notNull(),
+    consentVersion: text("consent_version").notNull(),
+    informationSheetVersion: text("information_sheet_version").notNull(),
+    scenarioSetVersion: text("scenario_set_version").notNull(),
+    assessmentVersion: text("assessment_version").notNull(),
+    interventionPolicyVersion: text("intervention_policy_version").notNull(),
+    modelConfigVersion: text("model_config_version").notNull(),
+    /** real | mock, at the time the group was created. */
+    aiModeAtAssignment: text("ai_mode_at_assignment").notNull(),
+    minGroupSize: integer("min_group_size").notNull(),
+    maxGroupSize: integer("max_group_size").notNull(),
+    features: text("features", { mode: "json" }).$type<StudyFeatures>().notNull(),
+    assignedAt: text("assigned_at").notNull().$defaultFn(() => new Date().toISOString()),
+    rosterFrozenAt: text("roster_frozen_at"),
+    frozenRosterIds: text("frozen_roster_ids", { mode: "json" }).$type<string[]>(),
+    startedBy: text("started_by"),
+  },
+  (table) => [uniqueIndex("study_assignments_session_unique").on(table.sessionId)]
+);
+
+/** One consent record per participant (V2 groups only). Withdrawal is recorded, never deleted. */
+export const participantConsents = sqliteTable(
+  "participant_consents",
+  {
+    id: id(),
+    sessionId: sessionRef(),
+    participantId: text("participant_id")
+      .notNull()
+      .references(() => participants.id, { onDelete: "cascade" }),
+    consentVersion: text("consent_version").notNull(),
+    informationSheetVersion: text("information_sheet_version").notNull(),
+    /** The checkbox ids the participant ticked, in order. */
+    confirmedStatements: text("confirmed_statements", { mode: "json" }).$type<string[]>().notNull(),
+    aiProcessingAcknowledged: integer("ai_processing_acknowledged", { mode: "boolean" }).notNull(),
+    consentedAt: text("consented_at").notNull().$defaultFn(() => new Date().toISOString()),
+    withdrawnAt: text("withdrawn_at"),
+    withdrawalNote: text("withdrawal_note"),
+    /** Recorded by the researcher when a member leaves a started group for good. */
+    droppedOutAt: text("dropped_out_at"),
+    dropOutNote: text("drop_out_note"),
+  },
+  (table) => [uniqueIndex("participant_consents_participant_unique").on(table.participantId)]
+);
+
+/** Optional private pre-AI idea per member and scenario (instrument flag `initialIdea`). */
+export const scenarioInitialIdeas = sqliteTable(
+  "scenario_initial_ideas",
+  {
+    id: id(),
+    sessionId: sessionRef(),
+    participantId: text("participant_id")
+      .notNull()
+      .references(() => participants.id, { onDelete: "cascade" }),
+    scenarioOrder: integer("scenario_order").notNull(),
+    text: text("text").notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("scenario_initial_ideas_unique").on(table.participantId, table.scenarioOrder),
+  ]
+);
+
+/** A human role a member chose to take for one scenario (instrument flag `roles`). */
+export const groupRoles = sqliteTable(
+  "group_roles",
+  {
+    id: id(),
+    sessionId: sessionRef(),
+    participantId: text("participant_id")
+      .notNull()
+      .references(() => participants.id, { onDelete: "cascade" }),
+    scenarioOrder: integer("scenario_order").notNull(),
+    role: text("role").notNull(),
+    /** Whether the role matches the suggested rotation. */
+    matchesRotation: integer("matches_rotation", { mode: "boolean" }).notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [uniqueIndex("group_roles_unique").on(table.participantId, table.scenarioOrder)]
+);
+
+/** Non-AI checkpoint questions a member raised for the whole group. */
+export const groupCheckpoints = sqliteTable(
+  "group_checkpoints",
+  {
+    id: id(),
+    sessionId: sessionRef(),
+    participantId: text("participant_id").references(() => participants.id, {
+      onDelete: "set null",
+    }),
+    scenarioOrder: integer("scenario_order").notNull(),
+    kind: text("kind").notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [index("group_checkpoints_scenario").on(table.sessionId, table.scenarioOrder)]
+);
+
+/** Member's short justification when clicking "I am good" (instrument flag `agreementReason`). */
+export const scenarioAgreementReasons = sqliteTable(
+  "scenario_agreement_reasons",
+  {
+    id: id(),
+    sessionId: sessionRef(),
+    participantId: text("participant_id")
+      .notNull()
+      .references(() => participants.id, { onDelete: "cascade" }),
+    scenarioOrder: integer("scenario_order").notNull(),
+    reason: text("reason").notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    index("scenario_agreement_reasons_scenario").on(table.sessionId, table.scenarioOrder),
+  ]
+);
+
+/**
+ * Every logged evaluation of a scenario, including the decision NOT to intervene.
+ * Unchanged repeated no-action evaluations are collapsed (see intervention_state).
+ */
+export const interventionEvaluations = sqliteTable(
+  "intervention_evaluations",
+  {
+    id: id(),
+    sessionId: sessionRef(),
+    attemptId: text("attempt_id")
+      .notNull()
+      .references(() => scenarioAttempts.id, { onDelete: "cascade" }),
+    scenarioOrder: integer("scenario_order").notNull(),
+    /** human_activity | scheduler | manual_request | personal_request */
+    evaluationSource: text("evaluation_source").notNull(),
+    researchCondition: text("research_condition").notNull(),
+    policyVersion: text("policy_version").notNull(),
+    trigger: text("trigger").notNull(),
+    assessmentSource: text("assessment_source"),
+    evidenceMessageIds: text("evidence_message_ids", { mode: "json" }).$type<string[]>(),
+    evidenceSummary: text("evidence_summary"),
+    confidence: real("confidence"),
+    progressState: text("progress_state"),
+    /** All assessments the monitor produced, for audit. */
+    assessments: text("assessments", { mode: "json" }).$type<unknown[]>(),
+    decisionAction: text("decision_action").notNull(),
+    decisionScope: text("decision_scope"),
+    targetParticipantId: text("target_participant_id").references(() => participants.id, {
+      onDelete: "set null",
+    }),
+    supportType: text("support_type"),
+    recommendedLevel: text("recommended_level"),
+    reasonCode: text("reason_code").notNull(),
+    reasonExplanation: text("reason_explanation").notNull(),
+    /** Count + newest id of human messages and newest edit time at evaluation. */
+    activityWatermark: text("activity_watermark").notNull(),
+    onlineCount: integer("online_count").notNull(),
+    activeMemberCount: integer("active_member_count").notNull(),
+    classifierModel: text("classifier_model"),
+    /** True when the condition only allows logging (no exposure to students). */
+    shadowOnly: integer("shadow_only", { mode: "boolean" }).notNull().default(false),
+    repeatCount: integer("repeat_count").notNull().default(1),
+    evaluatedAt: text("evaluated_at").notNull().$defaultFn(() => new Date().toISOString()),
+    lastRepeatedAt: text("last_repeated_at"),
+  },
+  (table) => [index("intervention_evaluations_attempt").on(table.attemptId, table.evaluatedAt)]
+);
+
+/** Offered or delivered AI facilitation, group-visible or private to one member. */
+export const interventions = sqliteTable(
+  "interventions",
+  {
+    id: id(),
+    sessionId: sessionRef(),
+    attemptId: text("attempt_id")
+      .notNull()
+      .references(() => scenarioAttempts.id, { onDelete: "cascade" }),
+    scenarioOrder: integer("scenario_order").notNull(),
+    evaluationId: text("evaluation_id").references(() => interventionEvaluations.id, {
+      onDelete: "set null",
+    }),
+    /** group | individual */
+    scope: text("scope").notNull(),
+    /** Only for scope=individual; private to this member. */
+    recipientParticipantId: text("recipient_participant_id").references(() => participants.id, {
+      onDelete: "cascade",
+    }),
+    /** system (proactive) | participant (manual request) */
+    initiatedBy: text("initiated_by").notNull(),
+    requestedByParticipantId: text("requested_by_participant_id").references(
+      () => participants.id,
+      { onDelete: "set null" }
+    ),
+    trigger: text("trigger").notNull(),
+    /** process | content */
+    category: text("category").notNull(),
+    supportType: text("support_type").notNull(),
+    /** "1" | "2" | "3" | "process" */
+    scaffoldLevel: text("scaffold_level").notNull(),
+    status: text("status").notNull(),
+    offerText: text("offer_text").notNull(),
+    reasonCode: text("reason_code").notNull(),
+    reasonExplanation: text("reason_explanation").notNull(),
+    content: text("content"),
+    researchCondition: text("research_condition").notNull(),
+    policyVersion: text("policy_version").notNull(),
+    promptVersion: text("prompt_version").notNull(),
+    aiModel: text("ai_model"),
+    /** real | mock | template_fallback (model output rejected by the validator) */
+    aiOrigin: text("ai_origin"),
+    aiLatencyMs: integer("ai_latency_ms"),
+    inputTokens: integer("input_tokens"),
+    outputTokens: integer("output_tokens"),
+    failureReason: text("failure_reason"),
+    acceptedByParticipantId: text("accepted_by_participant_id").references(
+      () => participants.id,
+      { onDelete: "set null" }
+    ),
+    idempotencyKey: text("idempotency_key").notNull(),
+    createdAt: createdAt(),
+    acceptedAt: text("accepted_at"),
+    deliveredAt: text("delivered_at"),
+    resolvedAt: text("resolved_at"),
+    expiresAt: text("expires_at"),
+  },
+  (table) => [
+    uniqueIndex("interventions_idempotency_unique").on(table.idempotencyKey),
+    index("interventions_attempt").on(table.attemptId, table.createdAt),
+    index("interventions_recipient").on(table.recipientParticipantId),
+  ]
+);
+
+/** Each member's own response to an intervention (view, accept, dismiss, defer, why, share). */
+export const interventionFeedback = sqliteTable(
+  "intervention_feedback",
+  {
+    id: id(),
+    sessionId: sessionRef(),
+    interventionId: text("intervention_id")
+      .notNull()
+      .references(() => interventions.id, { onDelete: "cascade" }),
+    participantId: text("participant_id")
+      .notNull()
+      .references(() => participants.id, { onDelete: "cascade" }),
+    action: text("action").notNull(),
+    comment: text("comment"),
+    createdAt: createdAt(),
+  },
+  (table) => [index("intervention_feedback_intervention").on(table.interventionId)]
+);
+
+/** Orchestrator bookkeeping per scenario attempt (cooldowns, counts, last evaluation). */
+export const interventionState = sqliteTable(
+  "intervention_state",
+  {
+    id: id(),
+    sessionId: sessionRef(),
+    attemptId: text("attempt_id")
+      .notNull()
+      .references(() => scenarioAttempts.id, { onDelete: "cascade" }),
+    lastEvaluatedAt: text("last_evaluated_at"),
+    lastEvaluationId: text("last_evaluation_id"),
+    lastEvaluationSignature: text("last_evaluation_signature"),
+    lastProactiveAt: text("last_proactive_at"),
+    proactiveGroupCount: integer("proactive_group_count").notNull().default(0),
+    proactivePrivateCount: integer("proactive_private_count").notNull().default(0),
+    updatedAt: text("updated_at").notNull().$defaultFn(() => new Date().toISOString()),
+  },
+  (table) => [uniqueIndex("intervention_state_attempt_unique").on(table.attemptId)]
+);
+
+/** A member's opt-in to private proactive offers (default off). */
+export const participantAiPreferences = sqliteTable(
+  "participant_ai_preferences",
+  {
+    id: id(),
+    sessionId: sessionRef(),
+    participantId: text("participant_id")
+      .notNull()
+      .references(() => participants.id, { onDelete: "cascade" }),
+    privateOffersOptIn: integer("private_offers_opt_in", { mode: "boolean" }).notNull(),
+    updatedAt: text("updated_at").notNull().$defaultFn(() => new Date().toISOString()),
+  },
+  (table) => [uniqueIndex("participant_ai_preferences_unique").on(table.participantId)]
+);
+
+/** Text a member explicitly chose to share from private AI support. Not proof that anyone read it. */
+export const aiSharingEvents = sqliteTable(
+  "ai_sharing_events",
+  {
+    id: id(),
+    sessionId: sessionRef(),
+    participantId: text("participant_id")
+      .notNull()
+      .references(() => participants.id, { onDelete: "cascade" }),
+    scenarioOrder: integer("scenario_order").notNull(),
+    /** individual_scaffold | intervention */
+    sourceType: text("source_type").notNull(),
+    sourceId: text("source_id").notNull(),
+    sourceSupportType: text("source_support_type").notNull(),
+    sharedText: text("shared_text").notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [index("ai_sharing_events_scenario").on(table.sessionId, table.scenarioOrder)]
+);
+
+/** Adaptive level recommendation, its evidence, and what the member actually chose. */
+export const scaffoldRecommendations = sqliteTable(
+  "scaffold_recommendations",
+  {
+    id: id(),
+    sessionId: sessionRef(),
+    participantId: text("participant_id")
+      .notNull()
+      .references(() => participants.id, { onDelete: "cascade" }),
+    scenarioOrder: integer("scenario_order").notNull(),
+    interventionId: text("intervention_id").references(() => interventions.id, {
+      onDelete: "set null",
+    }),
+    engineVersion: text("engine_version").notNull(),
+    recommendedLevel: integer("recommended_level").notNull(),
+    recommendedSupportType: text("recommended_support_type").notNull(),
+    fadingApplied: integer("fading_applied", { mode: "boolean" }).notNull(),
+    evidence: text("evidence", { mode: "json" }).$type<Record<string, unknown>>().notNull(),
+    rationale: text("rationale").notNull(),
+    chosenSupportType: text("chosen_support_type"),
+    chosenLevel: integer("chosen_level"),
+    /** True when the member chose a more direct level than recommended. */
+    overridden: integer("overridden", { mode: "boolean" }),
+    createdAt: createdAt(),
+    resolvedAt: text("resolved_at"),
+  },
+  (table) => [
+    index("scaffold_recommendations_participant").on(table.participantId, table.scenarioOrder),
+  ]
+);

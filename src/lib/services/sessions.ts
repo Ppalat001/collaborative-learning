@@ -1,5 +1,8 @@
 import { and, asc, eq } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
+import { issueParticipantToken } from "@/lib/auth/participantAuth";
+import type { AssignmentPlan } from "@/lib/intervention/ResearchConditionManager";
+import { eligibilityGuard } from "@/lib/intervention/ResearchEligibilityGuard";
 import { generateAnonymousId, generateSessionCode } from "@/lib/utils/codes";
 import { nowIso } from "@/lib/utils/dates";
 import { getScenarioByOrder, getScenarios } from "@/lib/utils/scenarios";
@@ -19,14 +22,40 @@ import type {
   ScaffoldingType,
 } from "@/lib/types";
 
-export async function createSession() {
+/**
+ * Creates a group. Without a plan it is a legacy group, exactly as before V2.
+ * With a plan the group and its immutable study assignment are written together.
+ */
+export async function createSession(plan: AssignmentPlan | null = null) {
   const code = generateSessionCode();
-  const [session] = await db
-    .insert(schema.sessions)
-    .values({ code })
-    .returning();
+  if (!plan) {
+    const [session] = await db
+      .insert(schema.sessions)
+      .values({ code })
+      .returning();
 
-  await logResearchEvent(session.id, "session_created", { code });
+    await logResearchEvent(session.id, "session_created", { code });
+
+    return session;
+  }
+
+  const session = db.transaction((tx) => {
+    const created = tx
+      .insert(schema.sessions)
+      .values({ code, maxParticipants: plan.maxGroupSize })
+      .returning()
+      .get();
+    tx.insert(schema.studyAssignments).values({ ...plan, sessionId: created.id }).run();
+    return created;
+  });
+
+  await logResearchEvent(session.id, "session_created", {
+    code,
+    v2: true,
+    researchCondition: plan.researchCondition,
+    assignmentMethod: plan.assignmentMethod,
+    interventionPolicyVersion: plan.interventionPolicyVersion,
+  });
 
   return session;
 }
@@ -63,6 +92,54 @@ export async function joinSession(
     throw new Error("Session not found");
   }
 
+  const name = displayName.trim();
+  const duplicateName = () =>
+    new Error(
+      `Someone in this group already uses the name "${name}". Please use a different name.`
+    );
+  const { token, hash } = issueParticipantToken();
+  const assignment = await eligibilityGuard.getAssignment(session.id);
+
+  if (assignment) {
+    // V2: capacity, name and roster-freeze checks share one transaction with the insert.
+    const participant = db.transaction((tx) => {
+      const current = tx
+        .select()
+        .from(schema.studyAssignments)
+        .where(eq(schema.studyAssignments.id, assignment.id))
+        .get();
+      if (current?.rosterFrozenAt) {
+        throw new Error("This group has already started, so no new members can join.");
+      }
+      const members = tx
+        .select()
+        .from(schema.participants)
+        .where(eq(schema.participants.sessionId, session.id))
+        .all();
+      if (members.length >= assignment.maxGroupSize) {
+        throw new Error(`Session is full (maximum ${assignment.maxGroupSize} participants)`);
+      }
+      if (members.some((m) => m.displayName.toLowerCase() === name.toLowerCase())) {
+        throw duplicateName();
+      }
+      return tx
+        .insert(schema.participants)
+        .values({
+          sessionId: session.id,
+          displayName: name,
+          anonymousId: generateAnonymousId(),
+          authTokenHash: hash,
+        })
+        .returning()
+        .get();
+    });
+    await logResearchEvent(session.id, "participant_joined", {
+      anonymousId: participant.anonymousId,
+      displayName: name,
+    }, participant.id);
+    return { session, participant, token };
+  }
+
   const members = await db
     .select()
     .from(schema.participants)
@@ -72,11 +149,8 @@ export async function joinSession(
     throw new Error("Session is full (maximum 4 participants)");
   }
 
-  const name = displayName.trim();
   if (members.some((m) => m.displayName.toLowerCase() === name.toLowerCase())) {
-    throw new Error(
-      `Someone in this group already uses the name "${name}". Please use a different name.`
-    );
+    throw duplicateName();
   }
 
   const anonymousId = generateAnonymousId();
@@ -86,6 +160,7 @@ export async function joinSession(
       sessionId: session.id,
       displayName: name,
       anonymousId,
+      authTokenHash: hash,
     })
     .returning();
 
@@ -94,7 +169,7 @@ export async function joinSession(
     displayName: name,
   }, participant.id);
 
-  return { session, participant };
+  return { session, participant, token };
 }
 
 export async function setSessionConsent(code: string) {
@@ -385,10 +460,17 @@ export async function setParticipantReady(
   sessionId: string,
   scenarioOrder: number,
   participantId: string,
-  ready: boolean
+  ready: boolean,
+  options: { agreementReason?: string | null } = {}
 ): Promise<{ ok: true; value: ReadyState } | { ok: false; error: string; status: number }> {
   const attempt = await getOrCreateAttempt(sessionId, scenarioOrder);
-  const memberIds = (await getSessionMembers(sessionId)).map((m) => m.id);
+  // V2 groups count the frozen roster (minus withdrawn/dropped members), so a late
+  // join can never change who has to agree. Legacy groups count every member.
+  const memberIds = await eligibilityGuard.getRequiredReadyIds(
+    sessionId,
+    await eligibilityGuard.getAssignment(sessionId),
+    (await getSessionMembers(sessionId)).map((m) => m.id)
+  );
   const isLast = scenarioOrder >= getScenarios().length;
   const now = nowIso();
 
@@ -450,6 +532,13 @@ export async function setParticipantReady(
   if (!result.ok) return result;
   const { readyIds, submitted, answer } = result.value;
   if (answer === null) return { ok: true, value: { readyIds, submitted } };
+
+  const reason = options.agreementReason?.trim();
+  if (ready && reason) {
+    await db
+      .insert(schema.scenarioAgreementReasons)
+      .values({ sessionId, participantId, scenarioOrder, reason });
+  }
 
   await logResearchEvent(
     sessionId,
@@ -626,24 +715,33 @@ export async function getParticipantAssessment(
 
 /** Every group with its members and progress, newest first, for the admin page. */
 export async function listSessionsForAdmin() {
-  const [sessions, participants, attempts] = await Promise.all([
+  const [sessions, participants, attempts, assignments] = await Promise.all([
     db.select().from(schema.sessions),
     db.select().from(schema.participants).orderBy(asc(schema.participants.joinedAt)),
     db.select().from(schema.scenarioAttempts),
+    db.select().from(schema.studyAssignments),
   ]);
+  const assignmentBy = new Map(assignments.map((a) => [a.sessionId, a]));
   return sessions
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .map((session) => ({
-      code: session.code,
-      createdAt: session.createdAt,
-      completedAt: session.completedAt,
-      members: participants
-        .filter((p) => p.sessionId === session.id)
-        .map((p) => p.displayName),
-      scenariosFinished: attempts.filter((a) => a.sessionId === session.id && a.submitted)
-        .length,
-      totalScenarios: getScenarios().length,
-    }));
+    .map((session) => {
+      const assignment = assignmentBy.get(session.id);
+      return {
+        code: session.code,
+        createdAt: session.createdAt,
+        completedAt: session.completedAt,
+        members: participants
+          .filter((p) => p.sessionId === session.id)
+          .map((p) => p.displayName),
+        scenariosFinished: attempts.filter((a) => a.sessionId === session.id && a.submitted)
+          .length,
+        totalScenarios: getScenarios().length,
+        // false = legacy group, created before / without Adaptive Scaffolding V2.
+        isV2: !!assignment,
+        condition: assignment?.researchCondition ?? null,
+        started: assignment ? !!assignment.rosterFrozenAt : null,
+      };
+    });
 }
 
 /** Deletes a group and, through cascading foreign keys, everything recorded for it. */

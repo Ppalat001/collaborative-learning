@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
-import {
-  addDiscussionMessage,
-  getParticipantInSession,
-  getSessionByCode,
-} from "@/lib/services/sessions";
+import { authorizeParticipant } from "@/lib/auth/routeAuth";
+import { getOrchestrator } from "@/lib/intervention/InterventionOrchestrator";
+import { addDiscussionMessage } from "@/lib/services/sessions";
 import { MAX_MESSAGE_LENGTH } from "@/lib/instruments";
 
 export async function POST(
@@ -29,18 +27,13 @@ export async function POST(
       );
     }
 
-    const session = await getSessionByCode(code);
-    if (!session) {
-      return NextResponse.json({ error: "Session not found" }, { status: 404 });
-    }
-
-    const participant = await getParticipantInSession(session.id, body.participantId);
-    if (!participant) {
-      return NextResponse.json(
-        { error: "Join the session from the home page before sending messages" },
-        { status: 400 }
-      );
-    }
+    const auth = await authorizeParticipant(request, code, body.participantId, {
+      missingStatus: 400,
+      missingMessage: "Join the session from the home page before sending messages",
+      requireScenarioAccess: true,
+    });
+    if (!auth.ok) return auth.response;
+    const { session, participant, assignment } = auth;
 
     const message = await addDiscussionMessage(
       session.id,
@@ -53,6 +46,16 @@ export async function POST(
         { error: "This scenario has already been submitted" },
         { status: 409 }
       );
+    }
+
+    if (assignment) {
+      getOrchestrator().onHumanActivity({
+        sessionId: session.id,
+        sessionCode: session.code,
+        scenarioOrder,
+        participantId: participant.id,
+        kind: "message",
+      });
     }
 
     return NextResponse.json({ message });

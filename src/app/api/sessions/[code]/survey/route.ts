@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
+import { authorizeParticipant } from "@/lib/auth/routeAuth";
 import {
   getIndividualScaffolds,
   getOrCreateAttempt,
-  getParticipantInSession,
-  getSessionByCode,
   saveSurvey,
   type SurveyRatings,
 } from "@/lib/services/sessions";
@@ -26,19 +25,13 @@ export async function POST(
   try {
     const { code } = await params;
     const body = await request.json();
-    const session = await getSessionByCode(code);
-
-    if (!session) {
-      return NextResponse.json({ error: "Session not found" }, { status: 404 });
-    }
-
-    const participant = await getParticipantInSession(session.id, body.participantId);
-    if (!participant) {
-      return NextResponse.json(
-        { error: "Each rating must come from a participant in this session" },
-        { status: 400 }
-      );
-    }
+    const auth = await authorizeParticipant(request, code, body.participantId, {
+      missingStatus: 400,
+      missingMessage: "Each rating must come from a participant in this session",
+      requireScenarioAccess: true,
+    });
+    if (!auth.ok) return auth.response;
+    const { session, participant } = auth;
 
     const scenario = getScenarioById(String(body.scenarioId));
     if (!scenario) {

@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
 import {
+  conditionManager,
+  type AssignmentRequest,
+} from "@/lib/intervention/ResearchConditionManager";
+import { isResearchCondition } from "@/lib/intervention/types";
+import {
+  createSession,
   deleteAllSessions,
   deleteSession,
   getSessionByCode,
@@ -18,6 +24,41 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error("Admin sessions error:", error);
     return NextResponse.json({ error: "Failed to load groups" }, { status: 500 });
+  }
+}
+
+/**
+ * Creates one Adaptive Scaffolding V2 group with an explicit condition.
+ * Refused when V2 is switched off (ADAPTIVE_V2_ENABLED=false).
+ */
+export async function POST(request: Request) {
+  if (!isAdminRequest(request)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  try {
+    const body = await request.json().catch(() => ({}));
+    if (body.condition !== undefined && !isResearchCondition(body.condition)) {
+      return NextResponse.json({ error: "Unknown research condition" }, { status: 400 });
+    }
+    const assignmentRequest: AssignmentRequest = {
+      createdVia: "admin",
+      condition: body.condition,
+      policyVersion: typeof body.policyVersion === "string" ? body.policyVersion : undefined,
+      features: body.features && typeof body.features === "object" ? body.features : undefined,
+    };
+    const planned = conditionManager.planAssignment(assignmentRequest);
+    if (!planned.ok) return NextResponse.json({ error: planned.error }, { status: 403 });
+    if (!planned.plan) return NextResponse.json({ error: "Adaptive Scaffolding V2 is disabled" }, { status: 403 });
+    const session = await createSession(planned.plan);
+    return NextResponse.json({
+      code: session.code,
+      condition: planned.plan.researchCondition,
+      assignmentMethod: planned.plan.assignmentMethod,
+      interventionPolicyVersion: planned.plan.interventionPolicyVersion,
+    });
+  } catch (error) {
+    console.error("Admin create group error:", error);
+    return NextResponse.json({ error: "Failed to create the group" }, { status: 500 });
   }
 }
 
