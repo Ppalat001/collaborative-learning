@@ -2,13 +2,13 @@
 
 ## Settings
 
-V2 is **on by default**. With no `ADAPTIVE_V2_*` variable set, every new group — created from the home page or on `/admin` — is a V2 group, and home-page groups get the `dual_adaptive` condition. All V2 groups are handled the same way (there are no separate study modes). Settings only affect groups **created after** they change; an existing group never changes condition or policy, and groups created before V2 (legacy groups) keep working as before.
+V2 is **on by default**. With no `ADAPTIVE_V2_*` variable set, every new group — created from the home page or on `/admin` — is a V2 group, and home-page groups get the `proactive_group` condition. This provides Step 2 private support plus the manual and proactive shared facilitator, without the separate private AI coach. The old `dual_adaptive` value cannot be assigned to a new group; existing assignments keep that recorded value for provenance, but the private coach is no longer shown and new private-coach requests are refused. All V2 groups are handled the same way (there are no separate study modes), and groups created before V2 (legacy groups) keep working as before.
 
 | Variable | Default | Effect |
 |---|---|---|
 | `ADAPTIVE_V2_ENABLED` | on | `false` switches V2 off: every new group is a legacy group again, and `/admin` refuses to create V2 groups |
 | `ADAPTIVE_V2_HOME_PAGE_GROUPS` | `v2` | `legacy`: home-page groups are legacy groups, while `/admin` can still create V2 groups |
-| `ADAPTIVE_V2_DEFAULT_CONDITION` | `dual_adaptive` | condition for home-page groups with fixed allocation |
+| `ADAPTIVE_V2_DEFAULT_CONDITION` | `proactive_group` | condition for home-page groups with fixed allocation; retired conditions are ignored |
 | `ADAPTIVE_V2_ASSIGNMENT` | `fixed` | `randomized`: home-page/admin groups without a chosen condition draw from the list below |
 | `ADAPTIVE_V2_RANDOMIZE_CONDITIONS` | empty | comma list, e.g. `baseline_private_request,proactive_group` |
 | `ADAPTIVE_V2_ALLOW_TEST_POLICY` | off | allows `policy-v2-test-accelerated` (seconds-scale timing, automated tests only). Leave off in production |
@@ -53,7 +53,7 @@ Group size for V2 groups is 2–4 members (`groupSize` in `src/data/study-protoc
    npm run db:inspect
    ```
    Expected: `Groups: N legacy, 0 V2 (...)` and `0 violation check(s) failed`.
-4. Create a group from the home page: it now opens the V2 lobby (per-person consent and pre-test), and on `/admin` it is listed as `(V2: dual_adaptive)`. The V2 section on `/admin` shows `AI provider: real (OpenAI)` when the key is set.
+4. Create a group from the home page: it now opens the V2 lobby (per-person consent and pre-test), and on `/admin` it is listed as `(V2: proactive_group)`. The V2 section on `/admin` shows `AI provider: real (OpenAI)` when the key is set.
 5. Existing legacy groups continue exactly as before.
 
 ### Step 2: first groups
@@ -68,9 +68,9 @@ Run a first session yourself or with colleagues and check the dashboard: AI orig
 
 ## Running a V2 session
 
-1. **Create the group:** either members create it from the home page (condition `dual_adaptive` by default), or you create it on `/admin` → *Adaptive Scaffolding V2* → condition, policy and instrument settings → *Create group*, and give the code to the participants.
+1. **Create the group:** either members create it from the home page (condition `proactive_group` by default), or you create it on `/admin` → *Adaptive Scaffolding V2* → condition, policy and instrument settings → *Create group*, and give the code to the participants.
 2. **Lobby:** each member joins with the code on their own device and gets a device token (stored in that browser). Each member reads the consent form and ticks every statement, then completes the pre-test. The lobby lists who has consented and finished the pre-test. *Begin scenarios* works only when everyone is ready and the group has 2–4 members. Starting freezes the roster; nobody can join afterwards.
-3. **Scenarios:** the original Step 1–3 flow, plus, depending on the condition: the shared group facilitator panel (requests and proactive offers, with *View/accept*, *Not now*, *Dismiss* and *Why this suggestion?*), the optional private suggestions switch and *I'm stuck* (`dual_adaptive`), and *Share with group* for private AI ideas.
+3. **Scenarios:** the original Step 1–3 flow, plus, depending on the condition, the shared group facilitator panel (requests and proactive offers, with *View/accept*, *Not now*, *Dismiss* and *Why this suggestion?*) and *Share with group* for private Step 2 AI ideas. Newly created groups do not show the private coach, opt-in switch or *I'm stuck* button.
 4. **If a member leaves for good:** on the dashboard, choose the member and *Mark as dropped out*. The remaining members can finish; if all of them had already clicked *I am good*, they click it once more.
 5. **Withdrawal:** a member clicks *Withdraw my consent* in the lobby. Nothing more is recorded for them; earlier data is kept until you act according to the approved protocol.
 

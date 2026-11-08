@@ -20,7 +20,7 @@ const CONDITION_LABELS: Record<string, string> = {
   baseline_private_request: "Baseline: private AI on request only",
   shared_on_demand: "Shared facilitator on request",
   proactive_group: "Proactive group facilitator",
-  dual_adaptive: "Proactive group + opt-in private offers",
+  dual_adaptive: "Historical dual assignment (private coach removed)",
 };
 
 interface ReleaseInfo {
@@ -149,7 +149,7 @@ export function ResearcherInterventionDashboard({ password, active, selectedCode
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({
-    condition: "dual_adaptive",
+    condition: "proactive_group",
     policyVersion: "",
     roles: false,
     checkpoints: true,

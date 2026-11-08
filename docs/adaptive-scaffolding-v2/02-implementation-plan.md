@@ -1,6 +1,6 @@
 # 02 — Implementation plan
 
-> **Changed on 2026-11-08:** the formal/pilot/demo study modes described below were removed (all V2 groups are handled the same way), and V2 is now on by default with `dual_adaptive` for home-page groups. Current behaviour: `06-researcher-operating-guide.md`.
+> **Changed on 2026-11-08:** the formal/pilot/demo study modes described below were removed (all V2 groups are handled the same way), and V2 is now on by default. The later participant-facing simplification retired `dual_adaptive` for new groups; home-page groups now use `proactive_group`. Current behaviour: `06-researcher-operating-guide.md`.
 
 ## Guiding decisions
 

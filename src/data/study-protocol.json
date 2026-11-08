@@ -1,5 +1,5 @@
 {
-  "protocolVersion": "adaptive-v2-protocol-draft-1",
+  "protocolVersion": "adaptive-v2-protocol-draft-2",
   "status": "DRAFT - consent wording, contact details and retention must be approved before use with participants",
   "consent": {
     "version": "consent-v2-draft-1",
@@ -36,6 +36,6 @@
     "baseline_private_request": "In this session you can ask the AI privately for support in Step 2.",
     "shared_on_demand": "In this session you can ask the AI privately for support, and your group can ask a shared AI facilitator for collaboration help that everyone sees.",
     "proactive_group": "In this session you can ask the AI privately for support, your group can ask a shared AI facilitator for collaboration help, and the facilitator may sometimes offer the whole group a collaboration prompt. You decide whether to view or dismiss these offers.",
-    "dual_adaptive": "In this session you can ask the AI privately for support, your group can ask a shared AI facilitator for collaboration help, and the facilitator may sometimes offer the group a collaboration prompt. If you switch it on, the AI may also offer you a small private hint when you say you are stuck. You decide whether to accept or dismiss every offer."
+    "dual_adaptive": "In this session you can ask the AI privately for support in Step 2, your group can ask a shared AI facilitator for collaboration help, and the facilitator may sometimes offer the whole group a collaboration prompt. The separate private AI coach has been removed."
   }
 }

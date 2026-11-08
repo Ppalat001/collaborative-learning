@@ -15,6 +15,21 @@ export function isResearchCondition(value: unknown): value is ResearchCondition 
   return (RESEARCH_CONDITIONS as readonly unknown[]).includes(value);
 }
 
+/**
+ * Conditions available for newly created groups. `dual_adaptive` is retained
+ * only so existing assignments and their historical data remain interpretable.
+ */
+export const ASSIGNABLE_RESEARCH_CONDITIONS = [
+  "baseline_private_request",
+  "shared_on_demand",
+  "proactive_group",
+] as const satisfies readonly ResearchCondition[];
+export type AssignableResearchCondition = (typeof ASSIGNABLE_RESEARCH_CONDITIONS)[number];
+
+export function isAssignableResearchCondition(value: unknown): value is AssignableResearchCondition {
+  return (ASSIGNABLE_RESEARCH_CONDITIONS as readonly unknown[]).includes(value);
+}
+
 export type InterventionScope = "group" | "individual";
 
 export const INTERVENTION_TRIGGERS = [

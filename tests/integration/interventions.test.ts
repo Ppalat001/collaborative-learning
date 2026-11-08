@@ -1,10 +1,8 @@
 import "../helpers/testDb";
 import assert from "node:assert/strict";
 import { beforeEach, describe, test } from "node:test";
-import { eq } from "drizzle-orm";
 import { POST as collaborationRoute } from "@/app/api/sessions/[code]/collaboration/route";
 import { GET as interventionsGet } from "@/app/api/sessions/[code]/interventions/route";
-import { db, schema } from "@/lib/db";
 import { discussionCoordinator } from "@/lib/intervention/GroupDiscussionCoordinator";
 import { resetPresence } from "@/lib/intervention/presence";
 import { EligibilityError } from "@/lib/intervention/ResearchEligibilityGuard";
@@ -236,78 +234,28 @@ describe("Research conditions", () => {
     assert.ok(evaluationRows(group.session.id).every((row) => !row.targetParticipantId));
   });
 
-  test("dual_adaptive: private offers only for opted-in members and only visible to them", async () => {
+  test("the retired dual_adaptive assignment no longer enables the private coach", async () => {
     const group = await createV2Group({ condition: "dual_adaptive" });
-    const [a, b] = group.members;
     const clock = new TestClock();
     const { orchestrator } = makeOrchestrator(clock);
-    const emits = captureEmits();
     await getOrCreateAttempt(group.session.id, 1);
-    await setPrivateOptIn(group.assignment, a.participant.id, true);
+    await rejectsWith(
+      setPrivateOptIn(group.assignment, group.members[0].participant.id, true),
+      "not_in_condition"
+    );
     setOnline(group, [0, 1], clock.current);
     await say(group, 0, "I'm lost, I don't understand this part", clock.current);
     clock.advance(1);
 
     const outcome = await orchestrator.evaluateAttempt(group.session.id, 1, "human_activity");
-    assert.equal(outcome?.decision.scope, "individual");
-    assert.equal(outcome?.decision.targetParticipantId, a.participant.id);
-    const offer = outcome!.intervention!;
-    assert.equal(offer.recipientParticipantId, a.participant.id);
-    assert.equal(offer.content, null);
-    const offerEmits = emits.filter((e) => (e.payload as { id?: string }).id === offer.id);
-    assert.deepEqual([...new Set(offerEmits.map((e) => e.target))], [`participant:${a.participant.id}`]);
-
-    const attempt = attemptFor(group.session.id)!;
-    assert.ok(!listVisibleInterventions(attempt.id, b.participant.id, group.session.id, 0).some((i) => i.id === offer.id));
-    assert.ok(listVisibleInterventions(attempt.id, a.participant.id, group.session.id, 0).some((i) => i.id === offer.id));
-
-    const code = group.session.code;
-    const asB = await interventionsGet(
-      apiRequest(`/api/sessions/${code}/interventions?participantId=${b.participant.id}&scenarioOrder=1`, { token: b.token }),
-      routeParams({ code })
-    );
-    assert.equal(asB.status, 200);
-    assert.ok(!(await asB.json()).interventions.some((i: { id: string }) => i.id === offer.id));
-    const impersonation = await interventionsGet(
-      apiRequest(`/api/sessions/${code}/interventions?participantId=${a.participant.id}&scenarioOrder=1`, { token: b.token }),
-      routeParams({ code })
-    );
-    assert.equal(impersonation.status, 401);
+    assert.equal(outcome?.decision.action, "offer");
+    assert.equal(outcome?.decision.scope, "group");
+    assert.equal(outcome?.decision.targetParticipantId, undefined);
+    assert.ok(interventionRows(group.session.id).every((row) => row.scope === "group"));
     await rejectsWith(
-      orchestrator.handlePrivateOfferResponse({ ...memberInput(group, 1), interventionId: offer.id, action: "accepted" }),
-      "not_found"
+      orchestrator.handlePersonalRequest({ ...memberInput(group, 0), requestId: "stuck-retired" }),
+      "not_in_condition"
     );
-
-    const delivered = await orchestrator.handlePrivateOfferResponse({ ...memberInput(group, 0), interventionId: offer.id, action: "accepted" });
-    assert.equal(delivered.status, "delivered");
-    assert.equal(delivered.aiOrigin, "mock");
-    const recommendation = db
-      .select()
-      .from(schema.scaffoldRecommendations)
-      .where(eq(schema.scaffoldRecommendations.interventionId, offer.id))
-      .get();
-    assert.equal(recommendation?.recommendedLevel, 1);
-
-    await say(group, 1, "I am stuck too, I don't get it", clock.current);
-    clock.advance(1);
-    const forB = await orchestrator.evaluateAttempt(group.session.id, 1, "human_activity");
-    assert.equal(forB?.decision.action, "offer");
-    assert.equal(forB?.decision.scope, "group");
-  });
-
-  test("'I'm stuck' creates a private offer at the least intrusive level; nothing is generated before accepting", async () => {
-    const group = await createV2Group({ condition: "dual_adaptive" });
-    const clock = new TestClock();
-    const { orchestrator } = makeOrchestrator(clock);
-    await getOrCreateAttempt(group.session.id, 1);
-    const first = await orchestrator.handlePersonalRequest({ ...memberInput(group, 0), requestId: "stuck-1" });
-    assert.equal(first.view.scope, "individual");
-    assert.equal(first.view.status, "suggested");
-    assert.equal(first.view.content, null);
-    assert.equal(first.view.scaffoldLevel, "1");
-    const again = await orchestrator.handlePersonalRequest({ ...memberInput(group, 0), requestId: "stuck-2" });
-    assert.equal(again.duplicate, true);
-    assert.equal(again.view.id, first.view.id);
   });
 });
 

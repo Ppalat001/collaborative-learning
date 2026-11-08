@@ -2,7 +2,7 @@
 /**
  * End-to-end check of Adaptive Scaffolding V2 over real HTTP and Socket.IO.
  * Checks that a home-page group is a V2 group by default, then runs one
- * dual_adaptive group on the test-only accelerated policy (mock AI).
+ * proactive_group on the test-only accelerated policy (mock AI).
  *
  * Run it through `npm run pilot:isolated` (throwaway database). Against a running
  * server it needs ADAPTIVE_V2_ALLOW_TEST_POLICY=true, and it writes two test
@@ -133,8 +133,6 @@ async function waitFor(events, predicate, description, timeout = WAIT_MS) {
   throw new Error(`Timed out after ${timeout / 1000} s waiting for: ${description}`);
 }
 
-const sees = (client, id) => client.events.some((e) => e.payload && (e.payload.id === id || e.payload.interventionId === id));
-
 const PRE_ANSWERS = {
   "pre-1": 0, "pre-2": 3, "pre-3": 0, "pre-4": 2,
   "pre-5": 1, "pre-6": 0, "pre-7": 3, "pre-8": 1,
@@ -149,15 +147,15 @@ async function main() {
 
   const home = await expectOk("/api/sessions", { method: "POST" });
   const homeInfo = await expectOk(`/api/sessions/${home.code}`);
-  assert(homeInfo.v2?.condition === "dual_adaptive", `Home-page group should be V2 dual_adaptive: ${JSON.stringify(homeInfo.v2)}`);
+  assert(homeInfo.v2?.condition === "proactive_group", `Home-page group should be V2 proactive_group: ${JSON.stringify(homeInfo.v2)}`);
   assert(homeInfo.v2.minGroupSize === 2 && homeInfo.v2.maxGroupSize === 4, "Home-page group size should be 2-4");
-  ok(`a group created from the home page (${home.code}) is a V2 dual_adaptive group without any settings`);
+  ok(`a group created from the home page (${home.code}) is a V2 proactive_group without any settings`);
 
   const created = await call("/api/admin/sessions", {
     method: "POST",
     admin: true,
     body: {
-      condition: "dual_adaptive",
+      condition: "proactive_group",
       policyVersion: "policy-v2-test-accelerated",
       features: { openingPrompt: true, checkpoints: true, roles: false, initialIdea: "off", agreementReason: "off" },
     },
@@ -169,8 +167,8 @@ async function main() {
   }
   assert(created.status === 200, `Admin group creation failed: ${created.status} ${JSON.stringify(created.data)}`);
   const code = created.data.code;
-  assert(created.data.condition === "dual_adaptive", "Wrong assignment");
-  ok(`researcher created group ${code} (dual_adaptive, ${created.data.interventionPolicyVersion})`);
+  assert(created.data.condition === "proactive_group", "Wrong assignment");
+  ok(`researcher created group ${code} (proactive_group, ${created.data.interventionPolicyVersion})`);
 
   const join = async (name) => {
     const data = await expectOk(`/api/sessions/${code}/join`, { method: "POST", body: { displayName: name } });
@@ -278,80 +276,40 @@ async function main() {
   );
   ok("A disconnected and reconnected; the delivered group support was reloaded from the database");
 
-  // 2. Private proactive help only for the member who opted in.
-  const pref = await expectOk(`/api/sessions/${code}/collaboration`, {
-    method: "POST",
-    token: A.token,
-    body: { scenarioOrder: 1, participantId: A.id, action: "preferences", privateOffersOptIn: true },
-  });
-  assert(pref.privateOptIn === true, "Opt-in not saved");
+  // 2. The retired private coach is unavailable in new groups.
+  await expectStatus(
+    `/api/sessions/${code}/collaboration`,
+    {
+      method: "POST",
+      token: A.token,
+      body: { scenarioOrder: 1, participantId: A.id, action: "preferences", privateOffersOptIn: true },
+    },
+    403,
+    "private coach opt-in is unavailable"
+  );
+  await expectStatus(
+    `/api/sessions/${code}/interventions`,
+    {
+      method: "POST",
+      token: B.token,
+      body: { kind: "personal_request", scenarioOrder: 1, participantId: B.id, requestId: "pilot-stuck-1" },
+    },
+    403,
+    "private coach personal requests are unavailable"
+  );
+  ok("private coach opt-in and personal requests are unavailable in new groups");
+
+  // 3. Manual shared request, Step 2 private AI options and a checkpoint.
   await expectOk(`/api/sessions/${code}/messages`, {
     method: "POST",
     token: A.token,
-    body: { scenarioOrder: 1, participantId: A.id, text: "I don't understand what accountability means for this question." },
+    body: {
+      scenarioOrder: 1,
+      participantId: A.id,
+      text: "We should compare our reasons before writing the shared answer.",
+    },
   });
-  const privateOffer = (
-    await waitFor(
-      sa.events,
-      (e) => e.event === "intervention:offered" && e.payload.scope === "individual",
-      "a private offer for A"
-    )
-  ).payload;
-  assert(privateOffer.content === null, "Private offer must wait for acceptance");
-  await new Promise((r) => setTimeout(r, 500));
-  assert(!sees(sb, privateOffer.id), "B's socket must never receive A's private offer");
-  const bState = await expectOk(`/api/sessions/${code}/interventions?scenarioOrder=1&participantId=${B.id}`, { token: B.token });
-  assert(!bState.interventions.some((i) => i.id === privateOffer.id), "B's API view must not list A's private offer");
-  const aState = await expectOk(`/api/sessions/${code}/interventions?scenarioOrder=1&participantId=${A.id}`, { token: A.token });
-  assert(aState.interventions.some((i) => i.id === privateOffer.id), "A's API view should list the private offer");
-  ok("A opted in and said they were confused: private offer sent only to A (socket and API)");
 
-  await expectStatus(
-    `/api/sessions/${code}/interventions?scenarioOrder=1&participantId=${A.id}`,
-    { token: B.token },
-    401,
-    "B cannot read A's items by sending A's id"
-  );
-  await expectStatus(
-    `/api/sessions/${code}/interventions/${privateOffer.id}/feedback`,
-    { method: "POST", token: B.token, body: { participantId: B.id, action: "accepted" } },
-    404,
-    "B cannot accept A's private offer"
-  );
-
-  await expectOk(`/api/sessions/${code}/interventions/${privateOffer.id}/feedback`, {
-    method: "POST",
-    token: A.token,
-    body: { participantId: A.id, action: "accepted" },
-  });
-  const privateDelivered = await waitFor(
-    sa.events,
-    (e) => e.event === "intervention:delivered" && e.payload.id === privateOffer.id,
-    "private delivery to A"
-  );
-  assert(privateDelivered.payload.content, "Private help should be delivered after acceptance");
-  await new Promise((r) => setTimeout(r, 300));
-  assert(!sees(sb, privateOffer.id), "B must not receive A's private delivery");
-  ok("A accepted; private help delivered to A only");
-
-  // 3. "I'm stuck" for a member who did not opt in to proactive offers.
-  const stuck = await expectOk(`/api/sessions/${code}/interventions`, {
-    method: "POST",
-    token: B.token,
-    body: { kind: "personal_request", scenarioOrder: 1, participantId: B.id, requestId: "pilot-stuck-1" },
-  });
-  assert(stuck.intervention.scope === "individual" && stuck.intervention.scaffoldLevel === "1", "I'm stuck should start at level 1");
-  const again = await expectOk(`/api/sessions/${code}/interventions`, {
-    method: "POST",
-    token: B.token,
-    body: { kind: "personal_request", scenarioOrder: 1, participantId: B.id, requestId: "pilot-stuck-1" },
-  });
-  assert(again.duplicate && again.intervention.id === stuck.intervention.id, "Repeated request id must be idempotent");
-  await new Promise((r) => setTimeout(r, 300));
-  assert(!sees(sa, stuck.intervention.id), "A must not receive B's private request");
-  ok("B's \"I'm stuck\" gave a private level-1 offer; the retry was idempotent; A saw nothing");
-
-  // 4. Manual shared request, original private AI options and a checkpoint.
   const manual = await expectOk(`/api/sessions/${code}/interventions`, {
     method: "POST",
     token: A.token,
@@ -377,7 +335,7 @@ async function main() {
   await waitFor(sa.events, (e) => e.event === "checkpoint:raised", "A sees B's checkpoint");
   ok("reflection checkpoint broadcast to the group");
 
-  // 5. Submission expires open offers.
+  // 4. Submit the scenario.
   const answer = "Accountability means each member can explain and defend the shared answer.";
   await expectOk(`/api/sessions/${code}/sync`, {
     method: "POST",
@@ -397,21 +355,15 @@ async function main() {
       body: { action: "ready", participantId: m.id, ready: true },
     });
   }
-  const expired = await waitFor(
-    sb.events,
-    (e) => e.event === "intervention:state" && e.payload.id === stuck.intervention.id && e.payload.status === "expired",
-    "B's open offer expires at submission"
-  );
-  assert(expired, "Open offer should expire");
-  ok("submitting the scenario expired the remaining open offer");
+  ok("the group submitted the scenario");
 
   sa.socket.close();
   sb.socket.close();
 
-  // 6. Research exports and the researcher dashboard.
+  // 5. Research exports and the researcher dashboard.
   const interventions = await exportRows("v2_interventions", code);
-  assert(interventions.every((r) => r.group === code && r.research_condition === "dual_adaptive"), "Provenance missing");
-  assert(interventions.some((r) => r.scope === "group") && interventions.some((r) => r.scope === "individual"), "Both scopes expected");
+  assert(interventions.every((r) => r.group === code && r.research_condition === "proactive_group"), "Provenance missing");
+  assert(interventions.length > 0 && interventions.every((r) => r.scope === "group"), "Only group interventions expected");
   const evaluations = await exportRows("v2_evaluations", code);
   assert(evaluations.some((r) => r.decision_action === "no_action"), "Decisions not to intervene should be exported");
   assert(evaluations.some((r) => r.decision_action === "offer"), "Offer decisions should be exported");

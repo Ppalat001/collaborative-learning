@@ -126,6 +126,11 @@ describe("Admin group creation", () => {
       );
       assert.equal(bad.status, 400);
 
+      const retired = await createGroupRoute(
+        adminRequest("/api/admin/sessions", { method: "POST", body: { condition: "dual_adaptive" } })
+      );
+      assert.equal(retired.status, 400);
+
       const created = await createGroupRoute(
         adminRequest("/api/admin/sessions", { method: "POST", body: { condition: "proactive_group" } })
       );

@@ -3,7 +3,10 @@ import {
   conditionManager,
   type AssignmentRequest,
 } from "@/lib/intervention/ResearchConditionManager";
-import { isResearchCondition } from "@/lib/intervention/types";
+import {
+  isAssignableResearchCondition,
+  isResearchCondition,
+} from "@/lib/intervention/types";
 import {
   createSession,
   deleteAllSessions,
@@ -39,6 +42,12 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     if (body.condition !== undefined && !isResearchCondition(body.condition)) {
       return NextResponse.json({ error: "Unknown research condition" }, { status: 400 });
+    }
+    if (body.condition !== undefined && !isAssignableResearchCondition(body.condition)) {
+      return NextResponse.json(
+        { error: "The private AI coach has been removed from new groups" },
+        { status: 400 }
+      );
     }
     const assignmentRequest: AssignmentRequest = {
       createdVia: "admin",

@@ -38,10 +38,10 @@ describe("Participant AI support choices", () => {
 });
 
 describe("ResearchConditionManager release gate", () => {
-  test("with no settings at all, V2 is on and home-page groups are dual_adaptive V2 groups", () => {
+  test("with no settings at all, V2 is on and home-page groups use proactive_group without the private coach", () => {
     const result = new ResearchConditionManager({}).planAssignment({ createdVia: "home_page" });
     assert.ok(result.ok && result.plan);
-    assert.equal(result.plan.researchCondition, "dual_adaptive");
+    assert.equal(result.plan.researchCondition, "proactive_group");
     assert.equal(result.plan.assignmentMethod, "configured_default");
     assert.equal(result.plan.createdVia, "home_page");
     assert.equal(result.plan.minGroupSize, 2);
@@ -51,7 +51,7 @@ describe("ResearchConditionManager release gate", () => {
   test("ADAPTIVE_V2_ENABLED=false keeps home-page groups legacy and refuses admin V2 creation", () => {
     const manager = new ResearchConditionManager({ ADAPTIVE_V2_ENABLED: "false" });
     assert.deepEqual(manager.planAssignment({ createdVia: "home_page" }), { ok: true, plan: null });
-    const admin = manager.planAssignment({ createdVia: "admin", condition: "dual_adaptive" });
+    const admin = manager.planAssignment({ createdVia: "admin", condition: "proactive_group" });
     assert.equal(admin.ok, false);
   });
 
@@ -66,6 +66,18 @@ describe("ResearchConditionManager release gate", () => {
     const result = manager.planAssignment({ createdVia: "home_page" });
     assert.ok(result.ok && result.plan);
     assert.equal(result.plan.researchCondition, "shared_on_demand");
+  });
+
+  test("the retired private-coach condition cannot be assigned to new groups", () => {
+    const manager = new ResearchConditionManager({});
+    const selected = manager.planAssignment({ createdVia: "admin", condition: "dual_adaptive" });
+    assert.equal(selected.ok, false);
+
+    const configured = new ResearchConditionManager({
+      ADAPTIVE_V2_DEFAULT_CONDITION: "dual_adaptive",
+    }).planAssignment({ createdVia: "home_page" });
+    assert.ok(configured.ok && configured.plan);
+    assert.equal(configured.plan.researchCondition, "proactive_group");
   });
 
   test("groups record every version and the condition", () => {
@@ -102,7 +114,7 @@ describe("ResearchConditionManager release gate", () => {
     );
     const result = manager.planAssignment({ createdVia: "admin" });
     assert.ok(result.ok && result.plan);
-    assert.equal(result.plan.researchCondition, "dual_adaptive");
+    assert.equal(result.plan.researchCondition, "shared_on_demand");
     assert.equal(result.plan.assignmentMethod, "randomized");
   });
 

@@ -7,8 +7,11 @@ import { describeModelConfig } from "@/lib/ai/provider";
 import { db, schema } from "@/lib/db";
 import { CURRENT_POLICY_VERSION, getPolicy, hasPolicy } from "@/lib/intervention/policies";
 import {
+  ASSIGNABLE_RESEARCH_CONDITIONS,
   RESEARCH_CONDITIONS,
+  isAssignableResearchCondition,
   isResearchCondition,
+  type AssignableResearchCondition,
   type ConditionCapabilities,
   type InstrumentMode,
   type ResearchCondition,
@@ -51,8 +54,9 @@ export const CONDITION_CAPABILITIES: Record<ResearchCondition, ConditionCapabili
     privateManual: true,
     sharedManual: true,
     proactiveGroup: true,
-    proactivePrivate: true,
-    fading: true,
+    // Retained as a stored historical condition, but the private coach is removed.
+    proactivePrivate: false,
+    fading: false,
     sharing: true,
   },
 };
@@ -64,17 +68,17 @@ export function capabilitiesFor(condition: ResearchCondition): ConditionCapabili
 export interface V2ReleaseConfig {
   enabled: boolean;
   homePageGroups: "legacy" | "v2";
-  defaultCondition: ResearchCondition;
+  defaultCondition: AssignableResearchCondition;
   assignment: "fixed" | "randomized";
-  randomizeConditions: ResearchCondition[];
+  randomizeConditions: AssignableResearchCondition[];
   allowTestPolicy: boolean;
 }
 
-function parseConditions(value: string | undefined): ResearchCondition[] {
+function parseConditions(value: string | undefined): AssignableResearchCondition[] {
   return (value ?? "")
     .split(",")
     .map((item) => item.trim())
-    .filter(isResearchCondition);
+    .filter(isAssignableResearchCondition);
 }
 
 export type EnvSource = Record<string, string | undefined>;
@@ -88,7 +92,7 @@ export function readReleaseConfig(env: EnvSource = process.env): V2ReleaseConfig
   return {
     enabled: env.ADAPTIVE_V2_ENABLED?.trim() !== "false",
     homePageGroups: env.ADAPTIVE_V2_HOME_PAGE_GROUPS?.trim() === "legacy" ? "legacy" : "v2",
-    defaultCondition: isResearchCondition(defaultCondition) ? defaultCondition : "dual_adaptive",
+    defaultCondition: isAssignableResearchCondition(defaultCondition) ? defaultCondition : "proactive_group",
     assignment: env.ADAPTIVE_V2_ASSIGNMENT?.trim() === "randomized" ? "randomized" : "fixed",
     randomizeConditions: parseConditions(env.ADAPTIVE_V2_RANDOMIZE_CONDITIONS),
     allowTestPolicy: env.ADAPTIVE_V2_ALLOW_TEST_POLICY?.trim() === "true",
@@ -128,6 +132,8 @@ export interface AssignmentRequest {
   condition?: ResearchCondition;
   policyVersion?: string;
   features?: Partial<StudyFeatures>;
+  /** Internal only: lets automated tests exercise assignments that already exist historically. */
+  allowRetiredCondition?: boolean;
 }
 
 export type PlanResult =
@@ -174,6 +180,13 @@ export class ResearchConditionManager {
     } else {
       condition = config.defaultCondition;
       assignmentMethod = "configured_default";
+    }
+
+    if (!isAssignableResearchCondition(condition) && !request.allowRetiredCondition) {
+      return {
+        ok: false,
+        error: "The private AI coach condition is retired and cannot be assigned to new groups",
+      };
     }
 
     const policyVersion = request.policyVersion ?? CURRENT_POLICY_VERSION;
@@ -254,4 +267,4 @@ export function conditionOf(assignment: StudyAssignment): ResearchCondition {
 
 export const conditionManager = new ResearchConditionManager();
 
-export { RESEARCH_CONDITIONS };
+export { ASSIGNABLE_RESEARCH_CONDITIONS, RESEARCH_CONDITIONS };

@@ -279,30 +279,11 @@ describe("InterventionDecisionEngine", () => {
     assert.equal(decision.assessment?.participantId, undefined);
   });
 
-  test("dual_adaptive offers private help only to members who opted in", () => {
-    const optedIn = decisionEngine.decide(confused, [personalConfusion], ctx("dual_adaptive"));
-    assert.equal(optedIn.scope, "individual");
-    assert.equal(optedIn.targetParticipantId, "p1");
-    assert.equal(optedIn.recommendedLevel, 1);
-    assert.equal(optedIn.supportType, "hint");
-
-    const notOptedIn = decisionEngine.decide(
-      { ...confused, privateOptInParticipantIds: [] },
-      [personalConfusion],
-      ctx("dual_adaptive")
-    );
-    assert.equal(notOptedIn.scope, "group");
-    assert.equal(notOptedIn.targetParticipantId, undefined);
-  });
-
-  test("a member at the private limit gets no private offer and no group fallback for it", () => {
-    const decision = decisionEngine.decide(
-      confused,
-      [personalConfusion],
-      ctx("dual_adaptive", { privateOfferCounts: { p1: policy.maxProactivePrivatePerParticipantPerScenario } })
-    );
-    assert.equal(decision.action, "no_action");
-    assert.equal(decision.reasonCode, "max_private_offers_reached");
+  test("the retired dual_adaptive condition no longer creates private offers", () => {
+    const decision = decisionEngine.decide(confused, [personalConfusion], ctx("dual_adaptive"));
+    assert.equal(decision.action, "offer");
+    assert.equal(decision.scope, "group");
+    assert.equal(decision.targetParticipantId, undefined);
   });
 
   test("imbalance offers address the group and name nobody", () => {

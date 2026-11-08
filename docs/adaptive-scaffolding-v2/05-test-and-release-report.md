@@ -1,5 +1,7 @@
 # 05 — Test and release report
 
+> Historical report for the original V2 release. The private AI coach documented in this report was later removed from participant use; current behaviour is in `06-researcher-operating-guide.md`.
+
 All results below were produced in this workspace on 2026-11-08 (Windows, Node 25.8.0), after V2 was made the default and study modes were removed. Every automated test and pilot ran on a **throwaway SQLite database** in the OS temp folder; `data/research.db` was opened read-only (integrity check, inspection, migration rehearsal) and its timestamp was unchanged. All AI in tests and pilots was **mock** (no API key available), and every such group carries the `mock_ai_output` flag.
 
 ## Commands and results

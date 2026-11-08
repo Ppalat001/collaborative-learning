@@ -55,6 +55,7 @@ export async function createV2Group(options: {
     condition: options.condition,
     policyVersion: options.policyVersion ?? TEST_POLICY,
     features: options.features,
+    allowRetiredCondition: true,
   });
   if (!planned.ok || !planned.plan) throw new Error(planned.ok ? "no plan" : planned.error);
   const session = await createSession(planned.plan);

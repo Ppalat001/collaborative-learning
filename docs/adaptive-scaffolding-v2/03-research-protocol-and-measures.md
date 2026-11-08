@@ -8,16 +8,16 @@ A **group** (session) gets one condition when it is created, recorded once in `s
 
 V2 is on by default and every V2 group is handled the same way: there are no separate study modes. Groups that should not be analysed (e.g. your own test runs) are deleted on `/admin` or excluded by group code. Every V2 export carries data-quality flags (`mock_ai_output` when there was no API key, `test_policy`, `not_started`, …) to check before analysis.
 
-Allocation: home-page groups use the configured default condition, `dual_adaptive` unless changed (`configured_default`); the researcher can pick the condition per group on `/admin` (`researcher_selected`); or a server-side random draw from an explicit list (`randomized`). The method is stored per group.
+Allocation: home-page groups use the configured default condition, `proactive_group` unless changed (`configured_default`); the researcher can pick a current condition per group on `/admin` (`researcher_selected`); or a server-side random draw from an explicit list (`randomized`). The private-coach condition `dual_adaptive` is retired for new groups. It remains a valid stored value so existing assignments and historical data keep their meaning. The assignment method is stored per group.
 
 ## Conditions (capabilities, not automatic experiments)
 
-| Condition | Private manual help (9 original options) | Shared facilitator on request | Proactive group offers | Proactive private offers (opt-in) | Adaptive level and fading |
+| Condition | Private manual help (6 answer options) | Shared facilitator on request | Proactive group offers | Proactive private offers (opt-in) | Adaptive level and fading |
 |---|---|---|---|---|---|
 | `baseline_private_request` | yes | no | no (shadow-logged only) | no | no |
 | `shared_on_demand` | yes | yes | no (shadow-logged only) | no | no |
 | `proactive_group` | yes | yes | yes | no | no |
-| `dual_adaptive` | yes | yes | yes | yes, only for members who switch it on | yes |
+| `dual_adaptive` (retired stored value) | yes | yes | yes | no | no |
 
 Identical in every V2 condition: per-person consent, the start gate (everyone consented and pre-tested, 2–4 members, roster frozen), the neutral opening prompt and checkpoint cards (if enabled for the group), the 10 scenarios, the 500-word answer, unanimous "I am good", per-scenario ratings, post-test and end questionnaire. The optional instruments (role cards, initial individual idea, agreement reason) are off by default and set per group; compared groups must use the same settings.
 
@@ -45,8 +45,8 @@ Thresholds in `src/data/intervention-policies.json` are **default starting value
 - **Offer first, content after a human decision.** A proactive group offer shows only a short neutral text and its reason ("Why this suggestion?"). The AI is called only when a member presses **View/accept**; the support is generated once and delivered to the whole group.
 - **Group offer policy (one explicit rule):** the first active member who accepts makes it visible to everyone; **Dismiss** by any member closes it for the group; **Not now** hides it only for that member for 120 s. Every member's action is recorded separately (`intervention_feedback`).
 - **Group support types** are process help only (participation invitation, discussion summary, dividing the thinking, disagreement mediation, reasoning prompt, reflection checkpoint, perspective invitation). Output is validated: no full answer, no member names, no singling anyone out; a failed validation is replaced by a fixed template and flagged `template_fallback`.
-- **Private offers (`dual_adaptive` only):** default off; a member can switch them on at any time. Triggered only by that member's own expressed confusion, or by pressing **I'm stuck**. Sent only to that member's private socket room and filtered in the database query. Content levels are limited to hint (level 1), guiding question, or explanation (level 2); never a full answer.
-- **Adaptive level and fading (`AdaptiveScaffoldingEngine`):** start with a hint; fade to a guiding question after the member worked without AI help in the previous 2 scenarios; recommend level 2 only after level-1 help plus continued confusion or an explicit request for more; never level 3. The recommendation, its evidence and what the member actually chose (including choosing more direct help) are stored.
+- **Private coach removed:** no current group shows the opt-in private coach or **I'm stuck**, and the server refuses new private-coach preferences and requests. Earlier private-coach rows remain in their original tables and exports; nothing historical is deleted or reinterpreted.
+- **Historical adaptive records:** recommendations and fading evidence already recorded under `dual_adaptive` remain exportable. The `AdaptiveScaffoldingEngine` code is retained only to interpret and verify those historical records.
 - **Sharing:** private AI content reaches the group only when its owner presses **Share with group**, previews and edits the text, and confirms. Full-answer responses cannot be shared with this button. Sharing does not prove anyone read it.
 - **Human activity is not inflated:** AI items live in their own tables, never in `discussion_messages`, so chat counts and contribution shares stay human-only.
 - After a scenario is submitted no AI support is generated; open offers expire.

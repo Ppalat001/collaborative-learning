@@ -2,7 +2,7 @@
 
 Last updated 2026-11-08. Baseline: `master` @ `57195b9`. Nothing has been deployed; all changes are uncommitted in the working tree.
 
-Current configuration: **V2 is on by default** (no variables needed); every new group is a V2 group, home-page groups use `dual_adaptive`, group size 2–4. Study modes (formal/pilot/demo) were removed: all V2 groups are handled the same way. `ADAPTIVE_V2_ENABLED=false` switches new groups back to the original platform. Existing legacy groups are unchanged.
+Current configuration: **V2 is on by default** (no variables needed); every new group is a V2 group, home-page groups use `proactive_group`, group size 2–4. The private coach is removed from participant use. `dual_adaptive` remains a recognised stored value only so existing assignments and historical exports keep their provenance; it no longer enables private offers. Study modes (formal/pilot/demo) were removed: all V2 groups are handled the same way. `ADAPTIVE_V2_ENABLED=false` can still be used explicitly to create legacy groups.
 
 ## Phases
 
@@ -20,9 +20,9 @@ Current configuration: **V2 is on by default** (no variables needed); every new 
 
 - `npx tsc --noEmit -p .`: pass
 - `npx eslint src server.ts tests scripts/*.mjs` (new and changed code): pass
-- `npm test`: 76 pass, 0 fail
+- `npm test`: full suite passes (see current command output)
 - `npm run build`: pass
-- `npm run pilot:isolated`: original pilot passes with V2 switched off; V2 pilot passes with default settings (home-page group is V2 `dual_adaptive`); integrity checks clean
+- `npm run pilot:isolated`: rerun after any assignment-policy change; the automated test suite covers the retired condition for existing-group compatibility
 - `npm run db:rehearse` on a copy of `data/research.db`: additive, all 1,480 legacy rows unchanged
 
 ## Files

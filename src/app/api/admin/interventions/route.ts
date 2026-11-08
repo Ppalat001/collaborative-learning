@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { describeModelConfig } from "@/lib/ai/provider";
 import { getPolicy, listPolicyVersions } from "@/lib/intervention/policies";
 import {
-  RESEARCH_CONDITIONS,
+  ASSIGNABLE_RESEARCH_CONDITIONS,
   readReleaseConfig,
   STUDY_PROTOCOL,
 } from "@/lib/intervention/ResearchConditionManager";
@@ -29,7 +29,7 @@ export async function GET(request: Request) {
           status: STUDY_PROTOCOL.status,
           consentVersion: STUDY_PROTOCOL.consent.version,
         },
-        conditions: RESEARCH_CONDITIONS,
+        conditions: ASSIGNABLE_RESEARCH_CONDITIONS,
         policies: listPolicyVersions().map((version) => ({
           version,
           testOnly: getPolicy(version).testOnly,
