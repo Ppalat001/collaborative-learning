@@ -12,7 +12,7 @@ interface RoleCard {
 /**
  * Non-AI "How to get started" box shown identically in every V2 condition: the
  * neutral opening prompt and optional human role cards. The discussion prompts
- * (checkpoint questions) live inside Step 1, next to the chat.
+ * (checkpoint questions) are part of the Step 1 chat.
  */
 export function GroupDiscussionStarter({
   openingPrompt,

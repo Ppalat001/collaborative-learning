@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { MAX_MESSAGE_LENGTH, PARTICIPANT_COLORS } from "@/lib/instruments";
+import type { CheckpointView } from "@/lib/intervention/types";
 import type { DiscussionMessage } from "@/lib/types";
 
 const UNKNOWN_COLOR = { name: "text-slate-600", bubble: "border-slate-200 bg-slate-50" };
@@ -14,27 +15,49 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+/**
+ * Non-AI discussion prompts (V2 checkpoints). They are shown in the chat timeline
+ * but stored separately, so they never count as chat messages.
+ */
+export interface DiscussionPromptsConfig {
+  kinds: { kind: string; text: string }[];
+  raised: CheckpointView[];
+  busy: boolean;
+  onRaise: (kind: string) => void;
+}
+
 interface DiscussionChatProps {
   messages: DiscussionMessage[];
   participantId: string | null;
   disabled: boolean;
   onSend: (text: string) => Promise<void>;
+  prompts?: DiscussionPromptsConfig | null;
 }
+
+type TimelineEntry =
+  | { type: "message"; at: string; message: DiscussionMessage }
+  | { type: "prompt"; at: string; prompt: CheckpointView };
 
 export function DiscussionChat({
   messages,
   participantId,
   disabled,
   onSend,
+  prompts,
 }: DiscussionChatProps) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
+  const timeline: TimelineEntry[] = [
+    ...messages.map((message) => ({ type: "message" as const, at: message.createdAt, message })),
+    ...(prompts?.raised ?? []).map((prompt) => ({ type: "prompt" as const, at: prompt.createdAt, prompt })),
+  ].sort((a, b) => a.at.localeCompare(b.at));
+
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
-  }, [messages.length]);
+  }, [timeline.length]);
 
   const send = async () => {
     const text = draft.trim();
@@ -72,12 +95,34 @@ export function DiscussionChat({
         ref={listRef}
         className="max-h-96 min-h-40 space-y-2 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3"
       >
-        {messages.length === 0 && (
+        {timeline.length === 0 && (
           <p className="py-6 text-center text-sm text-slate-500">
-            No messages yet. Start the discussion below.
+            {prompts
+              ? "No messages yet. Write a message below, or start with one of the discussion prompts."
+              : "No messages yet. Start the discussion below."}
           </p>
         )}
-        {messages.map((message) => {
+        {timeline.map((entry) => {
+          if (entry.type === "prompt") {
+            const { prompt } = entry;
+            return (
+              <div
+                key={`prompt-${prompt.id}`}
+                className="rounded-lg border border-dashed border-slate-300 bg-slate-100 px-3 py-2"
+              >
+                <div className="flex flex-wrap items-baseline gap-x-2 text-xs text-slate-500">
+                  <span className="font-semibold uppercase tracking-wide text-slate-600">Discussion prompt</span>
+                  <span>
+                    raised by <span className="font-medium text-slate-700">{prompt.raisedByName}</span>
+                  </span>
+                  <span>{formatTime(prompt.createdAt)}</span>
+                  <span>· No AI involved</span>
+                </div>
+                <p className="mt-0.5 text-sm font-medium text-slate-900">{prompt.text}</p>
+              </div>
+            );
+          }
+          const { message } = entry;
           const color = colorFor(message.colorIndex);
           const isMine = !!participantId && message.participantId === participantId;
           return (
@@ -96,6 +141,27 @@ export function DiscussionChat({
           );
         })}
       </div>
+
+      {!disabled && prompts && prompts.kinds.length > 0 && (
+        <div className="mt-3">
+          <p className="text-xs text-slate-500">
+            Discussion prompts: pick a question to put to the whole group (no AI involved).
+          </p>
+          <div className="mt-1.5 flex flex-wrap gap-2">
+            {prompts.kinds.map(({ kind, text }) => (
+              <button
+                key={kind}
+                type="button"
+                disabled={!participantId || prompts.busy}
+                onClick={() => prompts.onRaise(kind)}
+                className="rounded-full border border-slate-300 bg-white px-3 py-1 text-left text-xs text-slate-700 hover:border-indigo-300 hover:bg-indigo-50 disabled:opacity-50"
+              >
+                {text}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {!disabled && (
         <div className="mt-3 flex items-end gap-2">
