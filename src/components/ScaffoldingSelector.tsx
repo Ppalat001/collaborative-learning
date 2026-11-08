@@ -1,5 +1,5 @@
 import {
-  AI_SUPPORT_OPTIONS,
+  PARTICIPANT_AI_SUPPORT_OPTIONS,
   SUPPORT_LEVEL_LABELS,
   type IndividualScaffold,
   type ScaffoldingOption,
@@ -34,11 +34,6 @@ const OPTION_GROUPS: {
     title: `Level 3 · ${SUPPORT_LEVEL_LABELS[3]}`,
     description: "A complete answer to compare against",
     filter: (o) => o.supportLevel === 3,
-  },
-  {
-    title: "Collaboration support",
-    description: "Help with how your group works together, not the answer itself",
-    filter: (o) => o.category === "process",
   },
 ];
 
@@ -81,7 +76,7 @@ export function ScaffoldingSelector({
   return (
     <div className="space-y-4">
       {OPTION_GROUPS.map((group) => {
-        const options = AI_SUPPORT_OPTIONS.filter(group.filter);
+        const options = PARTICIPANT_AI_SUPPORT_OPTIONS.filter(group.filter);
         return (
           <div key={group.title}>
             <div className="flex flex-wrap items-baseline gap-x-2">

@@ -10,6 +10,32 @@ import {
 } from "@/lib/intervention/ResearchConditionManager";
 import { computeReadiness } from "@/lib/intervention/ResearchEligibilityGuard";
 import { validateFacilitatorOutput, validatePrivateOfferOutput } from "@/lib/intervention/validators";
+import {
+  AI_SUPPORT_OPTIONS,
+  PARTICIPANT_AI_SUPPORT_OPTIONS,
+  isParticipantAiSupportType,
+} from "@/lib/types";
+
+describe("Participant AI support choices", () => {
+  test("private collaboration options remain readable historically but are unavailable in the participant test", () => {
+    const historicalTypes = AI_SUPPORT_OPTIONS.map((option) => option.type);
+    const participantTypes = PARTICIPANT_AI_SUPPORT_OPTIONS.map((option) => option.type);
+
+    assert.ok(historicalTypes.includes("summary"));
+    assert.ok(historicalTypes.includes("task_splitting"));
+    assert.ok(historicalTypes.includes("conflict_support"));
+    assert.deepEqual(participantTypes, [
+      "hint",
+      "guiding_question",
+      "explanation",
+      "example",
+      "feedback",
+      "full_answer",
+    ]);
+    assert.equal(isParticipantAiSupportType("summary"), false);
+    assert.equal(isParticipantAiSupportType("hint"), true);
+  });
+});
 
 describe("ResearchConditionManager release gate", () => {
   test("with no settings at all, V2 is on and home-page groups are dual_adaptive V2 groups", () => {

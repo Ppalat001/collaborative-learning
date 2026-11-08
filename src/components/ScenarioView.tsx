@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DiscussionChat } from "@/components/DiscussionChat";
+import { DiscussionPrompts } from "@/components/DiscussionPrompts";
 import { GroupAIFacilitatorPanel } from "@/components/GroupAIFacilitatorPanel";
 import { GroupAnswerEditor, GroupAnswerNote } from "@/components/GroupAnswerEditor";
 import { GroupDiscussionStarter } from "@/components/GroupDiscussionStarter";
@@ -406,14 +407,11 @@ export function ScenarioView({
           openingPrompt={v2.openingPrompt}
           roles={v2.roles}
           chosenRoles={interventions.roles}
-          checkpointKinds={v2.checkpoints?.kinds ?? null}
-          checkpoints={interventions.checkpoints}
           members={members}
           participantId={participantId}
           locked={submitted}
           busy={interventions.busy}
           onChooseRole={interventions.chooseRole}
-          onRaiseCheckpoint={interventions.raiseCheckpoint}
         />
       )}
 
@@ -424,6 +422,15 @@ export function ScenarioView({
           disabled={submitted}
           onSend={collaboration.sendMessage}
         />
+        {v2 && (
+          <DiscussionPrompts
+            kinds={v2.checkpoints?.kinds ?? null}
+            raised={interventions.checkpoints}
+            locked={submitted}
+            busy={interventions.busy}
+            onRaise={interventions.raiseCheckpoint}
+          />
+        )}
       </Step>
 
       {v2 && showFacilitator && (

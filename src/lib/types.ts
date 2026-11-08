@@ -165,10 +165,24 @@ export const SCAFFOLDING_OPTIONS: ScaffoldingOption[] = [
   },
 ];
 
-/** Options a student can switch on in Step 2; selecting nothing means no assistance. */
+/**
+ * All support options retained for historical records, legacy exports and
+ * researcher scoring. Process options are no longer offered to participants.
+ */
 export const AI_SUPPORT_OPTIONS = SCAFFOLDING_OPTIONS.filter(
   (option) => option.type !== "no_assistance"
 );
+
+/** Current participant-facing choices in Step 2. */
+export const PARTICIPANT_AI_SUPPORT_OPTIONS = AI_SUPPORT_OPTIONS.filter(
+  (option) => option.category !== "process"
+);
+
+export function isParticipantAiSupportType(
+  type: ScaffoldingType
+): boolean {
+  return PARTICIPANT_AI_SUPPORT_OPTIONS.some((option) => option.type === type);
+}
 
 export function getScaffoldingOption(
   type: ScaffoldingType

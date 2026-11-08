@@ -86,7 +86,7 @@ Research instruments (survey items, end-of-study questions, rubric criteria) are
 
 ## Adaptive Scaffolding V2
 
-The current version of the platform for new groups: per-person consent, a server-side start gate with a frozen roster (2–4 members), a shared AI group facilitator (on request and, by condition, proactive offers that members accept or dismiss), optional private proactive offers with adaptive fading, and logging of every decision including decisions not to intervene. The nine private AI options are unchanged.
+The current version of the platform for new groups: per-person consent, a server-side start gate with a frozen roster (2–4 members), a shared AI group facilitator (on request and, by condition, proactive offers that members accept or dismiss), optional private proactive offers with adaptive fading, and logging of every decision including decisions not to intervene. Step 2 contains six private answer-support options; collaboration/process support is provided only through the shared group facilitator.
 
 It is **on by default**: with no `ADAPTIVE_V2_*` variables, every new group (home page and `/admin`) is a V2 group in the `dual_adaptive` condition. Groups created before V2 (legacy groups) never change and keep working as before. Researchers can also create V2 groups with a chosen condition on `/admin`, where a dashboard shows each group's decisions, interventions, responses and warnings, and separate versioned V2 CSV exports (per group or all V2 groups) are available. `ADAPTIVE_V2_ENABLED=false` switches back to the original platform for new groups.
 

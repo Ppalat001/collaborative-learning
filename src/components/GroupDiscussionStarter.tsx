@@ -1,7 +1,6 @@
 "use client";
 
 import type { ChosenRole } from "@/hooks/useInterventions";
-import type { CheckpointView } from "@/lib/intervention/types";
 import type { GroupMember } from "@/lib/types";
 
 interface RoleCard {
@@ -11,35 +10,30 @@ interface RoleCard {
 }
 
 /**
- * Non-AI collaboration structure shown identically in every V2 condition: the
- * neutral opening prompt, optional human role cards and checkpoint questions.
+ * Non-AI "How to get started" box shown identically in every V2 condition: the
+ * neutral opening prompt and optional human role cards. The discussion prompts
+ * (checkpoint questions) live inside Step 1, next to the chat.
  */
 export function GroupDiscussionStarter({
   openingPrompt,
   roles,
   chosenRoles,
-  checkpointKinds,
-  checkpoints,
   members,
   participantId,
   locked,
   busy,
   onChooseRole,
-  onRaiseCheckpoint,
 }: {
   openingPrompt: { starterName: string | null; steps: string[] } | null;
   roles: { cards: readonly RoleCard[]; suggested: Record<string, string> } | null;
   chosenRoles: ChosenRole[];
-  checkpointKinds: { kind: string; text: string }[] | null;
-  checkpoints: CheckpointView[];
   members: GroupMember[];
   participantId: string | null;
   locked: boolean;
   busy: string | null;
   onChooseRole: (role: string) => void;
-  onRaiseCheckpoint: (kind: string) => void;
 }) {
-  if (!openingPrompt && !roles && !checkpointKinds) return null;
+  if (!openingPrompt && !roles) return null;
   const roleLabel = (id: string | undefined) => roles?.cards.find((c) => c.id === id)?.label ?? id;
   const myRole = chosenRoles.find((r) => r.participantId === participantId)?.role;
   const suggestedForMe = participantId ? roles?.suggested[participantId] : undefined;
@@ -85,35 +79,6 @@ export function GroupDiscussionStarter({
             })}
           </div>
           {myRole && <p className="mt-2 text-xs text-slate-500">Your role: {roleLabel(myRole)}</p>}
-        </div>
-      )}
-
-      {checkpointKinds && (
-        <div className="mt-5">
-          <p className="text-sm font-medium text-slate-800">Group checkpoints</p>
-          <p className="text-xs text-slate-500">Raise a question for the whole group to discuss (no AI involved).</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {checkpointKinds.map(({ kind, text }) => (
-              <button
-                key={kind}
-                type="button"
-                disabled={locked || busy === "checkpoint"}
-                onClick={() => onRaiseCheckpoint(kind)}
-                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-              >
-                {text}
-              </button>
-            ))}
-          </div>
-          {checkpoints.length > 0 && (
-            <ul className="mt-3 space-y-1 text-sm text-slate-700">
-              {checkpoints.map((checkpoint) => (
-                <li key={checkpoint.id} className="rounded-lg bg-amber-50 px-3 py-2">
-                  <strong>{checkpoint.raisedByName}</strong> asked the group: {checkpoint.text}
-                </li>
-              ))}
-            </ul>
-          )}
         </div>
       )}
     </section>

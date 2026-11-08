@@ -14,6 +14,7 @@ import {
 } from "@/lib/services/sessions";
 import { logResearchEvent } from "@/lib/utils/export";
 import { getScenarioByOrder, isValidScaffoldingType } from "@/lib/utils/scenarios";
+import { isParticipantAiSupportType } from "@/lib/types";
 
 /**
  * AI support is individual: each member switches support types on ("select") or
@@ -39,6 +40,12 @@ export async function POST(
     }
     if (!isValidScaffoldingType(scaffoldingType) || scaffoldingType === "no_assistance") {
       return NextResponse.json({ error: "Invalid support type" }, { status: 400 });
+    }
+    if (!isParticipantAiSupportType(scaffoldingType)) {
+      return NextResponse.json(
+        { error: "Collaboration support is no longer available in private AI support" },
+        { status: 400 }
+      );
     }
 
     const loaded = await loadSessionContext(code);
