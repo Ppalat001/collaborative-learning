@@ -12,6 +12,20 @@ function isHiddenForMe(view: InterventionView, now: number) {
   return view.myFeedback === "deferred" && !!view.deferredUntil && Date.parse(view.deferredUntil) > now;
 }
 
+function facilitatorCardClass(status: InterventionView["status"]) {
+  const base = "rounded-xl border-2 p-4 shadow-sm";
+  if (status === "expired" || status === "dismissed") {
+    return `${base} border-slate-400 bg-slate-100`;
+  }
+  if (status === "failed") {
+    return `${base} border-amber-400 bg-amber-50`;
+  }
+  if (status === "suggested" || status === "deferred") {
+    return `${base} border-violet-500 bg-violet-100 shadow-md`;
+  }
+  return `${base} border-violet-400 bg-violet-100`;
+}
+
 /**
  * Shared AI facilitator timeline: visible to every member, visually distinct from
  * human chat, and never counted as a chat message.
@@ -73,12 +87,12 @@ export function GroupAIFacilitatorPanel({
           if (entry.kind === "idea") {
             const { idea } = entry;
             return (
-              <li key={`idea-${idea.id}`} className="rounded-xl border border-slate-200 bg-white p-4">
-                <p className="text-xs text-slate-500">
+              <li key={`idea-${idea.id}`} className="rounded-xl border-2 border-sky-400 bg-sky-50 p-4 shadow-sm">
+                <p className="text-xs text-sky-900">
                   {time(idea.createdAt)} · <strong className="text-slate-700">{idea.authorName}</strong> shared an
                   idea from their private AI support ({idea.sourceLabel})
                 </p>
-                <blockquote className="mt-2 border-l-4 border-slate-300 pl-3 text-sm whitespace-pre-line text-slate-800">
+                <blockquote className="mt-2 border-l-4 border-sky-400 pl-3 text-sm whitespace-pre-line text-slate-800">
                   {idea.sharedText}
                 </blockquote>
               </li>
@@ -90,8 +104,8 @@ export function GroupAIFacilitatorPanel({
               ? `Requested by ${item.requestedByName ?? "a member"}`
               : "Suggested by the facilitator";
           return (
-            <li key={item.id} className="rounded-xl border border-violet-200 bg-white p-4">
-              <p className="text-xs text-violet-800">
+            <li key={item.id} className={facilitatorCardClass(item.status)}>
+              <p className="text-xs font-medium text-violet-900">
                 {time(item.createdAt)} · <strong>AI facilitator</strong> · {item.supportLabel} · {origin}
                 {item.aiOrigin === "mock" && " · demo text (no AI service)"}
               </p>
