@@ -74,7 +74,7 @@ After a pilot group completes at least one scenario, choose the group in `/admin
 - **Group 1:** 2 members, complete Scenarios 1–3
 - **Group 2:** 3–4 members, complete Scenarios 1–5
 
-This validates both small and full group sizes without running all 10 scenarios twice.
+This validates both small and full group sizes without running all 8 scenarios twice.
 
 ## Ethics reminder
 

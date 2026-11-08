@@ -531,7 +531,9 @@ function buildTestsExport(data: GroupData): CsvExport {
   const pre = getAssessment("pre");
   const post = getAssessment("post");
   const concepts = [...new Set(pre.questions.map((q) => q.concept))];
-  const openIds = pre.openQuestions.map((q) => q.id);
+  // Keep the original assessment-export columns stable for historical datasets.
+  // The current single written question continues to use open_ai_role.
+  const openIds = ["open_collaboration", "open_ai_role"];
 
   const columns = [
     "group",

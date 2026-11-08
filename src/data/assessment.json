@@ -102,12 +102,8 @@
     ],
     "openQuestions": [
       {
-        "id": "open_collaboration",
-        "text": "In your own words, what makes group work truly collaborative, rather than just dividing the work? Give an example."
-      },
-      {
         "id": "open_ai_role",
-        "text": "What is the difference between self-regulated learning, co-regulated learning, and socially shared regulation of learning? Explain how these three processes differ in a group learning environment and provide an example of each."
+        "text": "A group is stuck repeating the same arguments without progress. One member suggests asking AI for the full answer.\n\nWhat should AI do, who should receive the support, and how can the group remain responsible for the solution?"
       }
     ]
   },
@@ -214,12 +210,8 @@
     ],
     "openQuestions": [
       {
-        "id": "open_collaboration",
-        "text": "In your own words, what makes group work truly collaborative, rather than just dividing the work? Give an example."
-      },
-      {
         "id": "open_ai_role",
-        "text": "What is the difference between self-regulated learning, co-regulated learning, and socially shared regulation of learning? Explain how these three processes differ in a group learning environment and provide an example of each."
+        "text": "A group is stuck repeating the same arguments without progress. One member suggests asking AI for the full answer.\n\nWhat should AI do, who should receive the support, and how can the group remain responsible for the solution?"
       }
     ]
   }

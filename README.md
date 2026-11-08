@@ -74,7 +74,7 @@ Visit `/admin`, enter the admin password (`ADMIN_PASSWORD`; locally defaults to 
 | Individual AI support | student × scenario × AI option (level, times shown/hidden, the AI reply) |
 | Individual contributions | student × scenario (chat messages and words, characters typed, share of the final answer) |
 | Individual scenario ratings | student × scenario (confidence in the answer and why, what the group could do differently, 1–5 ratings, amount of AI help, comment) |
-| Pre/post-test comparison | student (pre and post score, each concept and the two written answers side by side) |
+| Pre/post-test comparison | student (pre and post score, each concept and the written learning-application answer side by side; historical written-answer columns remain for compatibility) |
 | End questionnaire | student (answers to the questions after the post-test) |
 | Rubric scores | scenario × rater (6 criteria scored 1–4, total 6–24, average) |
 

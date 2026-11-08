@@ -379,6 +379,9 @@ export function ScenarioView({
         <p className="mt-4 whitespace-pre-line text-slate-700">{scenario.description}</p>
         <p className="mt-3 rounded-xl bg-slate-50 p-4 text-sm text-slate-700">
           <span className="font-medium">Discuss:</span> {scenario.promptForGroup}
+          <span className="mt-2 block font-medium text-slate-600">
+            Keep your final answer concise.
+          </span>
         </p>
         <NoExternalCallsNote compact className="mt-4" />
       </header>

@@ -77,12 +77,10 @@ const POST_ANSWERS = {
 
 const OPEN_ANSWERS = {
   pre: {
-    open_collaboration: "Working on the same task together.",
-    open_ai_role: "Use it for hints only.",
+    open_ai_role: "AI should give a hint privately, then the group should discuss and decide.",
   },
   post: {
-    open_collaboration: "Building one shared understanding where everyone is accountable.",
-    open_ai_role: "Ask for guiding questions, then discuss them as a group before writing.",
+    open_ai_role: "AI should privately give the stuck member a guiding question, while the group evaluates the ideas and writes its own solution.",
   },
 };
 

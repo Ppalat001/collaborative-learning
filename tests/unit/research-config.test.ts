@@ -16,6 +16,45 @@ import {
   PARTICIPANT_AI_SUPPORT_OPTIONS,
   isParticipantAiSupportType,
 } from "@/lib/types";
+import { getAssessment } from "@/lib/utils/assessment";
+import { getScenarios } from "@/lib/utils/scenarios";
+
+describe("Assessment instrument", () => {
+  test("pre- and post-tests share one learning-application question as question 9", () => {
+    const expected =
+      "A group is stuck repeating the same arguments without progress. One member suggests asking AI for the full answer.\n\nWhat should AI do, who should receive the support, and how can the group remain responsible for the solution?";
+    for (const type of ["pre", "post"] as const) {
+      const assessment = getAssessment(type);
+      assert.equal(assessment.questions.length, 8);
+      assert.deepEqual(assessment.openQuestions, [
+        { id: "open_ai_role", text: expected },
+      ]);
+    }
+  });
+});
+
+describe("Scenario instrument", () => {
+  test("contains the eight current research scenarios and no scenarios 9 or 10", () => {
+    const scenarios = getScenarios();
+    assert.deepEqual(
+      scenarios.map(({ id, order, title, taskType }) => ({ id, order, title, taskType })),
+      [
+        { id: "scenario-01", order: 1, title: "Explaining a Concept", taskType: "explain" },
+        { id: "scenario-02", order: 2, title: "Improving a Weak Answer", taskType: "expand_answer" },
+        { id: "scenario-03", order: 3, title: "Short Case Study", taskType: "case_study" },
+        { id: "scenario-04", order: 4, title: "Making a Judgment Call", taskType: "judgment" },
+        { id: "scenario-05", order: 5, title: "Understanding Learning Regulation", taskType: "explain" },
+        { id: "scenario-06", order: 6, title: "Reflecting on Meaningful Participation", taskType: "reflection" },
+        { id: "scenario-07", order: 7, title: "Ethical Dilemma", taskType: "judgment" },
+        { id: "scenario-08", order: 8, title: "Data Interpretation", taskType: "case_study" },
+      ]
+    );
+    assert.match(scenarios[2].promptForGroup, /without taking control/);
+    assert.match(scenarios[3].promptForGroup, /intervene now or wait/);
+    assert.match(scenarios[4].promptForGroup, /without taking responsibility away/);
+    assert.match(scenarios[7].promptForGroup, /alternative explanation/);
+  });
+});
 
 describe("Participant AI support choices", () => {
   test("private collaboration options remain readable historically but are unavailable in the participant test", () => {

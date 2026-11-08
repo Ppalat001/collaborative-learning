@@ -141,7 +141,7 @@
     <div class="arrow">→</div>
     <div class="step"><b>“I am good”</b>When <em>every</em> member confirms, the scenario is finished.</div>
   </div>
-  <p>Around the scenarios, each student completes a <strong>pre-test</strong> (8 multiple-choice + 2 written questions), a short <strong>rating</strong> after every scenario, a <strong>post-test</strong> and an <strong>end questionnaire</strong> (10 open questions). A password-protected <strong>admin page</strong> lets the researcher download per-group CSV files, score answer quality with a blind rubric, and delete test data.</p>
+  <p>Around the scenarios, each student completes a <strong>pre-test</strong> (8 multiple-choice + 1 written learning-application question), a short <strong>rating</strong> after every scenario, a <strong>post-test</strong> and an <strong>end questionnaire</strong> (10 open questions). A password-protected <strong>admin page</strong> lets the researcher download per-group CSV files, score answer quality with a blind rubric, and delete test data.</p>
   <h3>Three design principles</h3>
   <div class="grid3">
     <div class="card"><h4>AI supports, it doesn’t do</h4>The AI is instructed to scaffold thinking and never write the group’s answer — except the deliberately chosen “Full expert answer”, which is recorded as the most direct level of help.</div>
@@ -201,7 +201,7 @@ src/lib/authorship.ts             who-typed-what tracking (diff + author runs)
 src/lib/utils/export.ts           CSV exports and all derived metrics
 src/lib/db/schema.ts              database tables
 src/lib/instruments.ts            rating items, questionnaire, rubric, limits, colours
-src/data/scenarios.json           the 10 scenarios
+src/data/scenarios.json           the 8 scenarios
 src/data/assessment.json          pre- and post-test questions
 scripts/pilot-test.mjs            automated end-to-end test</code></pre>
 </section>
@@ -214,7 +214,7 @@ scripts/pilot-test.mjs            automated end-to-end test</code></pre>
     <div class="arrow">→</div>
     <div class="step"><b>2. Lobby</b>Group ID card, member list, consent (once per group).</div>
     <div class="arrow">→</div>
-    <div class="step"><b>3. Pre-test</b>Each student: 8 MCQ + 2 written. Once only.</div>
+    <div class="step"><b>3. Pre-test</b>Each student: 8 MCQ + 1 written. Once only.</div>
     <div class="arrow">→</div>
     <div class="step"><b>4. Begin scenarios</b>Opens the group’s current scenario.</div>
   </div>
@@ -223,7 +223,7 @@ scripts/pilot-test.mjs            automated end-to-end test</code></pre>
     <div class="arrow">→</div>
     <div class="step"><b>6. Rating</b>Each student rates the scenario (AI items only if they used AI).</div>
     <div class="arrow">→</div>
-    <div class="step"><b>7. Post-test</b>8 new MCQ (same concepts) + same 2 written questions.</div>
+    <div class="step"><b>7. Post-test</b>8 new MCQ (same concepts) + the same written question.</div>
     <div class="arrow">→</div>
     <div class="step"><b>8. Questionnaire</b>10 open questions (optional), then thank-you with score.</div>
   </div>
@@ -271,7 +271,7 @@ scripts/pilot-test.mjs            automated end-to-end test</code></pre>
   <p>After consent, each student completes the pre-test individually → <code>POST /api/sessions/{code}/assessment</code> with <code>assessmentType: "pre"</code>.</p>
   <ul>
     <li><strong>8 multiple-choice questions</strong>, one per concept (definition, interdependence, accountability, scaffolding, choosing support, over-reliance, group agency, disagreement) — all required.</li>
-    <li><strong>2 written questions</strong> — required.</li>
+    <li><strong>1 written learning-application question</strong> — required.</li>
     <li>Score = number of correct options (0–8), computed on the server.</li>
     <li>Stored: chosen option index per question, written answers, score, max score, completion time. Logged as <code>assessment_completed</code>.</li>
     <li><strong>Only once</strong> per student; a repeated submission returns the existing result.</li>
@@ -456,7 +456,7 @@ Student unticks → {action:"unselect"} → hidden, times_hidden +1, event ai_su
     <tr><td>Overall</td><td>I am satisfied with how our group handled this scenario.</td><td>Everyone</td><td><code>satisfied</code></td></tr>
     <tr><td>—</td><td>Optional comment: what stood out?</td><td>Everyone</td><td><code>comment</code></td></tr>
   </table>
-  <p>Validation: every shown item 1–5 (except N/A), amount of help required for AI users, scenario must be finished, once per student per scenario. AI items for non-users are stored as empty (null). Logged as <code>survey_submitted</code>. After saving, the student moves to the next scenario (or to the final page after scenario 10) — each at their own pace.</p>
+  <p>Validation: every shown item 1–5 (except N/A), amount of help required for AI users, scenario must be finished, once per student per scenario. AI items for non-users are stored as empty (null). Logged as <code>survey_submitted</code>. After saving, the student moves to the next scenario (or to the final page after scenario 8) — each at their own pace.</p>
 </section>
 
 <!-- 14 -->
@@ -464,7 +464,7 @@ Student unticks → {action:"unselect"} → hidden, times_hidden +1, event ai_su
   <h2><span class="num">14.</span>Post-test, questionnaire and the end</h2>
   <p>Page <code>/session/{code}/complete</code>, in this order:</p>
   <ol>
-    <li><strong>Post-test</strong> — 8 <em>new</em> multiple-choice questions on the <em>same 8 concepts</em> (so learning can be compared per concept without memorising answers) + the <em>same 2 written questions</em> as the pre-test (direct before/after comparison). Required, scored 0–8, once only, logged <code>assessment_completed</code>.</li>
+    <li><strong>Post-test</strong> — 8 <em>new</em> multiple-choice questions on the <em>same 8 concepts</em> (so learning can be compared per concept without memorising answers) + the <em>same written learning-application question</em> as the pre-test (direct before/after comparison). Required, scored 0–8, once only, logged <code>assessment_completed</code>.</li>
     <li><strong>End questionnaire</strong> — 10 open questions, all optional, saved once → <code>POST /api/sessions/{code}/reflection</code>, logged <code>final_reflection_submitted</code>.</li>
     <li><strong>Thank-you page</strong> — “study complete” with the student’s post-test score.</li>
   </ol>
@@ -473,19 +473,17 @@ Student unticks → {action:"unselect"} → hidden, times_hidden +1, event ai_su
 <!-- 15 -->
 <section id="content">
   <h2><span class="num">15.</span>Scenarios and research instruments</h2>
-  <h3>The 10 scenarios</h3>
+  <h3>The 8 scenarios</h3>
   <table>
     <tr><th>#</th><th>Title</th><th>Task type</th><th>Expected min</th><th>Task</th></tr>
     <tr><td>1</td><td>Explaining a Concept</td><td>explain</td><td>8</td><td>Explain to a first-year student what makes group work truly collaborative.</td></tr>
     <tr><td>2</td><td>Improving a Weak Answer</td><td>expand_answer</td><td>7</td><td>Improve “group work is useful because the work gets done faster when you split it up”.</td></tr>
-    <tr><td>3</td><td>Short Case Study</td><td>case_study</td><td>10</td><td>Free-rider and dominating member: choose peer assessment, assigned roles or an individual quiz.</td></tr>
-    <tr><td>4</td><td>Making a Judgment Call</td><td>judgment</td><td>8</td><td>Is submitting a full AI answer the night before acceptable, and when?</td></tr>
-    <tr><td>5</td><td>Choosing Among Solutions</td><td>solutions</td><td>9</td><td>Shared document with history vs structured roles vs AI assistant — prioritise one.</td></tr>
-    <tr><td>6</td><td>Reflecting on Learning</td><td>reflection</td><td>6</td><td>A time the group struggled with a new topic; what helped or hindered.</td></tr>
+    <tr><td>3</td><td>Short Case Study</td><td>case_study</td><td>10</td><td>Compare peer assessment, assigned roles and individual quizzes; recommend one and explain how AI could support fairness without taking control.</td></tr>
+    <tr><td>4</td><td>Making a Judgment Call</td><td>judgment</td><td>8</td><td>Decide whether AI should intervene during productive disagreement and identify when support is needed.</td></tr>
+    <tr><td>5</td><td>Understanding Learning Regulation</td><td>explain</td><td>10</td><td>Apply SRL, CoRL and SSRL and explain how AI could support one without taking responsibility away.</td></tr>
+    <tr><td>6</td><td>Reflecting on Meaningful Participation</td><td>reflection</td><td>8</td><td>Explain what makes a contribution valuable when members contribute different amounts.</td></tr>
     <tr><td>7</td><td>Ethical Dilemma</td><td>judgment</td><td>10</td><td>Allow, restrict or ban AI in group projects; support vs substitution.</td></tr>
-    <tr><td>8</td><td>Data Interpretation</td><td>case_study</td><td>8</td><td>Groups scored 12% higher but 45% found workload unfair — what does the data show?</td></tr>
-    <tr><td>9</td><td>Designing a Process</td><td>solutions</td><td>9</td><td>A fair process for dividing presentation topics among four members.</td></tr>
-    <tr><td>10</td><td>Synthesis and Recommendation</td><td>reflection</td><td>10</td><td>One practice to encourage and one to avoid when using AI in group work.</td></tr>
+    <tr><td>8</td><td>Data Interpretation</td><td>case_study</td><td>8</td><td>State what the results do and do not establish, an alternative explanation and additional evidence needed.</td></tr>
   </table>
   <h3>Pre- and post-test (matched by concept)</h3>
   <table>
@@ -499,7 +497,7 @@ Student unticks → {action:"unselect"} → hidden, times_hidden +1, event ai_su
     <tr><td>group_agency</td><td>Keeping the group’s agency in AI-supported work means…</td><td>Why should every member agree the answer is ready before moving on?</td></tr>
     <tr><td>disagreement</td><td>Most productive response when members disagree?</td><td>Why can disagreement improve learning?</td></tr>
   </table>
-  <p><strong>Written questions (both tests):</strong> (1) “In your own words, what makes group work truly collaborative, rather than just dividing the work? Give an example.” (2) “How should AI support be used in group work so that the group still does the thinking?”</p>
+  <p><strong>Question 9 — Short learning-application question (both tests):</strong> “A group is stuck repeating the same arguments without progress. One member suggests asking AI for the full answer. What should AI do, who should receive the support, and how can the group remain responsible for the solution?”</p>
   <h3>End questionnaire (10 open questions)</h3>
   <table>
     <tr><th>Export column</th><th>Question</th></tr>

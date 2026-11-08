@@ -20,7 +20,7 @@ Allocation: home-page groups use the configured default condition, `proactive_ad
 | `proactive_adaptive` (default) | yes | yes | yes | no | yes |
 | `dual_adaptive` (retired stored value) | yes | yes | yes | no | no |
 
-Identical in every V2 condition: per-person consent, the start gate (everyone consented and pre-tested, 2–4 members, roster frozen), the neutral opening prompt and checkpoint cards (if enabled for the group), the 10 scenarios, the 500-word answer, unanimous "I am good", per-scenario ratings, post-test and end questionnaire. The optional instruments (role cards, initial individual idea, agreement reason) are off by default and set per group; compared groups must use the same settings.
+Identical in every V2 condition: per-person consent, the start gate (everyone consented and pre-tested, 2–4 members, roster frozen), the neutral opening prompt and checkpoint cards (if enabled for the group), the 8 scenarios, the 500-word answer, unanimous "I am good", per-scenario ratings, post-test and end questionnaire. The optional instruments (role cards, initial individual idea, agreement reason) are off by default and set per group; compared groups must use the same settings.
 
 Because V2 groups have the opening prompt, checkpoints and per-person consent, a **V2 baseline group is not identical to a legacy group**. Compare V2 conditions with each other, not legacy groups with V2 groups. The minimal comparison suggested by the specification is `baseline_private_request` versus `proactive_group`. `proactive_group` versus `proactive_adaptive` isolates the effect of the adaptive private suggestions, because the two conditions differ only in the popups.
 

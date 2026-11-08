@@ -71,7 +71,7 @@ This also verifies that API routes reach the Socket.IO server in the production 
 |---|---|---|
 | Real AI provider (output quality, latency, validator rejections, token counts) | no API key in this workspace | set `OPENAI_API_KEY`, run a test group, accept a few offers; check `ai_origin = real` and `template_fallback` counts on the dashboard (delete the test group afterwards if it should not count) |
 | Multi-browser manual session with people (UI flows, wording, timing) | needs humans and browsers | follow `06-researcher-operating-guide.md`, 2–4 people |
-| All 10 scenarios in one V2 group | the automated pilots cover scenario 1 for V2 and scenarios 1–2 for the original flow | manual pilot |
+| All 8 scenarios in one V2 group | the automated pilots cover scenario 1 for V2 and scenarios 1–2 for the original flow | manual pilot |
 | Railway deployment and its database | no access from this workspace | rollout steps in guide 06 |
 | Lint of the whole repository (`npm run lint`) | the legacy `.teacher-docs-src/` and old scripts already have warnings; new and changed code lints clean | `npx eslint src server.ts tests` |
 | Load and multi-replica behaviour | single replica is a hard requirement (in-memory rooms, presence, scheduler) | — |

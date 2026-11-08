@@ -140,8 +140,7 @@ const PRE_ANSWERS = {
   "pre-5": 1, "pre-6": 0, "pre-7": 3, "pre-8": 1,
 };
 const OPEN_PRE = {
-  open_collaboration: "Working on the same task together.",
-  open_ai_role: "Use it for hints only.",
+  open_ai_role: "AI should give a hint privately, then the group should discuss and decide.",
 };
 
 async function main() {

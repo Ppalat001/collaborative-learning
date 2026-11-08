@@ -23,8 +23,8 @@
     "title": "Short Case Study",
     "taskType": "case_study",
     "expectedDiscussionMinutes": 10,
-    "description": "In a four-person project group, one student does almost nothing while another takes over every decision. The teacher is considering three changes: peer assessment of contributions, assigned roles (facilitator, recorder, critic, presenter), or a short individual quiz on the group's work. Analyse the trade-offs and recommend one approach.",
-    "promptForGroup": "How would each option affect participation, fairness and learning? Who benefits and who might be harmed? What assumptions are you making?"
+    "description": "In a four-person project, one student rarely participates while another makes most decisions. The teacher considers peer assessment, assigned group roles, or individual quizzes.",
+    "promptForGroup": "Compare the options and recommend one. How could AI help the group collaborate more fairly without taking control?"
   },
   {
     "id": "scenario-04",
@@ -32,17 +32,17 @@
     "title": "Making a Judgment Call",
     "taskType": "judgment",
     "expectedDiscussionMinutes": 8,
-    "description": "A group project is due tomorrow. One member suggests asking an AI for a complete answer, submitting it, and \"reading it properly later\". Discuss whether this is acceptable and under what conditions using a full AI answer in group work could be justified.",
-    "promptForGroup": "Weigh learning, honesty, fairness to the group and time pressure. What criteria should guide the group's decision?"
+    "description": "Two students disagree about a solution but continue exploring evidence and making progress. Another member suggests asking AI to intervene immediately.",
+    "promptForGroup": "Should AI intervene now or wait? Explain your decision and what would indicate that AI assistance is needed."
   },
   {
     "id": "scenario-05",
     "order": 5,
-    "title": "Learning Activity – Understanding Different Types of Learning Regulation",
+    "title": "Understanding Learning Regulation",
     "taskType": "explain",
     "expectedDiscussionMinutes": 10,
-    "description": "When students work individually or in groups, they use different strategies to manage their learning, overcome difficulties, and achieve their goals.\n\n• Self-Regulated Learning (SRL): A student takes responsibility for their own learning by setting goals, monitoring their understanding, identifying difficulties, and adjusting their approach when necessary.\n\n• Co-Regulated Learning (CoRL): One student helps another manage or improve their learning, for example, by providing guidance, asking questions, or helping them recognise mistakes.\n\n• Socially Shared Regulation of Learning (SSRL): Group members work together to set common goals, monitor their collective progress, identify challenges, and adjust their strategies to achieve a shared learning outcome.",
-    "promptForGroup": "Imagine a group of three students working together on a difficult assignment. Explain how Self-Regulated Learning (SRL), Co-Regulated Learning (CoRL), and Socially Shared Regulation of Learning (SSRL) could each occur during this activity. Provide one practical example of each and explain how these different approaches can contribute to successful collaborative learning."
+    "description": "Students regulate learning in different ways:\n\nSelf-Regulated Learning (SRL): Managing one's own learning.\n\nCo-Regulated Learning (CoRL): Helping another person regulate their learning.\n\nSocially Shared Regulation of Learning (SSRL): Jointly managing a group's learning and progress.",
+    "promptForGroup": "Give one practical example of each during a group assignment. How could AI support one of these processes without taking responsibility away from students?"
   },
   {
     "id": "scenario-06",
@@ -68,25 +68,7 @@
     "title": "Data Interpretation",
     "taskType": "case_study",
     "expectedDiscussionMinutes": 8,
-    "description": "Students studying in groups scored 12% higher than students studying alone. However, 45% of students in groups reported unfair workloads.",
-    "promptForGroup": "Do these results prove that studying in groups leads to better learning? Answer Yes or No and briefly explain why."
-  },
-  {
-    "id": "scenario-09",
-    "order": 9,
-    "title": "Designing a Process",
-    "taskType": "solutions",
-    "expectedDiscussionMinutes": 9,
-    "description": "Four students must divide the work for a group presentation. Some students have more free time or experience than others.",
-    "promptForGroup": "Is giving every student exactly one topic always a fair way to divide the work? Answer Yes or No, briefly explain why, and suggest one way to make the process fairer."
-  },
-  {
-    "id": "scenario-10",
-    "order": 10,
-    "title": "Synthesis and Recommendation",
-    "taskType": "reflection",
-    "expectedDiscussionMinutes": 10,
-    "description": "Think about how your group used AI assistance during the activities.",
-    "promptForGroup": "Should groups always follow AI suggestions when completing an assignment? Answer Yes or No and briefly explain your answer. Suggest one good practice for using AI in group work."
+    "description": "Students studying in groups scored 12% higher than those studying alone. However, 45% of students in groups reported unfair workloads.",
+    "promptForGroup": "What can and cannot be concluded from these results? Give one alternative explanation and one additional piece of evidence needed."
   }
 ]
