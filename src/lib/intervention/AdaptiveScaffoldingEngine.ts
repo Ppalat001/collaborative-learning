@@ -257,6 +257,7 @@ export class AdaptiveScaffoldingEngine {
           and(
             eq(schema.scaffoldRecommendations.participantId, input.participantId),
             eq(schema.scaffoldRecommendations.scenarioOrder, input.scenarioOrder),
+            eq(schema.scaffoldRecommendations.engineVersion, ENGINE_VERSION),
             isNull(schema.scaffoldRecommendations.resolvedAt)
           )
         )

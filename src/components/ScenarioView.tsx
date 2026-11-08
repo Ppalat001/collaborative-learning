@@ -8,7 +8,7 @@ import { GroupAnswerEditor, GroupAnswerNote } from "@/components/GroupAnswerEdit
 import { GroupDiscussionStarter } from "@/components/GroupDiscussionStarter";
 import { MetacognitionPrompt, type MetacognitionAnswers } from "@/components/MetacognitionPrompt";
 import { NoExternalCallsNote } from "@/components/NoExternalCallsNote";
-import { PersonalInterventionOffer } from "@/components/PersonalInterventionOffer";
+import { AcceptedSuggestions, PrivateSuggestionPopup } from "@/components/PrivateSuggestionPopup";
 import { ScaffoldingSelector } from "@/components/ScaffoldingSelector";
 import { SurveyForm, type SurveyAnswers } from "@/components/SurveyForm";
 import { InitialIdeaForm, ShareIdeaControl, type ShareSource } from "@/components/V2PrivateTools";
@@ -117,8 +117,6 @@ export function ScenarioView({
   const [error, setError] = useState<string | null>(null);
   const [v2, setV2] = useState<ScenarioV2 | null>(null);
   const [agreementReason, setAgreementReason] = useState("");
-  const [shareStart, setShareStart] = useState<ShareSource | null>(null);
-
   const fetchScenario = useCallback(async () => {
     const query = participantId ? `?participantId=${encodeURIComponent(participantId)}` : "";
     const res = await fetch(`/api/sessions/${sessionCode}/scenario/${scenarioOrder}${query}`, {
@@ -324,13 +322,6 @@ export function ScenarioView({
     }
   };
 
-  const setPrivateOptIn = async (value: boolean) => {
-    const data = await interventions.collaborate("preferences", { privateOffersOptIn: value });
-    if (data && typeof data.privateOptIn === "boolean") {
-      setV2((current) => (current ? { ...current, privateOptIn: data.privateOptIn } : current));
-    }
-  };
-
   if (loading || !scenario) {
     return (
       <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-slate-600">
@@ -343,6 +334,9 @@ export function ScenarioView({
     !!v2 && v2.initialIdea.mode === "required" && !v2.initialIdea.submitted && !submitted;
   const showFacilitator =
     !!v2 && (v2.capabilities.sharedManual || v2.capabilities.proactiveGroup || v2.capabilities.sharing);
+  const suggestions = v2?.capabilities.adaptivePrivate
+    ? interventions.privateItems.filter((item) => item.trigger === "adaptive_need")
+    : [];
   const shareSources: ShareSource[] = v2?.capabilities.sharing
     ? [
         ...scaffolds
@@ -358,7 +352,7 @@ export function ScenarioView({
           .map((item) => ({
             sourceType: "intervention" as const,
             sourceId: item.id,
-            label: `Private coach: ${item.supportLabel}`,
+            label: `Suggestion: ${item.supportLabel}`,
             text: item.content ?? "",
           })),
       ]
@@ -477,38 +471,12 @@ export function ScenarioView({
             onToggle={toggleSupport}
           />
         </div>
-        {v2?.capabilities.proactivePrivate && (
-          <PersonalInterventionOffer
-            items={interventions.privateItems}
-            optIn={v2.privateOptIn ?? false}
-            locked={submitted || ideaBlocksAi}
-            busy={interventions.busy}
-            recommendation={v2.recommendation}
-            onToggleOptIn={setPrivateOptIn}
-            onStuck={interventions.requestPersonal}
-            onRespond={interventions.respond}
-            onViewed={interventions.markViewed}
-            onShare={
-              v2.capabilities.sharing
-                ? (item) =>
-                    setShareStart({
-                      sourceType: "intervention",
-                      sourceId: item.id,
-                      label: `Private coach: ${item.supportLabel}`,
-                      text: item.content ?? "",
-                    })
-                : undefined
-            }
-          />
-        )}
+        <AcceptedSuggestions items={suggestions} />
         {v2?.capabilities.sharing && !submitted && (
           <ShareIdeaControl
-            key={shareStart?.sourceId ?? "share"}
             sources={shareSources}
-            initialSource={shareStart}
             busy={interventions.busy === "share"}
             onShare={(source, text) => interventions.share(source.sourceType, source.sourceId, text)}
-            onClose={() => setShareStart(null)}
           />
         )}
         {v2 && interventions.error && (
@@ -550,7 +518,7 @@ export function ScenarioView({
 
       {submitted && !surveyCompleted && metacognition && (
         <SurveyForm
-          aiUsed={scaffolds.length > 0}
+          aiUsed={scaffolds.length > 0 || interventions.privateItems.some((item) => item.status === "delivered")}
           canSubmit={!!participantId}
           onSubmit={submitSurvey}
         />
@@ -566,6 +534,16 @@ export function ScenarioView({
             {scenarioOrder < totalScenarios ? "Next scenario" : "Finish study"}
           </button>
         </div>
+      )}
+
+      {v2?.capabilities.adaptivePrivate && participantId && (
+        <PrivateSuggestionPopup
+          items={suggestions}
+          locked={submitted || ideaBlocksAi}
+          busy={interventions.busy}
+          onRespond={interventions.respond}
+          onViewed={interventions.markViewed}
+        />
       )}
     </div>
   );

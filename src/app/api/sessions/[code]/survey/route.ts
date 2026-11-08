@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { authorizeParticipant } from "@/lib/auth/routeAuth";
+import { getOrchestrator } from "@/lib/intervention/InterventionOrchestrator";
+import { hasDeliveredPrivateHelp } from "@/lib/services/interventions";
 import {
   getIndividualScaffolds,
   getOrCreateAttempt,
@@ -31,7 +33,7 @@ export async function POST(
       requireScenarioAccess: true,
     });
     if (!auth.ok) return auth.response;
-    const { session, participant } = auth;
+    const { session, participant, assignment } = auth;
 
     const scenario = getScenarioById(String(body.scenarioId));
     if (!scenario) {
@@ -45,7 +47,9 @@ export async function POST(
         { status: 409 }
       );
     }
-    const aiUsed = (await getIndividualScaffolds(participant.id, scenario.order)).length > 0;
+    const aiUsed =
+      (await getIndividualScaffolds(participant.id, scenario.order)).length > 0 ||
+      (assignment !== null && hasDeliveredPrivateHelp(participant.id, attempt.id));
 
     const answerConfidence = parseRating(body.answerConfidence);
     const confidenceReason = String(body.confidenceReason ?? "").trim();
@@ -107,6 +111,14 @@ export async function POST(
     }
 
     const survey = await saveSurvey(session.id, scenario.id, participant.id, ratings);
+    if (assignment) {
+      getOrchestrator().onSurveyRated({
+        assignment,
+        participantId: participant.id,
+        scenarioOrder: scenario.order,
+        supportAmount: ratings.supportAmount,
+      });
+    }
     return NextResponse.json({ survey });
   } catch (error) {
     console.error("Survey error:", error);

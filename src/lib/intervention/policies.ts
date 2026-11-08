@@ -1,5 +1,51 @@
 import policyData from "@/data/intervention-policies.json";
 
+export type BetaPrior = [alpha: number, beta: number];
+
+/**
+ * Settings for the per-member learning model behind private popup offers. The
+ * priors are the same starting point for every member; the safety limits are
+ * fixed rules that the learning never changes.
+ */
+export interface AdaptivePrivatePolicy {
+  modelVersion: string;
+  maxOffersPerScenario: number;
+  minSecondsBetweenOffers: number;
+  minSecondsIntoScenario: number;
+  minPauseSeconds: number;
+  stepTwoCooldownSeconds: number;
+  offerExpirySeconds: number;
+  outcomeWindowSeconds: number;
+  /** Own contributions closer together than this count as one burst of activity. */
+  burstMergeSeconds: number;
+  /** Longer gaps are capped before they update the pace estimate. */
+  maxGapSeconds: number;
+  offerThreshold: number;
+  confusionEvidence: number;
+  stallEvidence: number;
+  priors: {
+    paceMedianSeconds: number;
+    paceLogSd: number;
+    pacePseudoObservations: number;
+    independenceStrength: number;
+    receptiveness: BetaPrior;
+    arms: { guiding_question: BetaPrior; hint: BetaPrior; explanation: BetaPrior };
+  };
+  weights: {
+    accepted: number;
+    dismissed: number;
+    deferred: number;
+    expired: number;
+    helpSucceeded: number;
+    helpFailed: number;
+    independentScenario: number;
+    directHelpScenario: number;
+    surveyTooMuch: number;
+    surveyTooLittle: number;
+    surveyAboutRight: number;
+  };
+}
+
 export interface InterventionPolicy {
   version: string;
   status: string;
@@ -34,6 +80,8 @@ export interface InterventionPolicy {
     maxOutputChars: number;
     timeoutMs: number;
   };
+  /** Only in policies that support the proactive_adaptive condition. */
+  adaptivePrivate?: AdaptivePrivatePolicy;
 }
 
 type PolicyBody = Omit<InterventionPolicy, "version">;
@@ -70,10 +118,36 @@ function validatePolicy(version: string, body: PolicyBody): InterventionPolicy {
   if (body.imbalanceTopShare > 1) {
     throw new Error(`Intervention policy ${version}: imbalanceTopShare must be at most 1`);
   }
+  if (body.adaptivePrivate) validateAdaptive(version, body.adaptivePrivate);
   return { version, ...body };
 }
 
-const versions = policyData.versions as Record<string, PolicyBody>;
+function validateAdaptive(version: string, adaptive: AdaptivePrivatePolicy) {
+  const fail = (message: string) => {
+    throw new Error(`Intervention policy ${version}: adaptivePrivate.${message}`);
+  };
+  const { priors, weights, modelVersion, ...limits } = adaptive;
+  if (typeof modelVersion !== "string" || !modelVersion) fail("modelVersion is required");
+  for (const [key, value] of [...Object.entries(limits), ...Object.entries(weights)]) {
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) fail(`${key} must be a non-negative number`);
+  }
+  for (const key of ["offerThreshold", "confusionEvidence", "stallEvidence"] as const) {
+    if (adaptive[key] > 1) fail(`${key} must be at most 1`);
+  }
+  if (!(priors.paceMedianSeconds > 0) || !(priors.paceLogSd > 0) || !(priors.pacePseudoObservations > 0)) {
+    fail("pace priors must be positive");
+  }
+  if (!(priors.independenceStrength >= 0)) fail("priors.independenceStrength must be non-negative");
+  const betas: [string, BetaPrior][] = [["receptiveness", priors.receptiveness], ...Object.entries(priors.arms)];
+  for (const [name, prior] of betas) {
+    if (!Array.isArray(prior) || prior.length !== 2 || !prior.every((v) => typeof v === "number" && v >= 1)) {
+      fail(`priors ${name} must be [alpha, beta] with both at least 1`);
+    }
+  }
+}
+
+// JSON arrays are typed as number[]; validatePolicy checks the [alpha, beta] shape at load time.
+const versions = policyData.versions as unknown as Record<string, PolicyBody>;
 const POLICIES = new Map<string, InterventionPolicy>(
   Object.entries(versions).map(([version, body]) => [version, validatePolicy(version, body)])
 );

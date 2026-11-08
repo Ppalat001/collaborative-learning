@@ -1,6 +1,6 @@
 # 05 — Test and release report
 
-> Historical report for the original V2 release. The private AI coach documented in this report was later removed from participant use; current behaviour is in `06-researcher-operating-guide.md`.
+> Historical report for the original V2 release. The private AI coach documented in this report was later removed from participant use; current behaviour is in `06-researcher-operating-guide.md`. Results for the adaptive private suggestions are in the last section.
 
 All results below were produced in this workspace on 2026-11-08 (Windows, Node 25.8.0), after V2 was made the default and study modes were removed. Every automated test and pilot ran on a **throwaway SQLite database** in the OS temp folder; `data/research.db` was opened read-only (integrity check, inspection, migration rehearsal) and its timestamp was unchanged. All AI in tests and pilots was **mock** (no API key available), and every such group carries the `mock_ai_output` flag.
 
@@ -86,3 +86,25 @@ This also verifies that API routes reach the Socket.IO server in the production 
 - The consent text is still the draft version and participants see it with a "Draft wording" note.
 - `GET /api/sessions/[code]/sync` still returns no room state (pre-existing, unused by the client).
 - Live room state, presence and the scheduler are in memory: a redeploy during a session resets live state (saved data is kept; clients reconnect and reload from the database).
+
+## Adaptive private suggestions (`proactive_adaptive`, 2026-11-08)
+
+All on throwaway databases with mock AI; `data/research.db` was only read (rehearsal copy).
+
+| Command | Result |
+|---|---|
+| `npx tsc --noEmit -p .` | pass |
+| `npx eslint .` | 0 errors; 5 pre-existing warnings in `.teacher-docs-src/` and older scripts |
+| `npm test` | **103 pass, 0 fail** |
+| `npm run build` | pass |
+| `npm run pilot:isolated` | original pilot (V2 off) and V2 pilot both pass; 0 integrity violations in either database |
+| `npm run db:rehearse` | pass: 12 legacy tables unchanged; 15 tables added including `learner_models` and `learner_model_events` |
+
+New tests:
+
+- `unit/adaptive-learner.test.ts`: log-gamma and Student-t CDF against known values; seeded Beta sampling (reproducible, correct mean); the pre-test shifts only the independence prior; the same pause is long for a fast member and short for a slow one; burst merging of contributions; every reward and its weight; every fixed safety rule; a reluctant member is not offered help; "I'm unsure" skips the minimum pause; help chosen by sampled effectiveness, explanations only after light help, help already used not offered again; one draw per pause episode; a 2,000-case randomised check that a full answer or anything above level 2 is never offered.
+- Simulation (same file): two members with identical priors and activity over 10 scenarios. The one who accepts and then contributes was offered `[0,0,2,1,2,2,2,2,2,2]` popups per scenario; the one who always chooses "No thanks" and rates support "too much" was offered `[1,0,0,0,0,0,0,0,0,0]`. Final receptiveness 0.96 vs 0.08, independence 0.42 vs 0.81; the decliner's help-effectiveness beliefs stayed at the priors because they never saw any help.
+- `integration/adaptive-private.test.ts`: a popup goes only to the member whose model calls for it (socket room, API view, other member gets 404), connected members only, nothing generated before Yes and only once after; the decision is logged with its seed; rewards are applied once; help followed by the member's own contribution counts as success; "No thanks", "Not now" (closed, does not return, not expired at submission) and expiry each update the model; at most 2 per scenario; Step 2 use pauses popups and popups skip help already opened there; asking Step 2 for a full answer marks popup help as not enough; personal confusion is answered privately, not by a group prompt; the initial-idea gate applies; the survey requires the AI questions after popup help and its "About right" answer updates only that member; existing conditions never get popups or learner models; learner exports are anonymous, popup help never appears in the 8 original exports, and the integrity checker passes.
+- V2 pilot over HTTP and Socket.IO: home-page groups are `proactive_adaptive`; no popups in a `proactive_group` group; in a `proactive_adaptive` group C says they are unsure and gets a private popup that D neither receives nor can answer, Yes delivers mock help once, the survey requires the support-amount question, and the popup, both learner models, the learner updates and the decision evidence are exported.
+
+Fixed while testing: the survey stores "About right" as `appropriate`, which the first version of the learner ignored; the Step 2 recommendation lookup could have reused a popup decision row, so it now only reuses rows of its own engine version.

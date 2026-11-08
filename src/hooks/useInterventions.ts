@@ -157,15 +157,6 @@ export function useInterventions({
     if (data?.intervention) mergeView(data.intervention);
   };
 
-  const requestPersonal = async () => {
-    const data = await post(
-      `/api/sessions/${sessionCode}/interventions`,
-      { kind: "personal_request", requestId: crypto.randomUUID() },
-      "personal"
-    );
-    if (data?.intervention) setItems((current) => upsertById(current, data.intervention));
-  };
-
   const respond = async (id: string, action: FeedbackAction) => {
     const data = await post(`/api/sessions/${sessionCode}/interventions/${id}/feedback`, { action }, `${id}:${action}`);
     if (data?.intervention) setItems((current) => upsertById(current, data.intervention));
@@ -216,7 +207,6 @@ export function useInterventions({
     onRealtimeEvent,
     reload,
     requestGroupHelp,
-    requestPersonal,
     respond,
     markViewed,
     share,

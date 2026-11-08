@@ -10,6 +10,8 @@ const V2_EXPORTS = [
   { type: "v2_feedback", label: "Responses to interventions" },
   { type: "v2_sharing", label: "Shared AI ideas" },
   { type: "v2_recommendations", label: "Adaptive recommendations" },
+  { type: "v2_learner_models", label: "Learner models (adaptive private suggestions)" },
+  { type: "v2_learner_model_events", label: "Learner model updates" },
   { type: "v2_initial_ideas", label: "Initial individual ideas" },
   { type: "v2_roles", label: "Role cards" },
   { type: "v2_checkpoints", label: "Checkpoints raised" },
@@ -21,6 +23,7 @@ const CONDITION_LABELS: Record<string, string> = {
   shared_on_demand: "Shared facilitator on request",
   proactive_group: "Proactive group facilitator",
   dual_adaptive: "Historical dual assignment (private coach removed)",
+  proactive_adaptive: "Group facilitator + adaptive private suggestions",
 };
 
 interface ReleaseInfo {
@@ -74,6 +77,8 @@ interface Dashboard {
     shared: number;
     recommendations: number;
     recommendationsOverridden: number;
+    learnerModels: number;
+    learnerModelUpdates: number;
   };
   failures: { id: string; scenarioOrder: number; supportType: string; reason: string | null; at: string | null }[];
   timeline: {
@@ -149,7 +154,7 @@ export function ResearcherInterventionDashboard({ password, active, selectedCode
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({
-    condition: "proactive_group",
+    condition: "proactive_adaptive",
     policyVersion: "",
     roles: false,
     checkpoints: true,
@@ -451,7 +456,10 @@ export function ResearcherInterventionDashboard({ password, active, selectedCode
           <p className="text-sm text-slate-700">
             {dashboard.counts.evaluations} evaluations ({dashboard.counts.evaluationRows} logged rows after collapsing
             repeats), {dashboard.counts.shared} shared ideas, {dashboard.counts.recommendations} recommendations (
-            {dashboard.counts.recommendationsOverridden} where a more direct level was chosen).
+            {dashboard.counts.recommendationsOverridden} where a more direct level was chosen)
+            {dashboard.counts.learnerModels > 0 &&
+              `, ${dashboard.counts.learnerModels} learner models with ${dashboard.counts.learnerModelUpdates} logged updates`}
+            .
           </p>
           <div className="grid gap-3 sm:grid-cols-3">
             <Counts title="Decisions" values={dashboard.counts.decisions} />

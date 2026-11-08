@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 /**
  * End-to-end check of Adaptive Scaffolding V2 over real HTTP and Socket.IO.
- * Checks that a home-page group is a V2 group by default, then runs one
- * proactive_group on the test-only accelerated policy (mock AI).
+ * Checks that a home-page group is a proactive_adaptive V2 group by default,
+ * runs one proactive_group (no popups) and one proactive_adaptive group (private
+ * popup offered, accepted, rated and exported), all on the test-only accelerated
+ * policy with mock AI.
  *
  * Run it through `npm run pilot:isolated` (throwaway database). Against a running
- * server it needs ADAPTIVE_V2_ALLOW_TEST_POLICY=true, and it writes two test
+ * server it needs ADAPTIVE_V2_ALLOW_TEST_POLICY=true, and it writes three test
  * groups into that server's database.
  */
 import { io } from "socket.io-client";
@@ -147,9 +149,12 @@ async function main() {
 
   const home = await expectOk("/api/sessions", { method: "POST" });
   const homeInfo = await expectOk(`/api/sessions/${home.code}`);
-  assert(homeInfo.v2?.condition === "proactive_group", `Home-page group should be V2 proactive_group: ${JSON.stringify(homeInfo.v2)}`);
+  assert(
+    homeInfo.v2?.condition === "proactive_adaptive",
+    `Home-page group should be V2 proactive_adaptive: ${JSON.stringify(homeInfo.v2)}`
+  );
   assert(homeInfo.v2.minGroupSize === 2 && homeInfo.v2.maxGroupSize === 4, "Home-page group size should be 2-4");
-  ok(`a group created from the home page (${home.code}) is a V2 proactive_group without any settings`);
+  ok(`a group created from the home page (${home.code}) is a V2 proactive_adaptive group without any settings`);
 
   const created = await call("/api/admin/sessions", {
     method: "POST",
@@ -357,6 +362,12 @@ async function main() {
   }
   ok("the group submitted the scenario");
 
+  assert(
+    ![...sa.events, ...sb.events].some((e) => e.payload?.trigger === "adaptive_need"),
+    "proactive_group must never receive adaptive private popups"
+  );
+  ok("no adaptive private popups in the proactive_group group");
+
   sa.socket.close();
   sb.socket.close();
 
@@ -384,7 +395,169 @@ async function main() {
   assert(dashboard.warnings.some((w) => w.includes("demo text")), "Dashboard should warn about demo AI text");
   ok("original exports still work for the V2 group; dashboard warns about demo AI text");
 
+  await adaptivePopupPilot({ statements, homeCode: home.code });
+
   console.log("Adaptive Scaffolding V2 pilot PASSED");
+}
+
+/** Creates a started two-member group on the accelerated test policy. */
+async function startedGroup(condition, statements) {
+  const created = await expectOk("/api/admin/sessions", {
+    method: "POST",
+    admin: true,
+    body: {
+      condition,
+      policyVersion: "policy-v2-test-accelerated",
+      features: { openingPrompt: true, checkpoints: true, roles: false, initialIdea: "off", agreementReason: "off" },
+    },
+  });
+  assert(created.condition === condition, `Wrong assignment: ${created.condition}`);
+  const code = created.code;
+  const members = [];
+  for (const name of ["Pilot-C", "Pilot-D"]) {
+    const data = await expectOk(`/api/sessions/${code}/join`, { method: "POST", body: { displayName: name } });
+    const member = { name, id: data.participant.id, token: data.participantToken };
+    await expectOk(`/api/sessions/${code}/consent`, {
+      method: "POST",
+      token: member.token,
+      body: { participantId: member.id, confirmedStatements: statements },
+    });
+    await expectOk(`/api/sessions/${code}/assessment`, {
+      method: "POST",
+      token: member.token,
+      body: { assessmentType: "pre", answers: PRE_ANSWERS, openAnswers: OPEN_PRE, participantId: member.id },
+    });
+    members.push(member);
+  }
+  const [C, D] = members;
+  await expectOk(`/api/sessions/${code}/start`, { method: "POST", token: C.token, body: { participantId: C.id } });
+  return { code, C, D };
+}
+
+/** proactive_adaptive: a private popup is offered only to its member, generated on Yes, rated and exported. */
+async function adaptivePopupPilot({ statements, homeCode }) {
+  const { code, C, D } = await startedGroup("proactive_adaptive", statements);
+  ok(`researcher created and started group ${code} (proactive_adaptive)`);
+  const sc = await connect(code, C, 1);
+  const sd = await connect(code, D, 1);
+  assert(!sc.denied && !sd.denied, "Members' sockets should join");
+
+  // Each new "I'm unsure" message starts a new decision draw from C's own model.
+  const isPopupForC = (e) => e.event === "intervention:offered" && e.payload?.trigger === "adaptive_need";
+  let popup = null;
+  for (let attempt = 1; attempt <= 6 && !popup; attempt++) {
+    await expectOk(`/api/sessions/${code}/messages`, {
+      method: "POST",
+      token: C.token,
+      body: { scenarioOrder: 1, participantId: C.id, text: "I'm confused, I don't understand what this question is asking." },
+    });
+    popup = await waitFor(sc.events, isPopupForC, "an adaptive private popup for C", 8_000).catch(() => null);
+  }
+  assert(popup, "C should be offered a private popup after saying they are unsure");
+  const offer = popup.payload;
+  assert(offer.scope === "individual" && offer.status === "suggested" && offer.content === null, "A popup must be a private offer without content");
+  assert(["hint", "guiding_question", "explanation"].includes(offer.supportType), `Unexpected popup help: ${offer.supportType}`);
+  assert(/Only you can see this/.test(offer.reasonExplanation ?? ""), "The popup must explain why it appeared");
+  ok(`C was offered a private ${offer.supportType} popup ("Would you like a small hint?") with its reason and no content`);
+
+  await new Promise((r) => setTimeout(r, 500));
+  assert(!sd.events.some((e) => e.payload?.id === offer.id), "D must not receive C's popup");
+  const dView = await expectOk(`/api/sessions/${code}/interventions?scenarioOrder=1&participantId=${D.id}`, { token: D.token });
+  assert(!dView.interventions.some((i) => i.id === offer.id), "D must not see C's popup after a reload");
+  await expectStatus(
+    `/api/sessions/${code}/interventions/${offer.id}/feedback`,
+    { method: "POST", token: D.token, body: { participantId: D.id, action: "accepted" } },
+    404,
+    "another member cannot answer C's popup"
+  );
+
+  const yes = await expectOk(`/api/sessions/${code}/interventions/${offer.id}/feedback`, {
+    method: "POST",
+    token: C.token,
+    body: { participantId: C.id, action: "accepted" },
+  });
+  assert(yes.intervention.status === "delivered" && yes.intervention.content, "Yes should deliver the help");
+  const again = await expectOk(`/api/sessions/${code}/interventions/${offer.id}/feedback`, {
+    method: "POST",
+    token: C.token,
+    body: { participantId: C.id, action: "accepted" },
+  });
+  assert(again.intervention.content === yes.intervention.content, "A second Yes must not generate new help");
+  ok("C clicked Yes; the help was generated once and delivered only to C (mock AI)");
+
+  const answer = "We weigh the options against the criteria and explain our choice.";
+  await expectOk(`/api/sessions/${code}/sync`, {
+    method: "POST",
+    token: D.token,
+    body: {
+      scenarioOrder: 1,
+      participantId: D.id,
+      fields: { finalAnswer: answer },
+      authorship: [{ participantId: D.id, length: answer.length }],
+      edits: [{ field: "finalAnswer", charsAdded: answer.length, charsRemoved: 0, insertedText: answer }],
+    },
+  });
+  for (const m of [C, D]) {
+    await expectOk(`/api/sessions/${code}/scenario/1`, {
+      method: "PUT",
+      token: m.token,
+      body: { action: "ready", participantId: m.id, ready: true },
+    });
+  }
+  sc.socket.close();
+  sd.socket.close();
+
+  const survey = {
+    scenarioId: "scenario-01",
+    collaborationRating: 4,
+    sharedAnswerRating: 4,
+    autonomyRating: 4,
+    satisfactionRating: 4,
+    answerConfidence: 4,
+    confidenceReason: "We checked every part of the task.",
+    doDifferently: "Discuss a little longer first.",
+  };
+  const aiItems = {
+    perceivedHelpfulness: 4,
+    aiHelpedDiscussion: 3,
+    aiHelpedFocus: 3,
+    aiHelpedInclusion: 3,
+    aiHelpedDisagreement: null,
+    aiHelpedThinking: 4,
+    overRelianceRating: 2,
+    couldAnswerWithoutAi: 3,
+  };
+  await expectStatus(
+    `/api/sessions/${code}/survey`,
+    { method: "POST", token: C.token, body: { ...survey, ...aiItems, participantId: C.id } },
+    400,
+    "after popup help the survey requires the AI support-amount question"
+  );
+  await expectOk(`/api/sessions/${code}/survey`, {
+    method: "POST",
+    token: C.token,
+    body: { ...survey, ...aiItems, supportAmount: "appropriate", participantId: C.id },
+  });
+  ok("the group submitted; C rated the popup help as about right");
+
+  const interventions = await exportRows("v2_interventions", code);
+  const popupRow = interventions.find((r) => r.intervention_id === offer.id);
+  assert(popupRow?.scope === "individual" && popupRow.reason_code === "adaptive_private", "Popup should be exported as a private intervention");
+  assert(popupRow.status === "delivered" && popupRow.ai_origin === "mock", "Popup should be exported as delivered mock help");
+  const models = await exportRows("v2_learner_models", code);
+  assert(models.length === 2, `Expected one learner model per member, got ${models.length}`);
+  const events = await exportRows("v2_learner_model_events", code);
+  assert(events.some((r) => r.event_type === "offer_response" && r.reward === "1"), "The Yes should be logged as a learner update");
+  assert(events.some((r) => r.event_type === "survey_rating"), "The survey rating should be logged as a learner update");
+  const recommendations = await exportRows("v2_recommendations", code);
+  assert(recommendations.some((r) => r.intervention_id === offer.id && r.engine_version === "adaptive-bandit-v1"), "The popup decision should be exported with its evidence");
+  const dashboard = await expectOk(`/api/admin/interventions?session=${code}`, { admin: true });
+  assert(dashboard.counts.learnerModels === 2, "Dashboard should count the learner models");
+  assert(!dashboard.warnings.some((w) => w.includes("Private interventions exist")), "Popups are allowed in proactive_adaptive");
+  ok(`V2 exports: popup intervention, ${models.length} learner models, ${events.length} learner updates and the decision evidence`);
+
+  const homeModels = await exportRows("v2_learner_models", homeCode);
+  assert(homeModels.length === 0, "A group that never started has no learner models");
 }
 
 main().catch((error) => {

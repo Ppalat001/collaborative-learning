@@ -1,5 +1,5 @@
 {
-  "current": "policy-v2-1",
+  "current": "policy-v2-2",
   "versions": {
     "policy-v2-1": {
       "status": "default starting thresholds - adjustable, NOT validated scientific thresholds",
@@ -38,6 +38,83 @@
         "timeoutMs": 25000
       }
     },
+    "policy-v2-2": {
+      "status": "policy-v2-1 group thresholds plus the adaptive private learning model (priors and safety limits are starting values, NOT validated scientific thresholds)",
+      "testOnly": false,
+      "minActiveMembersForGroupTriggers": 2,
+      "initialSilenceSeconds": 120,
+      "stallSeconds": 180,
+      "productiveWindowSeconds": 90,
+      "recentWindowSeconds": 240,
+      "disagreementPersistSeconds": 150,
+      "cooldownSeconds": 120,
+      "maxProactiveGroupPerScenario": 2,
+      "maxProactivePrivatePerParticipantPerScenario": 1,
+      "imbalanceMinMessages": 10,
+      "imbalanceMinActiveSeconds": 300,
+      "imbalanceTopShare": 0.8,
+      "evaluationDebounceMs": 5000,
+      "deferSeconds": 120,
+      "offerExpirySeconds": 600,
+      "maxManualGroupRequestsPerScenario": 6,
+      "manualRequestCooldownSeconds": 30,
+      "maxPersonalRequestsPerScenario": 3,
+      "fadingLookbackScenarios": 2,
+      "shadowMonitoringInPassiveConditions": true,
+      "classifier": {
+        "enabled": false,
+        "timeoutMs": 8000,
+        "minConfidence": 0.6
+      },
+      "facilitator": {
+        "maxTranscriptMessages": 40,
+        "maxTranscriptChars": 6000,
+        "maxAnswerChars": 3500,
+        "maxOutputTokens": 350,
+        "maxOutputChars": 1200,
+        "timeoutMs": 25000
+      },
+      "adaptivePrivate": {
+        "modelVersion": "adaptive-bandit-v1",
+        "maxOffersPerScenario": 2,
+        "minSecondsBetweenOffers": 90,
+        "minSecondsIntoScenario": 45,
+        "minPauseSeconds": 30,
+        "stepTwoCooldownSeconds": 120,
+        "offerExpirySeconds": 120,
+        "outcomeWindowSeconds": 180,
+        "burstMergeSeconds": 10,
+        "maxGapSeconds": 900,
+        "offerThreshold": 0.25,
+        "confusionEvidence": 0.8,
+        "stallEvidence": 0.3,
+        "priors": {
+          "paceMedianSeconds": 60,
+          "paceLogSd": 0.8,
+          "pacePseudoObservations": 2,
+          "independenceStrength": 4,
+          "receptiveness": [2, 1],
+          "arms": {
+            "guiding_question": [2, 1],
+            "hint": [1.8, 1],
+            "explanation": [1.2, 1]
+          }
+        },
+        "weights": {
+          "accepted": 1,
+          "dismissed": 1,
+          "deferred": 0.5,
+          "expired": 0.5,
+          "helpSucceeded": 1,
+          "helpFailed": 1,
+          "independentScenario": 1,
+          "directHelpScenario": 1,
+          "surveyTooMuch": 2,
+          "surveyTooLittle": 2,
+          "surveyAboutRight": 1
+        }
+      }
+    },
     "policy-v2-test-accelerated": {
       "status": "TEST ONLY - seconds-scale thresholds for automated tests; needs ADAPTIVE_V2_ALLOW_TEST_POLICY",
       "testOnly": true,
@@ -73,6 +150,46 @@
         "maxOutputTokens": 350,
         "maxOutputChars": 1200,
         "timeoutMs": 10000
+      },
+      "adaptivePrivate": {
+        "modelVersion": "adaptive-bandit-v1",
+        "maxOffersPerScenario": 2,
+        "minSecondsBetweenOffers": 5,
+        "minSecondsIntoScenario": 3,
+        "minPauseSeconds": 2,
+        "stepTwoCooldownSeconds": 5,
+        "offerExpirySeconds": 20,
+        "outcomeWindowSeconds": 10,
+        "burstMergeSeconds": 1,
+        "maxGapSeconds": 120,
+        "offerThreshold": 0.25,
+        "confusionEvidence": 0.8,
+        "stallEvidence": 0.3,
+        "priors": {
+          "paceMedianSeconds": 6,
+          "paceLogSd": 0.8,
+          "pacePseudoObservations": 2,
+          "independenceStrength": 4,
+          "receptiveness": [2, 1],
+          "arms": {
+            "guiding_question": [2, 1],
+            "hint": [1.8, 1],
+            "explanation": [1.2, 1]
+          }
+        },
+        "weights": {
+          "accepted": 1,
+          "dismissed": 1,
+          "deferred": 0.5,
+          "expired": 0.5,
+          "helpSucceeded": 1,
+          "helpFailed": 1,
+          "independentScenario": 1,
+          "directHelpScenario": 1,
+          "surveyTooMuch": 2,
+          "surveyTooLittle": 2,
+          "surveyAboutRight": 1
+        }
       }
     }
   }

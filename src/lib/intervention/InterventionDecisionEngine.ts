@@ -42,7 +42,10 @@ export interface DecisionContext {
   recommendFor?: (participantId: string) => PrivateRecommendation;
 }
 
-export const TRIGGER_SUPPORT: Record<Exclude<InterventionTrigger, "none" | "student_requested">, GroupSupportType> = {
+export const TRIGGER_SUPPORT: Record<
+  Exclude<InterventionTrigger, "none" | "student_requested" | "adaptive_need">,
+  GroupSupportType
+> = {
   initial_silence: "participation_invitation",
   stalled_discussion: "reflection_checkpoint",
   explicit_confusion: "reasoning_prompt",
@@ -216,7 +219,7 @@ export class InterventionDecisionEngine {
   }
 
   groupSupportFor(trigger: InterventionTrigger): GroupSupportType {
-    if (trigger === "none" || trigger === "student_requested") return "reasoning_prompt";
+    if (trigger === "none" || trigger === "student_requested" || trigger === "adaptive_need") return "reasoning_prompt";
     return TRIGGER_SUPPORT[trigger];
   }
 

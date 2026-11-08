@@ -315,6 +315,23 @@ export async function listCheckpointViews(sessionId: string, scenarioOrder: numb
   }));
 }
 
+/** Private AI help this member accepted in this scenario (popup suggestions, not Step 2). */
+export function hasDeliveredPrivateHelp(participantId: string, attemptId: string): boolean {
+  return Boolean(
+    db
+      .select({ id: schema.interventions.id })
+      .from(schema.interventions)
+      .where(
+        and(
+          eq(schema.interventions.attemptId, attemptId),
+          eq(schema.interventions.recipientParticipantId, participantId),
+          eq(schema.interventions.status, "delivered")
+        )
+      )
+      .get()
+  );
+}
+
 export function getPrivateOptIn(participantId: string): boolean {
   const row = db
     .select()

@@ -1,6 +1,6 @@
 # 02 — Implementation plan
 
-> **Changed on 2026-11-08:** the formal/pilot/demo study modes described below were removed (all V2 groups are handled the same way), and V2 is now on by default. The later participant-facing simplification retired `dual_adaptive` for new groups; home-page groups now use `proactive_group`. Current behaviour: `06-researcher-operating-guide.md`.
+> **Changed on 2026-11-08:** the formal/pilot/demo study modes described below were removed (all V2 groups are handled the same way), and V2 is now on by default. The later participant-facing simplification retired `dual_adaptive` for new groups. After that, the condition `proactive_adaptive` (policy `policy-v2-2`) was added and made the default for new groups: the shared facilitator plus private popups chosen by a per-member Bayesian learner model with Thompson sampling (`src/lib/intervention/adaptive/`: `LearnerModel.ts` posteriors, `AdaptivePrivatePolicy.ts` decision and safety limits, `rewards.ts` updates, `LearnerModelStore.ts` persistence, `AdaptiveLearner.ts` reading members' behaviour; UI in `PrivateSuggestionPopup.tsx`). Existing groups keep their condition. Current behaviour: `03-research-protocol-and-measures.md` and `06-researcher-operating-guide.md`.
 
 ## Guiding decisions
 

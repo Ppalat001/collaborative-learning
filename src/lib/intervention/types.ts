@@ -8,6 +8,7 @@ export const RESEARCH_CONDITIONS = [
   "shared_on_demand",
   "proactive_group",
   "dual_adaptive",
+  "proactive_adaptive",
 ] as const;
 export type ResearchCondition = (typeof RESEARCH_CONDITIONS)[number];
 
@@ -23,6 +24,7 @@ export const ASSIGNABLE_RESEARCH_CONDITIONS = [
   "baseline_private_request",
   "shared_on_demand",
   "proactive_group",
+  "proactive_adaptive",
 ] as const satisfies readonly ResearchCondition[];
 export type AssignableResearchCondition = (typeof ASSIGNABLE_RESEARCH_CONDITIONS)[number];
 
@@ -40,6 +42,8 @@ export const INTERVENTION_TRIGGERS = [
   "possible_participation_imbalance",
   "coordination_request",
   "student_requested",
+  /** The per-member learning model judged that this member may benefit from private help. */
+  "adaptive_need",
   "none",
 ] as const;
 export type InterventionTrigger = (typeof INTERVENTION_TRIGGERS)[number];
@@ -124,6 +128,8 @@ export interface ConditionCapabilities {
   fading: boolean;
   /** Members may explicitly share a private AI idea with the group. */
   sharing: boolean;
+  /** Private popup offers chosen by the per-member learning model (no opt-in panel). */
+  adaptivePrivate: boolean;
 }
 
 export interface DiscussionEntry {

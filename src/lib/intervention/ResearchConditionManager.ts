@@ -33,6 +33,7 @@ export const CONDITION_CAPABILITIES: Record<ResearchCondition, ConditionCapabili
     proactivePrivate: false,
     fading: false,
     sharing: false,
+    adaptivePrivate: false,
   },
   shared_on_demand: {
     privateManual: true,
@@ -41,6 +42,7 @@ export const CONDITION_CAPABILITIES: Record<ResearchCondition, ConditionCapabili
     proactivePrivate: false,
     fading: false,
     sharing: true,
+    adaptivePrivate: false,
   },
   proactive_group: {
     privateManual: true,
@@ -49,6 +51,7 @@ export const CONDITION_CAPABILITIES: Record<ResearchCondition, ConditionCapabili
     proactivePrivate: false,
     fading: false,
     sharing: true,
+    adaptivePrivate: false,
   },
   dual_adaptive: {
     privateManual: true,
@@ -58,6 +61,16 @@ export const CONDITION_CAPABILITIES: Record<ResearchCondition, ConditionCapabili
     proactivePrivate: false,
     fading: false,
     sharing: true,
+    adaptivePrivate: false,
+  },
+  proactive_adaptive: {
+    privateManual: true,
+    sharedManual: true,
+    proactiveGroup: true,
+    proactivePrivate: false,
+    fading: false,
+    sharing: true,
+    adaptivePrivate: true,
   },
 };
 
@@ -92,7 +105,7 @@ export function readReleaseConfig(env: EnvSource = process.env): V2ReleaseConfig
   return {
     enabled: env.ADAPTIVE_V2_ENABLED?.trim() !== "false",
     homePageGroups: env.ADAPTIVE_V2_HOME_PAGE_GROUPS?.trim() === "legacy" ? "legacy" : "v2",
-    defaultCondition: isAssignableResearchCondition(defaultCondition) ? defaultCondition : "proactive_group",
+    defaultCondition: isAssignableResearchCondition(defaultCondition) ? defaultCondition : "proactive_adaptive",
     assignment: env.ADAPTIVE_V2_ASSIGNMENT?.trim() === "randomized" ? "randomized" : "fixed",
     randomizeConditions: parseConditions(env.ADAPTIVE_V2_RANDOMIZE_CONDITIONS),
     allowTestPolicy: env.ADAPTIVE_V2_ALLOW_TEST_POLICY?.trim() === "true",
@@ -200,6 +213,12 @@ export class ResearchConditionManager {
       return {
         ok: false,
         error: `Policy ${policyVersion} is test-only (ADAPTIVE_V2_ALLOW_TEST_POLICY)`,
+      };
+    }
+    if (CONDITION_CAPABILITIES[condition].adaptivePrivate && !policy.adaptivePrivate) {
+      return {
+        ok: false,
+        error: `Policy ${policyVersion} has no settings for adaptive private suggestions`,
       };
     }
 

@@ -25,7 +25,9 @@ if (!fs.existsSync(file)) {
 const policies = JSON.parse(
   fs.readFileSync(path.join(process.cwd(), "src", "data", "intervention-policies.json"), "utf8")
 ).versions;
-const CONDITIONS = ["baseline_private_request", "shared_on_demand", "proactive_group", "dual_adaptive"];
+const CONDITIONS = ["baseline_private_request", "shared_on_demand", "proactive_group", "dual_adaptive", "proactive_adaptive"];
+const ADAPTIVE_REASON = "adaptive_private";
+const ADAPTIVE_TYPES = ["hint", "guiding_question", "explanation"];
 
 const db = new Database(file, { readonly: true, fileMustExist: true });
 const tables = new Set(
@@ -183,9 +185,71 @@ if (missing.length === V2_TABLES.length) {
          JOIN study_assignments a ON a.session_id = i.session_id
         WHERE a.research_condition = 'baseline_private_request'
            OR (a.research_condition = 'shared_on_demand' AND (i.initiated_by = 'system' OR i.scope = 'individual'))
-           OR (a.research_condition = 'proactive_group' AND i.scope = 'individual')`
+           OR (a.research_condition = 'proactive_group' AND i.scope = 'individual')
+           OR (a.research_condition = 'proactive_adaptive' AND i.scope = 'individual' AND i.reason_code <> '${ADAPTIVE_REASON}')
+           OR (a.research_condition <> 'proactive_adaptive' AND i.reason_code = '${ADAPTIVE_REASON}')`
     )
   );
+  add(
+    "violation",
+    "private_feedback_by_other",
+    "Responses to a private intervention recorded for someone other than its recipient",
+    all(
+      `SELECT f.session_id, f.intervention_id, f.participant_id FROM intervention_feedback f
+         JOIN interventions i ON i.id = f.intervention_id
+        WHERE i.scope = 'individual' AND f.participant_id IS NOT i.recipient_participant_id`
+    )
+  );
+  const adaptiveOffers = all(
+    `SELECT i.session_id, i.id, i.recipient_participant_id, i.scenario_order, i.support_type, a.intervention_policy_version
+       FROM interventions i JOIN study_assignments a ON a.session_id = i.session_id
+      WHERE i.reason_code = '${ADAPTIVE_REASON}'`
+  );
+  add(
+    "violation",
+    "adaptive_support_type",
+    "Adaptive private suggestions of a kind other than a hint, guiding question or brief explanation",
+    adaptiveOffers.filter((o) => !ADAPTIVE_TYPES.includes(o.support_type))
+  );
+  const offerCounts = new Map();
+  for (const offer of adaptiveOffers) {
+    const key = `${offer.recipient_participant_id}:${offer.scenario_order}`;
+    offerCounts.set(key, { ...offer, n: (offerCounts.get(key)?.n ?? 0) + 1 });
+  }
+  add(
+    "violation",
+    "adaptive_offer_limit",
+    "Members who received more adaptive private suggestions in one scenario than their policy allows",
+    [...offerCounts.values()]
+      .filter((o) => o.n > (policies[o.intervention_policy_version]?.adaptivePrivate?.maxOffersPerScenario ?? 0))
+      .map((o) => ({ session_id: o.session_id, participant_id: o.recipient_participant_id, scenario: o.scenario_order, offers: o.n }))
+  );
+  if (tables.has("learner_models")) {
+    add(
+      "violation",
+      "learner_model_condition",
+      "Learner models in groups whose condition has no adaptive private suggestions",
+      all(
+        `SELECT m.session_id, m.participant_id, a.research_condition FROM learner_models m
+           LEFT JOIN study_assignments a ON a.session_id = m.session_id
+          WHERE a.research_condition IS NOT 'proactive_adaptive'`
+      )
+    );
+    add(
+      "violation",
+      "learner_model_owner",
+      "Learner models or updates whose member belongs to a different group (models must stay per member)",
+      all(
+        `SELECT m.session_id, m.participant_id, 'learner_models' AS tbl FROM learner_models m
+           JOIN participants p ON p.id = m.participant_id WHERE p.session_id <> m.session_id
+         UNION ALL
+         SELECT e.session_id, e.participant_id, 'learner_model_events' FROM learner_model_events e
+           JOIN participants p ON p.id = e.participant_id WHERE p.session_id <> e.session_id`
+      )
+    );
+  } else if (assignments.some((a) => a.research_condition === "proactive_adaptive")) {
+    add("violation", "schema", "proactive_adaptive groups exist but the learner_models table is missing");
+  }
   add(
     "violation",
     "private_recipient",
@@ -212,7 +276,7 @@ if (missing.length === V2_TABLES.length) {
     "Proactive private offers to members whose opt-in is currently off (they may have opted out later; check research_events)",
     all(
       `SELECT i.session_id, i.id, i.recipient_participant_id FROM interventions i
-        WHERE i.scope = 'individual' AND i.initiated_by = 'system'
+        WHERE i.scope = 'individual' AND i.initiated_by = 'system' AND i.reason_code <> '${ADAPTIVE_REASON}'
           AND i.recipient_participant_id NOT IN
             (SELECT participant_id FROM participant_ai_preferences WHERE private_offers_opt_in = 1)`
     )

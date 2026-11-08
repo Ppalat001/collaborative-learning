@@ -97,6 +97,9 @@ const tokenRows = participantColumns.includes("auth_token_hash")
   : null;
 check.close();
 if (!tablesNow.has("study_assignments")) fail("study_assignments was not created");
+for (const table of ["learner_models", "learner_model_events"]) {
+  if (!tablesNow.has(table)) fail(`${table} was not created`);
+}
 if (tokenRows === null) fail("participants.auth_token_hash was not added");
 if (tokenRows !== 0) fail("existing participants received token hashes");
 console.log(`Added tables (${added.length}): ${added.sort().join(", ")}`);

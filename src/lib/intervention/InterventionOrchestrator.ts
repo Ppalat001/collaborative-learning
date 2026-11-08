@@ -1,11 +1,22 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { groupFacilitator, type GeneratedSupport, type GroupAIFacilitator } from "@/lib/ai/GroupAIFacilitator";
 import { personalCoach, type PersonalInterventionCoach } from "@/lib/ai/PersonalInterventionCoach";
 import { isRealAiConfigured } from "@/lib/ai/provider";
 import { describeAiError } from "@/lib/ai/scaffold";
+import {
+  ADAPTIVE_REASON_CODE,
+  adaptiveLearner,
+  type LearnerRef,
+} from "@/lib/intervention/adaptive/AdaptiveLearner";
+import { decideAdaptiveOffer, type AdaptiveDecision } from "@/lib/intervention/adaptive/AdaptivePrivatePolicy";
+import { learnerStore } from "@/lib/intervention/adaptive/LearnerModelStore";
 import { adaptiveEngine } from "@/lib/intervention/AdaptiveScaffoldingEngine";
-import { CollaborationMonitor, type DisagreementClassifier } from "@/lib/intervention/CollaborationMonitor";
+import {
+  CollaborationMonitor,
+  type DisagreementClassifier,
+  type MonitorResult,
+} from "@/lib/intervention/CollaborationMonitor";
 import {
   decisionEngine,
   type DecisionContext,
@@ -236,7 +247,11 @@ export class InterventionOrchestrator {
       allowClassifier: !shadowOnly && isRealAiConfigured(),
     });
     const ctx = this.decisionContext(snapshot, policy, assignment);
-    const decision = decisionEngine.decide(snapshot, result.assessments, ctx);
+    // With adaptive private suggestions, one member's own "I'm unsure" is answered privately, not with a group prompt.
+    const groupAssessments = capabilities.adaptivePrivate
+      ? result.assessments.filter((a) => !(a.trigger === "explicit_confusion" && a.participantId))
+      : result.assessments;
+    const decision = decisionEngine.decide(snapshot, groupAssessments, ctx);
     const watermark = activityWatermark(snapshot);
     const logged = researchLogger.logDecision({
       sessionId,
@@ -267,7 +282,130 @@ export class InterventionOrchestrator {
         now,
       });
     }
+    if (capabilities.adaptivePrivate) {
+      await this.evaluateAdaptivePrivate({ session, assignment, attempt, policy, snapshot, monitor: result });
+    }
     return { decision, evaluationId: logged.evaluationId, collapsed: logged.collapsed, intervention };
+  }
+
+  private learnerRef(assignment: StudyAssignment, participantId: string, now: string): LearnerRef | null {
+    const policy = getPolicy(assignment.interventionPolicyVersion);
+    if (!capabilitiesFor(conditionOf(assignment)).adaptivePrivate || !policy.adaptivePrivate) return null;
+    return {
+      sessionId: assignment.sessionId,
+      participantId,
+      policyVersion: policy.version,
+      policy: policy.adaptivePrivate,
+      now,
+    };
+  }
+
+  /**
+   * Applies due rewards for every active member, then lets each connected member's
+   * own learner model decide whether to offer them private help now.
+   */
+  private async evaluateAdaptivePrivate(input: {
+    session: Session;
+    assignment: StudyAssignment;
+    attempt: Attempt;
+    policy: InterventionPolicy;
+    snapshot: CollaborationSnapshot;
+    monitor: MonitorResult;
+  }) {
+    const { session, assignment, attempt, snapshot } = input;
+    const adaptive = input.policy.adaptivePrivate;
+    if (!adaptive) return;
+    for (const participantId of snapshot.activeParticipantIds) {
+      const ref = this.learnerRef(assignment, participantId, snapshot.now)!;
+      try {
+        adaptiveLearner.reconcile(ref);
+        if (!snapshot.onlineParticipantIds.includes(participantId)) continue;
+        if (await checkV2PrivateSupportGate(assignment, participantId, attempt.scenarioOrder)) continue;
+        const state = adaptiveLearner.syncPace(ref, attempt.scenarioOrder);
+        const context = adaptiveLearner.context({
+          snapshot,
+          participantId,
+          assessments: input.monitor.assessments,
+          progressState: input.monitor.progress.state,
+        });
+        const decision = decideAdaptiveOffer(state, context, adaptive);
+        if (decision.action === "offer") {
+          this.createAdaptiveOffer({ session, assignment, attempt, policy: input.policy, participantId, decision, now: snapshot.now });
+        }
+      } catch (error) {
+        console.error("Adaptive private evaluation failed:", error);
+      }
+    }
+  }
+
+  private createAdaptiveOffer(input: {
+    session: Session;
+    assignment: StudyAssignment;
+    attempt: Attempt;
+    policy: InterventionPolicy;
+    participantId: string;
+    decision: Extract<AdaptiveDecision, { action: "offer" }>;
+    now: string;
+  }) {
+    const { session, assignment, attempt, policy, participantId, decision, now } = input;
+    const { row, created } = researchLogger.logOffer(
+      {
+        sessionId: session.id,
+        attemptId: attempt.id,
+        scenarioOrder: attempt.scenarioOrder,
+        scope: "individual",
+        recipientParticipantId: participantId,
+        initiatedBy: "system",
+        trigger: "adaptive_need",
+        category: "content",
+        supportType: decision.arm,
+        scaffoldLevel: String(decision.level),
+        status: "suggested",
+        offerText: this.coach.makePrivateOffer(decision.arm),
+        reasonCode: ADAPTIVE_REASON_CODE,
+        reasonExplanation: decision.explanation,
+        researchCondition: conditionOf(assignment),
+        policyVersion: policy.version,
+        promptVersion: PRIVATE_OFFER_PROMPT_VERSION,
+        // One offer per decision draw: the seed already identifies member, scenario, pause and model state.
+        idempotencyKey: `adaptive:${attempt.id}:${decision.evidence.seed}`,
+        createdAt: now,
+        expiresAt: addSeconds(now, policy.adaptivePrivate!.offerExpirySeconds),
+      },
+      { proactive: true, now }
+    );
+    if (!created) return;
+    learnerStore.logDecision({
+      sessionId: session.id,
+      participantId,
+      scenarioOrder: attempt.scenarioOrder,
+      interventionId: row.id,
+      decision,
+      now,
+    });
+    this.broadcast(session, row, "intervention:offered");
+  }
+
+  /** A Step 2 choice can settle an open popup outcome early (asking for more direct help). */
+  onStepTwoSelection(input: { assignment: StudyAssignment; participantId: string }) {
+    const ref = this.learnerRef(input.assignment, input.participantId, this.now());
+    if (!ref) return;
+    try {
+      adaptiveLearner.reconcile(ref);
+    } catch (error) {
+      console.error("Adaptive learner update after Step 2 failed:", error);
+    }
+  }
+
+  /** The end-of-scenario "support amount" rating updates how often this member is offered help. */
+  onSurveyRated(input: { assignment: StudyAssignment; participantId: string; scenarioOrder: number; supportAmount: unknown }) {
+    const ref = this.learnerRef(input.assignment, input.participantId, this.now());
+    if (!ref) return;
+    try {
+      adaptiveLearner.surveyRated(ref, input.scenarioOrder, input.supportAmount);
+    } catch (error) {
+      console.error("Adaptive learner update after the survey failed:", error);
+    }
   }
 
   private decisionContext(
@@ -686,8 +824,25 @@ export class InterventionOrchestrator {
         this.broadcast(session, closed, "intervention:state");
       }
     } else if (action === "deferred" && row.scope === "individual") {
-      const deferred = researchLogger.transition(row.id, ["suggested"], { status: "deferred" });
+      // A popup answered with "Not now" is closed; the learner model decides later whether to offer again.
+      const adaptive = row.reasonCode === ADAPTIVE_REASON_CODE;
+      const deferred = researchLogger.transition(
+        row.id,
+        ["suggested"],
+        adaptive ? { status: "deferred", resolvedAt: now, expiresAt: null } : { status: "deferred" }
+      );
       if (deferred) current = deferred;
+    }
+
+    if (row.reasonCode === ADAPTIVE_REASON_CODE && ["accepted", "dismissed", "deferred"].includes(action)) {
+      const ref = this.learnerRef(assignment, participant.id, this.now());
+      if (ref) {
+        try {
+          adaptiveLearner.reconcile(ref);
+        } catch (error) {
+          console.error("Adaptive learner update after a response failed:", error);
+        }
+      }
     }
 
     this.emitFeedback(session, row, participant.id, action);
@@ -737,13 +892,30 @@ export class InterventionOrchestrator {
         and(
           eq(schema.interventions.sessionId, input.sessionId),
           eq(schema.interventions.scenarioOrder, input.scenarioOrder),
-          inArray(schema.interventions.status, ["suggested", "deferred"])
+          inArray(schema.interventions.status, ["suggested", "deferred"]),
+          isNull(schema.interventions.resolvedAt)
         )
       )
       .all();
     for (const row of open) {
       const expired = researchLogger.transition(row.id, ["suggested", "deferred"], { status: "expired", resolvedAt: now });
       if (expired) this.broadcast(session, expired, "intervention:state");
+    }
+
+    const assignment = db
+      .select()
+      .from(schema.studyAssignments)
+      .where(eq(schema.studyAssignments.sessionId, input.sessionId))
+      .get();
+    if (!assignment) return;
+    for (const participantId of getActiveRosterIds(assignment)) {
+      const ref = this.learnerRef(assignment, participantId, now);
+      if (!ref) return;
+      try {
+        adaptiveLearner.scenarioFinished(ref, input.scenarioOrder);
+      } catch (error) {
+        console.error("Adaptive learner update after submission failed:", error);
+      }
     }
   }
 

@@ -4,6 +4,7 @@ import { checkParticipantToken, issueParticipantToken } from "@/lib/auth/partici
 import { AdaptiveScaffoldingEngine, type ParticipantHistory } from "@/lib/intervention/AdaptiveScaffoldingEngine";
 import { getPolicy, listPolicyVersions } from "@/lib/intervention/policies";
 import {
+  capabilitiesFor,
   normalizeFeatures,
   ResearchConditionManager,
   STUDY_PROTOCOL,
@@ -38,10 +39,11 @@ describe("Participant AI support choices", () => {
 });
 
 describe("ResearchConditionManager release gate", () => {
-  test("with no settings at all, V2 is on and home-page groups use proactive_group without the private coach", () => {
+  test("with no settings at all, V2 is on and home-page groups get the facilitator plus adaptive private suggestions", () => {
     const result = new ResearchConditionManager({}).planAssignment({ createdVia: "home_page" });
     assert.ok(result.ok && result.plan);
-    assert.equal(result.plan.researchCondition, "proactive_group");
+    assert.equal(result.plan.researchCondition, "proactive_adaptive");
+    assert.equal(result.plan.interventionPolicyVersion, "policy-v2-2");
     assert.equal(result.plan.assignmentMethod, "configured_default");
     assert.equal(result.plan.createdVia, "home_page");
     assert.equal(result.plan.minGroupSize, 2);
@@ -77,7 +79,25 @@ describe("ResearchConditionManager release gate", () => {
       ADAPTIVE_V2_DEFAULT_CONDITION: "dual_adaptive",
     }).planAssignment({ createdVia: "home_page" });
     assert.ok(configured.ok && configured.plan);
-    assert.equal(configured.plan.researchCondition, "proactive_group");
+    assert.equal(configured.plan.researchCondition, "proactive_adaptive");
+  });
+
+  test("proactive_adaptive enables adaptive private suggestions only; existing conditions never get them", () => {
+    assert.equal(capabilitiesFor("proactive_adaptive").adaptivePrivate, true);
+    assert.equal(capabilitiesFor("proactive_adaptive").proactiveGroup, true);
+    assert.equal(capabilitiesFor("proactive_adaptive").proactivePrivate, false);
+    for (const condition of ["baseline_private_request", "shared_on_demand", "proactive_group", "dual_adaptive"] as const) {
+      assert.equal(capabilitiesFor(condition).adaptivePrivate, false, condition);
+    }
+  });
+
+  test("proactive_adaptive cannot run on a policy without adaptive private settings", () => {
+    const manager = new ResearchConditionManager({});
+    const result = manager.planAssignment({ createdVia: "admin", condition: "proactive_adaptive", policyVersion: "policy-v2-1" });
+    assert.equal(result.ok, false);
+    const current = manager.planAssignment({ createdVia: "admin", condition: "proactive_adaptive" });
+    assert.ok(current.ok && current.plan);
+    assert.equal(current.plan.interventionPolicyVersion, "policy-v2-2");
   });
 
   test("groups record every version and the condition", () => {

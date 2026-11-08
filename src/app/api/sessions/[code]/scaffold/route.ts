@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { describeAiError, generateScaffoldResponse } from "@/lib/ai/scaffold";
 import { authorizeParticipant, loadSessionContext } from "@/lib/auth/routeAuth";
 import { adaptiveEngine } from "@/lib/intervention/AdaptiveScaffoldingEngine";
+import { getOrchestrator } from "@/lib/intervention/InterventionOrchestrator";
 import { checkV2PrivateSupportGate } from "@/lib/services/interventions";
 import {
   formatTranscript,
@@ -87,6 +88,7 @@ export async function POST(
           participant.id
         );
       }
+      if (assignment) getOrchestrator().onStepTwoSelection({ assignment, participantId: participant.id });
       return NextResponse.json({ scaffold: toIndividualScaffold(updated), cached: true });
     }
 
@@ -152,6 +154,7 @@ export async function POST(
         scenarioOrder,
         chosenSupportType: scaffoldingType,
       });
+      getOrchestrator().onStepTwoSelection({ assignment, participantId: participant.id });
     }
 
     return NextResponse.json({ scaffold: toIndividualScaffold(row), cached: false });

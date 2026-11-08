@@ -1,5 +1,7 @@
 import { asc, eq } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
+import { ADAPTIVE_REASON_CODE } from "@/lib/intervention/adaptive/AdaptiveLearner";
+import { summarizeState } from "@/lib/intervention/adaptive/LearnerModel";
 import { getPolicy, hasPolicy } from "@/lib/intervention/policies";
 import { capabilitiesFor, conditionOf } from "@/lib/intervention/ResearchConditionManager";
 import type { CsvExport } from "@/lib/utils/export";
@@ -80,6 +82,13 @@ function loadV2Group(sessionId: string) {
       .from(schema.scaffoldRecommendations)
       .where(eq(schema.scaffoldRecommendations.sessionId, sessionId))
       .all(),
+    learnerModels: db.select().from(schema.learnerModels).where(eq(schema.learnerModels.sessionId, sessionId)).all(),
+    learnerEvents: db
+      .select()
+      .from(schema.learnerModelEvents)
+      .where(eq(schema.learnerModelEvents.sessionId, sessionId))
+      .all()
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
     initialIdeas: db
       .select()
       .from(schema.scenarioInitialIdeas)
@@ -313,6 +322,67 @@ function recommendationRows(group: V2Group): CsvRow[] {
       resolved_at_utc: r.resolvedAt,
       evidence_json: JSON.stringify(r.evidence),
     }));
+}
+
+function learnerModelRows(group: V2Group): CsvRow[] {
+  return [...group.learnerModels]
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    .map((model) => {
+      const summary = summarizeState(model.state);
+      const offers = group.interventions.filter(
+        (i) => i.reasonCode === ADAPTIVE_REASON_CODE && i.recipientParticipantId === model.participantId
+      );
+      const status = (...values: string[]) => offers.filter((i) => values.includes(i.status)).length;
+      return {
+        ...group.provenance,
+        student_id: group.studentId(model.participantId),
+        model_version: model.modelVersion,
+        policy_version: model.policyVersion,
+        pretest_fraction: model.pretestFraction,
+        pace_median_seconds: summary.paceMedianSeconds,
+        pace_observations: summary.paceObservations,
+        independence_mean: summary.independence,
+        receptiveness_mean: summary.receptiveness,
+        guiding_question_effect_mean: summary.arms.guiding_question,
+        hint_effect_mean: summary.arms.hint,
+        explanation_effect_mean: summary.arms.explanation,
+        updates: summary.updates,
+        offers_made: offers.length,
+        offers_accepted: status("accepted", "delivered", "failed"),
+        offers_no_thanks: status("dismissed"),
+        offers_not_now: status("deferred"),
+        offers_expired: status("expired"),
+        created_at_utc: model.createdAt,
+        updated_at_utc: model.updatedAt,
+        state_json: JSON.stringify(model.state),
+      };
+    });
+}
+
+function learnerEventRows(group: V2Group): CsvRow[] {
+  return group.learnerEvents.map((event) => {
+    const after = summarizeState(event.stateAfter);
+    return {
+      ...group.provenance,
+      scenario_number: event.scenarioOrder,
+      student_id: group.studentId(event.participantId),
+      event_type: event.eventType,
+      event_key: event.eventKey,
+      intervention_id: event.interventionId,
+      reward: event.reward,
+      weight: event.weight,
+      detail_json: JSON.stringify(event.detail),
+      independence_mean_after: after.independence,
+      receptiveness_mean_after: after.receptiveness,
+      pace_median_seconds_after: after.paceMedianSeconds,
+      guiding_question_effect_mean_after: after.arms.guiding_question,
+      hint_effect_mean_after: after.arms.hint,
+      explanation_effect_mean_after: after.arms.explanation,
+      at_utc: event.createdAt,
+      state_before_json: event.stateBefore ? JSON.stringify(event.stateBefore) : null,
+      state_after_json: JSON.stringify(event.stateAfter),
+    };
+  });
 }
 
 function initialIdeaRows(group: V2Group): CsvRow[] {
@@ -554,6 +624,59 @@ export const V2_EXPORTS = {
     ]),
     rows: recommendationRows,
   },
+  v2_learner_models: {
+    label: "V2 learner models",
+    description:
+      "One row per member in a proactive_adaptive group: current posterior means (pace, independence, receptiveness, help effectiveness), popup offer counts and the full model state",
+    columns: withProvenance([
+      "student_id",
+      "model_version",
+      "policy_version",
+      "pretest_fraction",
+      "pace_median_seconds",
+      "pace_observations",
+      "independence_mean",
+      "receptiveness_mean",
+      "guiding_question_effect_mean",
+      "hint_effect_mean",
+      "explanation_effect_mean",
+      "updates",
+      "offers_made",
+      "offers_accepted",
+      "offers_no_thanks",
+      "offers_not_now",
+      "offers_expired",
+      "created_at_utc",
+      "updated_at_utc",
+      "state_json",
+    ]),
+    rows: learnerModelRows,
+  },
+  v2_learner_model_events: {
+    label: "V2 learner model updates",
+    description:
+      "Every learner model update: what happened (offer response, help outcome, scenario outcome, survey rating, pace), reward, weight and the state before and after",
+    columns: withProvenance([
+      "scenario_number",
+      "student_id",
+      "event_type",
+      "event_key",
+      "intervention_id",
+      "reward",
+      "weight",
+      "detail_json",
+      "independence_mean_after",
+      "receptiveness_mean_after",
+      "pace_median_seconds_after",
+      "guiding_question_effect_mean_after",
+      "hint_effect_mean_after",
+      "explanation_effect_mean_after",
+      "at_utc",
+      "state_before_json",
+      "state_after_json",
+    ]),
+    rows: learnerEventRows,
+  },
   v2_initial_ideas: {
     label: "V2 initial individual ideas",
     description: "Private first idea per member and scenario, and whether it was written before private AI use",
@@ -651,7 +774,15 @@ export function buildV2Dashboard(sessionId: string) {
   if (!capabilities.proactiveGroup && group.interventions.some((i) => i.initiatedBy === "system")) {
     warnings.push("Proactive interventions exist although this condition does not allow them.");
   }
-  if (!capabilities.proactivePrivate && group.interventions.some((i) => i.scope === "individual")) {
+  const adaptiveOffer = (i: (typeof group.interventions)[number]) => i.reasonCode === ADAPTIVE_REASON_CODE;
+  if (
+    group.interventions.some(
+      (i) =>
+        i.scope === "individual" &&
+        !(capabilities.proactivePrivate && !adaptiveOffer(i)) &&
+        !(capabilities.adaptivePrivate && adaptiveOffer(i))
+    )
+  ) {
     warnings.push("Private interventions exist although this condition does not allow them.");
   }
 
@@ -703,6 +834,8 @@ export function buildV2Dashboard(sessionId: string) {
       shared: group.sharing.length,
       recommendations: group.recommendations.length,
       recommendationsOverridden: group.recommendations.filter((r) => r.overridden).length,
+      learnerModels: group.learnerModels.length,
+      learnerModelUpdates: group.learnerEvents.length,
     },
     failures: failures.map((f) => ({
       id: f.id,

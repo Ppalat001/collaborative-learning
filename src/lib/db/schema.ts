@@ -7,6 +7,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 import type { AuthorRun } from "@/lib/types";
+import type { LearnerState } from "@/lib/intervention/adaptive/LearnerModel";
 import type { StudyFeatures } from "@/lib/intervention/types";
 
 export const sessions = sqliteTable("sessions", {
@@ -613,5 +614,59 @@ export const scaffoldRecommendations = sqliteTable(
   },
   (table) => [
     index("scaffold_recommendations_participant").on(table.participantId, table.scenarioOrder),
+  ]
+);
+
+/**
+ * Per-member learner model behind adaptive private suggestions (proactive_adaptive
+ * only). Learned from this member's own behaviour; never shared between members.
+ */
+export const learnerModels = sqliteTable(
+  "learner_models",
+  {
+    id: id(),
+    sessionId: sessionRef(),
+    participantId: text("participant_id")
+      .notNull()
+      .references(() => participants.id, { onDelete: "cascade" }),
+    modelVersion: text("model_version").notNull(),
+    policyVersion: text("policy_version").notNull(),
+    /** Pre-test score / max score behind the independence prior; null when unknown. */
+    pretestFraction: real("pretest_fraction"),
+    state: text("state", { mode: "json" }).$type<LearnerState>().notNull(),
+    createdAt: createdAt(),
+    updatedAt: text("updated_at").notNull().$defaultFn(() => new Date().toISOString()),
+  },
+  (table) => [uniqueIndex("learner_models_participant_unique").on(table.participantId)]
+);
+
+/** Every learner model update with its reason and the state before and after (audit and replay). */
+export const learnerModelEvents = sqliteTable(
+  "learner_model_events",
+  {
+    id: id(),
+    sessionId: sessionRef(),
+    participantId: text("participant_id")
+      .notNull()
+      .references(() => participants.id, { onDelete: "cascade" }),
+    scenarioOrder: integer("scenario_order"),
+    /** model_created | pace_gaps | offer_response | help_outcome | scenario_outcome | survey_rating */
+    eventType: text("event_type").notNull(),
+    /** Each update is applied at most once per member. */
+    eventKey: text("event_key").notNull(),
+    interventionId: text("intervention_id").references(() => interventions.id, {
+      onDelete: "set null",
+    }),
+    /** 1 success, 0 failure, null when the event is not a success/failure observation. */
+    reward: real("reward"),
+    weight: real("weight").notNull(),
+    detail: text("detail", { mode: "json" }).$type<Record<string, unknown>>().notNull(),
+    stateBefore: text("state_before", { mode: "json" }).$type<LearnerState | null>(),
+    stateAfter: text("state_after", { mode: "json" }).$type<LearnerState>().notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("learner_model_events_key_unique").on(table.participantId, table.eventKey),
+    index("learner_model_events_participant").on(table.participantId, table.createdAt),
   ]
 );

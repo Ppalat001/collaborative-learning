@@ -4,7 +4,7 @@
 
 The schema lives in `src/lib/db/schema.ts` and is applied by the existing `drizzle-kit push` that runs before every start (`npm start`, `npm run start:prod`). The V2 change is **additive only**:
 
-- 13 new tables (below).
+- 15 new tables (below): the 13 original V2 tables plus `learner_models` and `learner_model_events` for the adaptive private suggestions (added 2026-11-08; also additive, created empty, used only by `proactive_adaptive` groups).
 - 1 new nullable column: `participants.auth_token_hash` (SHA-256 of the member's device token; `NULL` for everyone who joined before V2).
 - Indexes and unique constraints listed per table.
 - A trigger, `study_assignments_immutable`, created at app start (`src/lib/db/index.ts`): it rejects any `UPDATE` of assignment columns except the one-way roster freeze (`roster_frozen_at`, `frozen_roster_ids`, `started_by`, set once).
@@ -15,9 +15,12 @@ No existing table, column or row is changed or deleted. Verified on a copy of th
 unchanged  assessments 69 rows, edit_events 108, final_reflections 30, participants 44,
            research_events 694, rubric_scores 41, sessions 24, surveys 122,
            discussion_messages 177, scaffold_proposals 7, scenario_attempts 58, individual_scaffolds 106
-Added tables (13) ... Added column: participants.auth_token_hash (NULL for every existing member)
+Added tables (15) ... learner_model_events, learner_models ...
+Added column: participants.auth_token_hash (NULL for every existing member)
 Rehearsal passed: the push is additive and every existing row is unchanged.
 ```
+
+On a database that already has the 13 V2 tables (Railway after the first V2 deployment), the push adds only the two learner tables; existing V2 rows are unchanged.
 
 The rehearsal makes a consistent backup copy, fingerprints every original column of every row (SHA-256), runs the same non-forced `drizzle-kit push` as production, compares the fingerprints and runs the integrity checker. Run it on a downloaded copy of the Railway database before deploying (see `06-researcher-operating-guide.md`).
 
@@ -45,9 +48,13 @@ All V2 tables reference `sessions.id` with `ON DELETE CASCADE` (deleting a group
 | `intervention_state` | scenario attempt | `last_evaluated_at`, `last_evaluation_id`, `last_evaluation_signature`, `last_proactive_at`, `proactive_group_count`, `proactive_private_count` | unique `attempt_id` |
 | `participant_ai_preferences` | member | `private_offers_opt_in`, `updated_at` | unique `participant_id` |
 | `ai_sharing_events` | explicit share | `source_type` (individual_scaffold/intervention), `source_id`, `source_support_type`, `shared_text` | index (session, scenario) |
-| `scaffold_recommendations` | adaptive recommendation | `engine_version`, `recommended_level`, `recommended_support_type`, `fading_applied`, `evidence` (JSON), `rationale`, `chosen_support_type`, `chosen_level`, `overridden`, `resolved_at` | index (participant, scenario) |
+| `scaffold_recommendations` | adaptive recommendation | `engine_version` (`adaptive-v1` = Step 2 rule engine, `adaptive-bandit-v1` = popup decision), `recommended_level`, `recommended_support_type`, `fading_applied`, `evidence` (JSON; for popups: seed, pause, pause percentile, sampled values, need, score, threshold, allowed help, posterior summary), `rationale`, `chosen_support_type`, `chosen_level`, `overridden`, `resolved_at`, `intervention_id` (the popup) | index (participant, scenario) |
+| `learner_models` | member of a `proactive_adaptive` group | `model_version`, `policy_version`, `pretest_fraction`, `state` (JSON: pace posterior `mu/kappa/a/b/observations`, `independence`, `receptiveness`, `arms.{guiding_question,hint,explanation}` as Beta `alpha/beta`, `pace_cursor`, `updates`), `created_at`, `updated_at` | unique `participant_id`; created on first use from the policy priors |
+| `learner_model_events` | learner model update | `scenario_order`, `event_type` (model_created, pace_gaps, offer_response, help_outcome, scenario_outcome, survey_rating), `event_key`, `intervention_id` (set null), `reward` (1/0/null), `weight`, `detail` (JSON), `state_before`, `state_after`, `created_at` | unique (participant, event_key) so each update is applied once; index (participant, created_at) |
 
 Intervention statuses: `suggested` → `accepted` → `delivered` or `failed`; `suggested` → `dismissed`, `deferred` (private only) or `expired` (after 600 s in the default policy, or when the scenario is submitted). Transitions are atomic, so concurrent accepts generate content once.
+
+Adaptive popups are `interventions` rows with `scope = individual`, `initiated_by = system`, `trigger = adaptive_need`, `reason_code = adaptive_private`, `category = content`, `support_type` guiding_question / hint / explanation, `evaluation_id` empty (the decision is in `scaffold_recommendations`). They expire after 120 s (`policy-v2-2`); **Not now** sets `status = deferred` with `resolved_at` and no expiry, so the popup does not come back and is not expired at submission. Popup help is **not** written to `individual_scaffolds`, so the original `ai_support` export keeps meaning "Step 2 choices only".
 
 Existing tables used by V2 without schema changes: `research_events` (lifecycle events such as `v2_scenarios_started`, consent, opt-in changes), `discussion_messages`, `individual_scaffolds`, `scenario_attempts` (readiness uses the frozen roster for V2 groups).
 
@@ -72,6 +79,8 @@ Every V2 row starts with the provenance columns `export_schema_version, group, r
 | `v2_feedback` | member action | scenario_number, intervention_id, intervention_scope, intervention_initiated_by, support_type, student_id, action, comment, at_utc |
 | `v2_sharing` | explicit share | scenario_number, student_id, source_type, source_id, source_support_type, shared_text, shared_at_utc |
 | `v2_recommendations` | recommendation | scenario_number, student_id, engine_version, recommended_level, recommended_support_type, fading_applied, rationale, chosen_support_type, chosen_level, chose_more_direct_than_recommended, intervention_id, created_at_utc, resolved_at_utc, evidence_json |
+| `v2_learner_models` | member with a learner model | student_id, model_version, policy_version, pretest_fraction, pace_median_seconds, pace_observations, independence_mean, receptiveness_mean, guiding_question_effect_mean, hint_effect_mean, explanation_effect_mean, updates, offers_made, offers_accepted, offers_no_thanks, offers_not_now, offers_expired, created_at_utc, updated_at_utc, state_json |
+| `v2_learner_model_events` | learner model update | scenario_number, student_id, event_type, event_key, intervention_id, reward, weight, detail_json, independence_mean_after, receptiveness_mean_after, pace_median_seconds_after, guiding_question_effect_mean_after, hint_effect_mean_after, explanation_effect_mean_after, at_utc, state_before_json, state_after_json |
 | `v2_initial_ideas` | member × scenario | scenario_number, student_id, initial_idea, written_at_utc, first_private_ai_at_utc, written_before_private_ai |
 | `v2_roles` | member × scenario | scenario_number, student_id, role, matches_suggested_rotation, chosen_at_utc |
 | `v2_checkpoints` | checkpoint | scenario_number, raised_by_student_id, kind, raised_at_utc |
@@ -97,4 +106,4 @@ Notes for analysis:
 
 ## Integrity checker
 
-`npm run db:verify [path]` (read-only) checks: valid assignments (known condition and policy); the immutability trigger; V2 rows attached to legacy groups; participant data without that member's consent; data after withdrawal; chat or private AI before the start; late joiners; interventions the condition does not allow (any in baseline, proactive or private in `shared_on_demand`, private in `proactive_group`); private items without a recipient in the group; deliveries after submission. Warnings: groups on the test-only policy, demo AI text (no API key), private offers to members whose opt-in is now off, solo groups, template fallbacks. Exit code 1 on any violation.
+`npm run db:verify [path]` (read-only) checks: valid assignments (known condition and policy); the immutability trigger; V2 rows attached to legacy groups; participant data without that member's consent; data after withdrawal; chat or private AI before the start; late joiners; interventions the condition does not allow (any in baseline, proactive or private in `shared_on_demand`, private in `proactive_group`, private other than adaptive popups in `proactive_adaptive`, adaptive popups in any other condition); responses to a private item from anyone but its recipient; adaptive popups of a kind other than hint / guiding question / explanation; more adaptive popups per member and scenario than the group's policy allows; learner models in groups without adaptive suggestions, or belonging to a member of another group; private items without a recipient in the group; deliveries after submission. Warnings: groups on the test-only policy, demo AI text (no API key), private offers (other than adaptive popups, which need no opt-in) to members whose opt-in is now off, solo groups, template fallbacks. Exit code 1 on any violation.
