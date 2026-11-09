@@ -137,8 +137,8 @@ The shared answer box, "I am good", the 500-word limit, the colours and the subm
 
 ## What researchers see
 
-- **Exports are unchanged.** The chat export still contains only students' messages; AI replies are never mixed into it. The V2 and V2.3 exports keep their columns.
-- The `/admin` group dashboard has an **"AI use (counted separately)"** panel listing each of these on its own:
+- **Existing exports are unchanged.** The chat export still contains only students' messages; AI replies are never mixed into it. The V2 and V2.3 exports keep their columns.
+- `/admin` shows no metrics on the page, only CSV downloads (plus rubric scoring, recording a drop-out and deleting data). The **"AI use per scenario"** CSV (`v2_ai_usage`, one row per group and scenario) counts each of these on its own:
   - human messages;
   - manual group AI requests and replies;
   - proactive offers made, accepted, replied to, expired, and closed by members;
@@ -148,7 +148,8 @@ The shared answer box, "I am good", the 500-word limit, the colours and the subm
   - where the AI text came from (real AI, demo text or template);
   - "Did this help?" answers and outcomes, including unknown outcomes;
   - tokens;
-  - failures.
+  - failures;
+  - the group's data-quality flags and warnings (for example demo text or members without consent).
 - Each group keeps its own policy version. New home-page groups are `proactive_adaptive` on `policy-unified-1`. Groups on `policy-v2-2` or `policy-v2-3` keep their rules (for example how many offers they can get) but use the same chat layout. On `policy-v2-2`, where one member's dismissal used to close an offer for everyone, the chat shows **Not now** (personal) instead of **Hide for me**.
 
 ## For developers

@@ -2,21 +2,10 @@
 
 import { useState } from "react";
 import { RUBRIC_CRITERIA, RUBRIC_SCALE, type RubricCriterion } from "@/lib/instruments";
-import {
-  AI_SUPPORT_OPTIONS,
-  SUPPORT_LEVEL_LABELS,
-  getScaffoldingOption,
-  type ScaffoldingType,
-} from "@/lib/types";
 
 interface RubricScore extends Record<RubricCriterion, number> {
   answerType: string;
   notes: string | null;
-}
-
-interface MemberSupport {
-  participantId: string;
-  requests: { type: ScaffoldingType; selected: boolean }[];
 }
 
 interface RubricAttempt {
@@ -24,7 +13,6 @@ interface RubricAttempt {
   scenarioOrder: number;
   scenarioTitle: string;
   scenarioDescription: string;
-  support: MemberSupport[];
   finalAnswer: string;
   scores: RubricScore[];
 }
@@ -35,178 +23,8 @@ interface RubricGroup {
   attempts: RubricAttempt[];
 }
 
-/** Highest help one student requested in a scenario, as shown in the tables. */
-type UsageBucket = "none" | 1 | 2 | 3 | "process";
-
-const BUCKETS: { key: UsageBucket; label: string }[] = [
-  { key: "none", label: "No AI" },
-  { key: 1, label: `Level 1 · ${SUPPORT_LEVEL_LABELS[1]}` },
-  { key: 2, label: `Level 2 · ${SUPPORT_LEVEL_LABELS[2]}` },
-  { key: 3, label: `Level 3 · ${SUPPORT_LEVEL_LABELS[3]}` },
-  { key: "process", label: "Collaboration support only" },
-];
-
-function bucketOf(support: MemberSupport): UsageBucket {
-  if (support.requests.length === 0) return "none";
-  const levels = support.requests
-    .map((request) => getScaffoldingOption(request.type)?.supportLevel)
-    .filter((level): level is 1 | 2 | 3 => typeof level === "number" && level > 0);
-  return levels.length > 0 ? (Math.max(...levels) as 1 | 2 | 3) : "process";
-}
-
-function share(count: number, total: number): string {
-  return `${count} (${total ? Math.round((count / total) * 100) : 0}%)`;
-}
-
 function totalOf(score: RubricScore): number {
   return RUBRIC_CRITERIA.reduce((sum, criterion) => sum + score[criterion.key], 0);
-}
-
-function GroupUsage({ group }: { group: RubricGroup }) {
-  const scenarios = group.attempts.length;
-  const supportOf = (memberId: string) =>
-    group.attempts.map(
-      (attempt) =>
-        attempt.support.find((s) => s.participantId === memberId) ?? {
-          participantId: memberId,
-          requests: [],
-        }
-    );
-  const all = group.attempts.flatMap((attempt) => attempt.support);
-  const cell = "border-b border-slate-100 px-2 py-1.5";
-
-  return (
-    <div className="mt-5 space-y-5">
-      <div>
-        <h3 className="text-sm font-semibold text-slate-900">
-          Highest help each student used, per scenario
-        </h3>
-        <p className="mt-1 text-xs text-slate-500">
-          Each cell counts that student&apos;s scenarios out of {scenarios}. &quot;All
-          students&quot; counts every student in every scenario ({all.length}), so two
-          students who both chose Level 3 count twice.
-        </p>
-        <div className="mt-2 overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="text-xs text-slate-500">
-              <tr>
-                <th className={cell}>Student</th>
-                {BUCKETS.map((bucket) => (
-                  <th key={String(bucket.key)} className={cell}>
-                    {bucket.label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="text-slate-700">
-              {group.members.map((member) => {
-                const rows = supportOf(member.id);
-                return (
-                  <tr key={member.id}>
-                    <td className={`${cell} font-medium`}>{member.name}</td>
-                    {BUCKETS.map((bucket) => (
-                      <td key={String(bucket.key)} className={cell}>
-                        {share(rows.filter((s) => bucketOf(s) === bucket.key).length, scenarios)}
-                      </td>
-                    ))}
-                  </tr>
-                );
-              })}
-              <tr className="font-medium">
-                <td className={cell}>All students</td>
-                {BUCKETS.map((bucket) => (
-                  <td key={String(bucket.key)} className={cell}>
-                    {share(all.filter((s) => bucketOf(s) === bucket.key).length, all.length)}
-                  </td>
-                ))}
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div>
-        <h3 className="text-sm font-semibold text-slate-900">
-          Scenarios in which each student requested each type
-        </h3>
-        <p className="mt-1 text-xs text-slate-500">
-          A student can request several types in one scenario, so a row can add up to more
-          than 100%. Hidden replies still count as requested.
-        </p>
-        <div className="mt-2 overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="text-xs text-slate-500">
-              <tr>
-                <th className={cell}>Student</th>
-                {AI_SUPPORT_OPTIONS.map((option) => (
-                  <th key={option.type} className={cell}>
-                    {option.label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="text-slate-700">
-              {group.members.map((member) => {
-                const rows = supportOf(member.id);
-                return (
-                  <tr key={member.id}>
-                    <td className={`${cell} font-medium`}>{member.name}</td>
-                    {AI_SUPPORT_OPTIONS.map((option) => (
-                      <td key={option.type} className={cell}>
-                        {share(
-                          rows.filter((s) => s.requests.some((r) => r.type === option.type))
-                            .length,
-                          scenarios
-                        )}
-                      </td>
-                    ))}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ScenarioUsage({ attempt, group }: { attempt: RubricAttempt; group: RubricGroup }) {
-  const members = group.members.length;
-  return (
-    <div className="mt-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
-      <p className="font-semibold text-slate-900">AI help in this scenario</p>
-      <ul className="mt-1 space-y-0.5">
-        {group.members.map((member) => {
-          const support = attempt.support.find((s) => s.participantId === member.id);
-          const requests = support?.requests ?? [];
-          return (
-            <li key={member.id}>
-              <span className="font-medium">{member.name}:</span>{" "}
-              {requests.length === 0
-                ? "no AI"
-                : requests
-                    .map(
-                      (r) =>
-                        `${getScaffoldingOption(r.type)?.label ?? r.type}${r.selected ? "" : " (hidden)"}`
-                    )
-                    .join(", ")}
-            </li>
-          );
-        })}
-      </ul>
-      <p className="mt-2 text-xs text-slate-600">
-        Highest level per student:{" "}
-        {BUCKETS.map((bucket) => ({
-          label: bucket.label,
-          count: attempt.support.filter((s) => bucketOf(s) === bucket.key).length,
-        }))
-          .filter((item) => item.count > 0)
-          .map((item) => `${item.label} ${item.count} of ${members} (${Math.round((item.count / members) * 100)}%)`)
-          .join(" · ")}
-      </p>
-    </div>
-  );
 }
 
 function ScoreForm({
@@ -308,7 +126,6 @@ export function RubricScoring({
 }) {
   const [code, setCode] = useState("");
   const [rater, setRater] = useState("");
-  const [blind, setBlind] = useState(true);
   const [group, setGroup] = useState<RubricGroup | null>(null);
   const [scoringAs, setScoringAs] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -356,11 +173,11 @@ export function RubricScoring({
 
   return (
     <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
-      <h2 className="font-semibold text-slate-900">Rubric scoring and support usage</h2>
+      <h2 className="font-semibold text-slate-900">Rubric scoring</h2>
       <p className="mt-1 text-sm text-slate-600">
         Enter a group ID to score that group&apos;s final answers on six criteria (1–4). Load
-        the same group with the same rater name to change a score. Blind mode hides which AI
-        help the members used, so the score isn&apos;t influenced by it.
+        the same group with the same rater name to change a score. The AI help the members used
+        is not shown here, so it can&apos;t influence the score.
       </p>
       <div className="mt-4 flex flex-wrap items-end gap-3">
         <label className="space-y-1">
@@ -386,10 +203,6 @@ export function RubricScoring({
             className="rounded-lg border border-slate-300 px-3 py-2"
           />
         </label>
-        <label className="flex items-center gap-2 pb-2 text-sm text-slate-700">
-          <input type="checkbox" checked={blind} onChange={(e) => setBlind(e.target.checked)} />
-          Blind mode
-        </label>
         <button
           type="button"
           onClick={load}
@@ -409,14 +222,6 @@ export function RubricScoring({
             {group.attempts.length} submitted answers · {scored} scored by {scoringAs}
           </p>
 
-          {blind ? (
-            <p className="mt-2 text-xs text-slate-500">
-              Untick Blind mode to see how much AI help each student used.
-            </p>
-          ) : (
-            <GroupUsage group={group} />
-          )}
-
           {group.attempts.length === 0 && (
             <p className="mt-4 text-sm text-slate-500">This group has no submitted answers yet.</p>
           )}
@@ -429,7 +234,6 @@ export function RubricScoring({
                 </p>
                 <h3 className="font-medium text-slate-900">{attempt.scenarioTitle}</h3>
                 <p className="mt-1 text-sm text-slate-600">{attempt.scenarioDescription}</p>
-                {!blind && <ScenarioUsage attempt={attempt} group={group} />}
                 <div className="mt-3 rounded-lg border border-slate-100 p-3">
                   <p className="text-sm font-semibold text-slate-900">Final group answer</p>
                   <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">

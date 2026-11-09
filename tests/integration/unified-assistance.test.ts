@@ -23,7 +23,7 @@ import {
 } from "@/lib/services/sessions";
 import { withdrawParticipantConsent } from "@/lib/services/studyV2";
 import { buildGroupExport } from "@/lib/utils/export";
-import { buildV2Dashboard } from "@/lib/utils/exportV2";
+import { buildV2Dashboard, buildV2Export } from "@/lib/utils/exportV2";
 import {
   apiRequest,
   attemptFor,
@@ -595,5 +595,22 @@ describe("Researcher counts", () => {
     assert.deepEqual(usage.origins.step2, { mock: 1 });
     assert.deepEqual(usage.tokens, { input: 0, output: 0 });
     assert.equal(usage.failures, 0);
+
+    const csv = buildV2Export("v2_ai_usage", [group.session.id]).rows;
+    const row = csv.find((r) => r.scenario_number === 1)!;
+    assert.equal(row.human_chat_messages, 2);
+    assert.equal(row.group_ai_requests, 1);
+    assert.equal(row.group_ai_request_replies, 1);
+    assert.equal(row.group_ai_proactive_offers, 1);
+    assert.equal(row.group_ai_proactive_accepted, 1);
+    assert.equal(row.step2_private_ai_replies, 1);
+    assert.equal(row.step2_demo_text, 1);
+    assert.equal(row.step2_real_ai, 0);
+    assert.equal(row.private_popups_offered, popups.length);
+    assert.equal(row.shared_excerpts, 1);
+    assert.equal(row.ai_replies_demo_text, 2);
+    assert.equal(row.failed_generations, 0);
+    assert.match(String(row.group_warnings), /demo text/);
+    assert.ok(csv.every((r) => r.scenario_number === 1 || r.human_chat_messages === 0));
   });
 });

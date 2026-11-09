@@ -85,6 +85,7 @@ Every V2 row starts with the provenance columns `export_schema_version, group, r
 | `v2_roles` | member × scenario | scenario_number, student_id, role, matches_suggested_rotation, chosen_at_utc |
 | `v2_checkpoints` | checkpoint | scenario_number, raised_by_student_id, kind, raised_at_utc |
 | `v2_agreement_reasons` | reason | scenario_number, student_id, reason, at_utc |
+| `v2_ai_usage` | group × scenario it opened | scenario_number, human_chat_messages, group_ai_requests, group_ai_request_replies, group_ai_proactive_offers, group_ai_proactive_accepted, group_ai_proactive_replies, group_ai_proactive_expired, group_ai_proactive_closed_by_members, step2_private_ai_replies, step2_real_ai, step2_demo_text, private_popups_offered, private_popups_accepted, private_popups_no_thanks, private_popups_not_now, private_popups_expired, shared_excerpts, ai_replies_real, ai_replies_demo_text, ai_replies_template_fallback, progress_feedback_yes, progress_feedback_partly, progress_feedback_no, progress_feedback_not_needed, progress_feedback_skipped, outcome_resolved_yes, outcome_resolved_partly, outcome_resolved_no, outcome_resolved_unknown, input_tokens, output_tokens, failed_generations, data_quality_flags, group_warnings |
 
 Notes for analysis:
 
@@ -92,8 +93,9 @@ Notes for analysis:
 - `shadow_only = true` rows come from passive conditions: what the system would have offered, never shown to students.
 - `seconds_to_accept` is from offer creation to the first acceptance.
 - `content` of private interventions is exported for the researcher; it was visible only to the recipient.
+- `v2_ai_usage` counts each kind on its own: human chat messages never include AI items, an offer is not a reply, and an unknown outcome stays unknown. Step 2 replies carry no token counts. Sum the scenario rows for group totals; `data_quality_flags` and `group_warnings` describe the whole group and repeat on every row.
 
-### `data_quality_flags` (in `v2_assignment` and the dashboard)
+### `data_quality_flags` (in `v2_assignment`, `v2_ai_usage` and the dashboard API)
 
 | Flag | Meaning |
 |---|---|

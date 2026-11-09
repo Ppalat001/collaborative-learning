@@ -442,6 +442,62 @@ function agreementReasonRows(group: V2Group): CsvRow[] {
     }));
 }
 
+function aiUsageRows(group: V2Group): CsvRow[] {
+  const sources = loadAiUsageSources(group.session.id);
+  const scenarios = new Set([
+    ...group.attempts.map((a) => a.scenarioOrder),
+    ...group.interventions.map((i) => i.scenarioOrder),
+    ...sources.messages.map((m) => m.scenarioOrder),
+    ...sources.step2.map((s) => s.scenarioOrder),
+  ]);
+  const flags = dataQualityFlags(group).join(";");
+  const warnings = groupWarnings(group).join(" | ");
+  return [...scenarios]
+    .sort((a, b) => a - b)
+    .map((scenarioOrder) => {
+      const usage = countAiUsage(group, sources, scenarioOrder);
+      const { groupAi, privateAi } = usage;
+      return {
+        ...group.provenance,
+        scenario_number: scenarioOrder,
+        human_chat_messages: usage.humanMessages,
+        group_ai_requests: groupAi.manualRequests,
+        group_ai_request_replies: groupAi.manualReplies,
+        group_ai_proactive_offers: groupAi.proactiveOffers,
+        group_ai_proactive_accepted: groupAi.proactiveAccepted,
+        group_ai_proactive_replies: groupAi.proactiveReplies,
+        group_ai_proactive_expired: groupAi.proactiveExpired,
+        group_ai_proactive_closed_by_members: groupAi.proactiveClosedByMembers,
+        step2_private_ai_replies: privateAi.manualCalls,
+        step2_real_ai: usage.origins.step2.real ?? 0,
+        step2_demo_text: usage.origins.step2.mock ?? 0,
+        private_popups_offered: privateAi.popupsOffered,
+        private_popups_accepted: privateAi.popupsAccepted,
+        private_popups_no_thanks: privateAi.popupsDeclined,
+        private_popups_not_now: privateAi.popupsDeferred,
+        private_popups_expired: privateAi.popupsExpired,
+        shared_excerpts: usage.sharedExcerpts,
+        ai_replies_real: usage.origins.groupAndPopups.real ?? 0,
+        ai_replies_demo_text: usage.origins.groupAndPopups.mock ?? 0,
+        ai_replies_template_fallback: usage.origins.groupAndPopups.template_fallback ?? 0,
+        progress_feedback_yes: usage.feedback.progress.yes ?? 0,
+        progress_feedback_partly: usage.feedback.progress.partly ?? 0,
+        progress_feedback_no: usage.feedback.progress.no ?? 0,
+        progress_feedback_not_needed: usage.feedback.progress.not_needed ?? 0,
+        progress_feedback_skipped: usage.feedback.progress.skip ?? 0,
+        outcome_resolved_yes: usage.feedback.outcomes.yes ?? 0,
+        outcome_resolved_partly: usage.feedback.outcomes.partly ?? 0,
+        outcome_resolved_no: usage.feedback.outcomes.no ?? 0,
+        outcome_resolved_unknown: usage.feedback.unknownOutcomes,
+        input_tokens: usage.tokens.input,
+        output_tokens: usage.tokens.output,
+        failed_generations: usage.failures,
+        data_quality_flags: flags,
+        group_warnings: warnings,
+      };
+    });
+}
+
 interface V2ExportDefinition {
   label: string;
   description: string;
@@ -708,6 +764,49 @@ export const V2_EXPORTS = {
     columns: withProvenance(["scenario_number", "student_id", "reason", "at_utc"]),
     rows: agreementReasonRows,
   },
+  v2_ai_usage: {
+    label: "V2 AI use per scenario",
+    description:
+      "One row per group and scenario: human chat messages, group AI requests and proactive offers, Step 2 replies, private popups, shared excerpts, AI origin, progress feedback, outcomes, tokens and failures, each counted on its own, plus the group's warnings",
+    columns: withProvenance([
+      "scenario_number",
+      "human_chat_messages",
+      "group_ai_requests",
+      "group_ai_request_replies",
+      "group_ai_proactive_offers",
+      "group_ai_proactive_accepted",
+      "group_ai_proactive_replies",
+      "group_ai_proactive_expired",
+      "group_ai_proactive_closed_by_members",
+      "step2_private_ai_replies",
+      "step2_real_ai",
+      "step2_demo_text",
+      "private_popups_offered",
+      "private_popups_accepted",
+      "private_popups_no_thanks",
+      "private_popups_not_now",
+      "private_popups_expired",
+      "shared_excerpts",
+      "ai_replies_real",
+      "ai_replies_demo_text",
+      "ai_replies_template_fallback",
+      "progress_feedback_yes",
+      "progress_feedback_partly",
+      "progress_feedback_no",
+      "progress_feedback_not_needed",
+      "progress_feedback_skipped",
+      "outcome_resolved_yes",
+      "outcome_resolved_partly",
+      "outcome_resolved_no",
+      "outcome_resolved_unknown",
+      "input_tokens",
+      "output_tokens",
+      "failed_generations",
+      "data_quality_flags",
+      "group_warnings",
+    ]),
+    rows: aiUsageRows,
+  },
 } satisfies Record<string, V2ExportDefinition>;
 
 export type V2ExportType = keyof typeof V2_EXPORTS;
@@ -737,47 +836,68 @@ export function listV2SessionIds(): string[] {
     .map((row) => row.sessionId);
 }
 
+function loadAiUsageSources(sessionId: string) {
+  return {
+    step2: db
+      .select({
+        scenarioOrder: schema.individualScaffolds.scenarioOrder,
+        aiModel: schema.individualScaffolds.aiModel,
+      })
+      .from(schema.individualScaffolds)
+      .where(eq(schema.individualScaffolds.sessionId, sessionId))
+      .all(),
+    outcomes: db
+      .select({
+        scenarioOrder: schema.interventionOutcomeEvaluations.scenarioOrder,
+        difficultyResolved: schema.interventionOutcomeEvaluations.difficultyResolved,
+      })
+      .from(schema.interventionOutcomeEvaluations)
+      .where(eq(schema.interventionOutcomeEvaluations.sessionId, sessionId))
+      .all(),
+    progress: db
+      .select({
+        scenarioOrder: schema.interventionProgressFeedback.scenarioOrder,
+        response: schema.interventionProgressFeedback.response,
+      })
+      .from(schema.interventionProgressFeedback)
+      .where(eq(schema.interventionProgressFeedback.sessionId, sessionId))
+      .all(),
+    messages: db
+      .select({ scenarioOrder: schema.discussionMessages.scenarioOrder })
+      .from(schema.discussionMessages)
+      .where(eq(schema.discussionMessages.sessionId, sessionId))
+      .all(),
+  };
+}
+
+type AiUsageSources = ReturnType<typeof loadAiUsageSources>;
+
 /**
  * How the group used AI, each kind counted on its own: human chat messages are
  * never mixed with AI items, an offer is not a delivery, and an unknown outcome
  * stays unknown. Step 2 responses carry no token counts, so `tokens` covers group
- * AI and private suggestions only.
+ * AI and private suggestions only. Without a scenario the whole group is counted.
  */
-function buildAiUsage(group: V2Group) {
-  const sessionId = group.session.id;
-  const groupManual = group.interventions.filter((i) => i.scope === "group" && i.initiatedBy === "participant");
-  const groupProactive = group.interventions.filter((i) => i.scope === "group" && i.initiatedBy === "system");
-  const popups = group.interventions.filter((i) => i.scope === "individual");
-  const step2 = db
-    .select({ aiModel: schema.individualScaffolds.aiModel })
-    .from(schema.individualScaffolds)
-    .where(eq(schema.individualScaffolds.sessionId, sessionId))
-    .all();
-  const generated = group.interventions.filter((i) => i.status === "delivered");
+function countAiUsage(group: V2Group, sources: AiUsageSources, scenarioOrder?: number) {
+  const inScope = <T extends { scenarioOrder: number }>(rows: T[]) =>
+    scenarioOrder === undefined ? rows : rows.filter((row) => row.scenarioOrder === scenarioOrder);
+  const interventions = inScope(group.interventions);
+  const groupManual = interventions.filter((i) => i.scope === "group" && i.initiatedBy === "participant");
+  const groupProactive = interventions.filter((i) => i.scope === "group" && i.initiatedBy === "system");
+  const popups = interventions.filter((i) => i.scope === "individual");
+  const step2 = inScope(sources.step2);
+  const generated = interventions.filter((i) => i.status === "delivered");
   const countBy = <T>(rows: T[], pick: (row: T) => string | null) =>
     rows.reduce<Record<string, number>>((acc, row) => {
       const key = pick(row) ?? "none";
       acc[key] = (acc[key] ?? 0) + 1;
       return acc;
     }, {});
-  const outcomes = db
-    .select({ difficultyResolved: schema.interventionOutcomeEvaluations.difficultyResolved })
-    .from(schema.interventionOutcomeEvaluations)
-    .where(eq(schema.interventionOutcomeEvaluations.sessionId, sessionId))
-    .all();
-  const progress = db
-    .select({ response: schema.interventionProgressFeedback.response })
-    .from(schema.interventionProgressFeedback)
-    .where(eq(schema.interventionProgressFeedback.sessionId, sessionId))
-    .all();
-  const humanMessages = db
-    .select({ id: schema.discussionMessages.id })
-    .from(schema.discussionMessages)
-    .where(eq(schema.discussionMessages.sessionId, sessionId))
-    .all().length;
+  const outcomes = inScope(sources.outcomes);
+  const progress = inScope(sources.progress);
 
   return {
-    humanMessages,
+    humanMessages: inScope(sources.messages).length,
     groupAi: {
       manualRequests: groupManual.length,
       manualReplies: groupManual.filter((i) => i.status === "delivered").length,
@@ -806,30 +926,22 @@ function buildAiUsage(group: V2Group) {
       unknownOutcomes: outcomes.filter((o) => o.difficultyResolved === "unknown").length,
     },
     tokens: {
-      input: group.interventions.reduce((sum, i) => sum + (i.inputTokens ?? 0), 0),
-      output: group.interventions.reduce((sum, i) => sum + (i.outputTokens ?? 0), 0),
+      input: interventions.reduce((sum, i) => sum + (i.inputTokens ?? 0), 0),
+      output: interventions.reduce((sum, i) => sum + (i.outputTokens ?? 0), 0),
     },
-    failures: group.interventions.filter((i) => i.status === "failed").length,
+    failures: interventions.filter((i) => i.status === "failed").length,
   };
 }
 
-/** Researcher dashboard summary for one V2 group (counts, failures, warnings). */
-export function buildV2Dashboard(sessionId: string) {
-  const group = loadV2Group(sessionId);
-  if (!group) return null;
+/** Plain-language warnings a researcher must read next to the group's numbers. */
+function groupWarnings(group: V2Group): string[] {
   const { assignment } = group;
   const condition = conditionOf(assignment);
-  const tally = (values: (string | null)[], weights?: number[]) =>
-    values.reduce<Record<string, number>>((acc, value, index) => {
-      const key = value ?? "none";
-      acc[key] = (acc[key] ?? 0) + (weights?.[index] ?? 1);
-      return acc;
-    }, {});
   const roster = assignment.frozenRosterIds ?? [];
-  const consentBy = new Map(group.consents.map((c) => [c.participantId, c]));
+  const consented = new Set(group.consents.map((c) => c.participantId));
 
   const warnings: string[] = [];
-  const unconsented = group.participants.filter((p) => !consentBy.has(p.id));
+  const unconsented = group.participants.filter((p) => !consented.has(p.id));
   if (unconsented.length) warnings.push(`${unconsented.length} joined member(s) have not given consent.`);
   if (assignment.aiModeAtAssignment !== "real") {
     warnings.push("This group was created without an OpenAI API key, so AI support uses demo text.");
@@ -861,6 +973,24 @@ export function buildV2Dashboard(sessionId: string) {
   ) {
     warnings.push("Private interventions exist although this condition does not allow them.");
   }
+  return warnings;
+}
+
+/** Researcher dashboard summary for one V2 group (counts, failures, warnings). */
+export function buildV2Dashboard(sessionId: string) {
+  const group = loadV2Group(sessionId);
+  if (!group) return null;
+  const { assignment } = group;
+  const condition = conditionOf(assignment);
+  const tally = (values: (string | null)[], weights?: number[]) =>
+    values.reduce<Record<string, number>>((acc, value, index) => {
+      const key = value ?? "none";
+      acc[key] = (acc[key] ?? 0) + (weights?.[index] ?? 1);
+      return acc;
+    }, {});
+  const roster = assignment.frozenRosterIds ?? [];
+  const consentBy = new Map(group.consents.map((c) => [c.participantId, c]));
+  const failures = group.interventions.filter((i) => i.status === "failed");
 
   return {
     group: group.session.code,
@@ -913,7 +1043,7 @@ export function buildV2Dashboard(sessionId: string) {
       learnerModels: group.learnerModels.length,
       learnerModelUpdates: group.learnerEvents.length,
     },
-    aiUsage: buildAiUsage(group),
+    aiUsage: countAiUsage(group, loadAiUsageSources(sessionId)),
     failures: failures.map((f) => ({
       id: f.id,
       scenarioOrder: f.scenarioOrder,
@@ -934,6 +1064,6 @@ export function buildV2Dashboard(sessionId: string) {
       reasonCode: i.reasonCode,
     })),
     dataQualityFlags: dataQualityFlags(group),
-    warnings,
+    warnings: groupWarnings(group),
   };
 }

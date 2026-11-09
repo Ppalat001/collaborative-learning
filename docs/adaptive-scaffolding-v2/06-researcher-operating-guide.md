@@ -2,18 +2,18 @@
 
 ## Settings
 
-V2 is **on by default**. With no `ADAPTIVE_V2_*` variable set, every new group — created from the home page or on `/admin` — is a V2 group, and home-page groups get the `proactive_adaptive` condition on `policy-v2-2`. This provides Step 2 private support, the manual and proactive shared facilitator, and **adaptive private suggestions**: small private popups whose timing and kind of help are decided by each member's own learner model (see `03-research-protocol-and-measures.md`). Groups created before this default changed keep their condition (usually `proactive_group`, which is the same experience without popups). There is still no separate private AI coach. The old `dual_adaptive` value cannot be assigned to a new group; existing assignments keep that recorded value for provenance, but the private coach is no longer shown and new private-coach requests are refused. All V2 groups are handled the same way (there are no separate study modes), and groups created before V2 (legacy groups) keep working as before.
+V2 is **on by default**. With no `ADAPTIVE_V2_*` variable set, every new group — created from the home page or through the admin API — is a V2 group, and home-page groups get the `proactive_adaptive` condition on `policy-v2-2`. This provides Step 2 private support, the manual and proactive shared facilitator, and **adaptive private suggestions**: small private popups whose timing and kind of help are decided by each member's own learner model (see `03-research-protocol-and-measures.md`). Groups created before this default changed keep their condition (usually `proactive_group`, which is the same experience without popups). There is still no separate private AI coach. The old `dual_adaptive` value cannot be assigned to a new group; existing assignments keep that recorded value for provenance, but the private coach is no longer shown and new private-coach requests are refused. All V2 groups are handled the same way (there are no separate study modes), and groups created before V2 (legacy groups) keep working as before.
 
 | Variable | Default | Effect |
 |---|---|---|
-| `ADAPTIVE_V2_ENABLED` | on | `false` switches V2 off: every new group is a legacy group again, and `/admin` refuses to create V2 groups |
-| `ADAPTIVE_V2_HOME_PAGE_GROUPS` | `v2` | `legacy`: home-page groups are legacy groups, while `/admin` can still create V2 groups |
+| `ADAPTIVE_V2_ENABLED` | on | `false` switches V2 off: every new group is a legacy group again, and the admin API refuses to create V2 groups |
+| `ADAPTIVE_V2_HOME_PAGE_GROUPS` | `v2` | `legacy`: home-page groups are legacy groups, while the admin API (`POST /api/admin/sessions`) can still create V2 groups |
 | `ADAPTIVE_V2_DEFAULT_CONDITION` | `proactive_adaptive` | condition for home-page groups with fixed allocation; retired conditions are ignored. `proactive_group` turns the popups off for new groups |
 | `ADAPTIVE_V2_ASSIGNMENT` | `fixed` | `randomized`: home-page/admin groups without a chosen condition draw from the list below |
 | `ADAPTIVE_V2_RANDOMIZE_CONDITIONS` | empty | comma list, e.g. `proactive_group,proactive_adaptive` |
 | `ADAPTIVE_V2_ALLOW_TEST_POLICY` | off | allows `policy-v2-test-accelerated` (seconds-scale timing, automated tests only). Leave off in production |
 | `ADAPTIVE_V2_SCHEDULER_MS` | `5000` | how often connected V2 scenario rooms are re-evaluated |
-| `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_BASE_URL` | as before | set a key for real groups; without one, AI support is template ("demo") text, recorded as `ai_origin = mock` and shown as a warning on the dashboard |
+| `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_BASE_URL` | as before | set a key for real groups; without one, AI support is template ("demo") text, recorded as `ai_origin = mock` and listed in the `group_warnings` column of the *AI use per scenario* CSV |
 | `ADMIN_PASSWORD`, `DATABASE_URL` | as before | unchanged |
 
 Group size for V2 groups is 2–4 members (`groupSize` in `src/data/study-protocol.json`).
@@ -53,12 +53,12 @@ Group size for V2 groups is 2–4 members (`groupSize` in `src/data/study-protoc
    npm run db:inspect
    ```
    Expected: `Groups: N legacy, M V2 (...)` and `0 violation check(s) failed`.
-4. Create a group from the home page: it now opens the V2 lobby (per-person consent and pre-test), and on `/admin` it is listed as `(V2: proactive_adaptive)`. The V2 section on `/admin` shows `AI provider: real (OpenAI)` when the key is set.
+4. Create a group from the home page: it now opens the V2 lobby (per-person consent and pre-test), and on `/admin` it is listed as `(V2: proactive_adaptive)`. Its *Study assignment and provenance* CSV shows `ai_mode_at_assignment = real` when the key is set.
 5. Existing legacy groups continue exactly as before.
 
 ### Step 2: first groups
 
-Run a first session yourself or with colleagues and check the dashboard: AI origin `real`, no failures, few template fallbacks. Test groups you do not want in your results can be deleted on `/admin` (*Clean up data*) after downloading anything you need.
+Run a first session yourself or with colleagues, then download *AI use per scenario* on `/admin` and check: `ai_replies_real` counts the AI replies, `failed_generations` is 0, `ai_replies_template_fallback` is low, and `group_warnings` mentions no demo text. Test groups you do not want in your results can be deleted on `/admin` (*Clean up data*) after downloading anything you need.
 
 ### Rollback
 
@@ -68,32 +68,34 @@ Run a first session yourself or with colleagues and check the dashboard: AI orig
 
 ## Running a V2 session
 
-1. **Create the group:** either members create it from the home page (condition `proactive_adaptive` by default), or you create it on `/admin` → *Adaptive Scaffolding V2* → condition, policy and instrument settings → *Create group*, and give the code to the participants.
+1. **Create the group:** members create it from the home page (condition `proactive_adaptive` by default). A group with another condition, policy or instrument settings can still be created with `POST /api/admin/sessions` (header `x-admin-password`, body e.g. `{ "condition": "proactive_group" }`); give its code to the participants. `/admin` has no form for this.
 2. **Lobby:** each member joins with the code on their own device and gets a device token (stored in that browser). Each member reads the consent form and ticks every statement, then completes the pre-test. The lobby lists who has consented and finished the pre-test. *Begin scenarios* works only when everyone is ready and the group has 2–4 members. Starting freezes the roster; nobody can join afterwards.
 3. **Scenarios:** the original Step 1–3 flow, plus, depending on the condition, the shared group facilitator panel (requests and proactive offers, with *View/accept*, *Not now*, *Dismiss* and *Why this suggestion?*) and *Share with group* for private Step 2 AI ideas. Newly created groups do not show the private coach, opt-in switch or *I'm stuck* button. In `proactive_adaptive` groups a member may also see a private popup in the bottom-right corner, "Would you like a small hint?" (*Yes, show me* / *Not now* / *No thanks*, plus *Why am I seeing this?*); nothing is sent to the AI unless they click Yes, other members never see it, and accepted help is also listed read-only in their Step 2. There is no setting to show on screen: the popups appear only when that member's model decides they would help, at most twice per scenario.
-4. **If a member leaves for good:** on the dashboard, choose the member and *Mark as dropped out*. The remaining members can finish; if all of them had already clicked *I am good*, they click it once more.
+4. **If a member leaves for good:** on `/admin`, choose the group, then under *Member left for good* choose the member and click *Mark as dropped out*. The remaining members can finish; if all of them had already clicked *I am good*, they click it once more.
 5. **Withdrawal:** a member clicks *Withdraw my consent* in the lobby. Nothing more is recorded for them; earlier data is kept until you act according to the approved protocol.
 
 ## Monitoring and explaining an intervention
 
-On `/admin`, choose a V2 group:
+`/admin` shows no metrics on the page: choose a V2 group and download its CSVs (or tick *All V2 groups in one file*).
 
-- **Warnings:** members without consent, demo AI text (no API key), the test-only policy, solo groups, template fallbacks, failures, items the condition should not allow.
-- **Versions and flags:** policy, protocol, consent, model at creation, AI mode, assignment method, data-quality flags.
-- **Counts:** evaluations (weighted by repeats), decisions, reason codes, triggers, interventions by status and scope, AI origin, member responses, shares and recommendations, and (in `proactive_adaptive` groups) learner models and their logged updates. Popups appear in the timeline as `individual` / `adaptive_need`.
+- **Warnings:** the `group_warnings` column of `v2_ai_usage` (*AI use per scenario*): members without consent, demo AI text (no API key), the test-only policy, solo groups, template fallbacks, failures, items the condition should not allow.
+- **Versions and flags:** `v2_assignment`: policy, protocol, consent, model at creation, AI mode, assignment method, data-quality flags. Member status (consent, withdrawal, drop-out, roster): `v2_consents`.
+- **Counts:** `v2_ai_usage` has one row per scenario with human chat messages, group AI requests and proactive offers, Step 2 replies, popups, shared excerpts, real or demo AI, progress feedback, outcomes, tokens and failures, each counted on its own. Decisions, reason codes and triggers: `v2_evaluations` (weight by `repeat_count`). Interventions by status, scope and AI origin: `v2_interventions`. Member responses: `v2_feedback`. Learner models and their updates: `v2_learner_models`, `v2_learner_model_events`. Popups are `individual` interventions with reason `adaptive_need`.
+- **Review agreement:** human review labels are in `v2_3_review_labels`; agreement statistics come from `GET /api/admin/v2-3/review?mode=agreement`.
 - **Explaining a popup:** `v2_recommendations` (row with the popup's `intervention_id`, `engine_version = adaptive-bandit-v1`) holds the sampled values, the pause and its percentile for that member, the need and score against the threshold, and a readable `rationale`; `v2_learner_model_events` shows how each answer changed that member's model.
-- **Timeline:** each evaluation and intervention in time order, with trigger, decision, reason and target. Together with `v2_evaluations` → `v2_interventions` (via `evaluation_id`) → `v2_feedback` (via `intervention_id`) and the original chat log, this answers **when** (timestamps), **why** (trigger, evidence, reason code and explanation), **how** (support type, level, content, AI origin and model) and **to whom** (scope and anonymous recipient) the AI intervened, and how members responded.
+- **Timeline:** `v2_evaluations` and `v2_interventions` sorted by time give each evaluation and intervention with trigger, decision, reason and target. Following `v2_evaluations` → `v2_interventions` (via `evaluation_id`) → `v2_feedback` (via `intervention_id`) and the original chat log, this answers **when** (timestamps), **why** (trigger, evidence, reason code and explanation), **how** (support type, level, content, AI origin and model) and **to whom** (scope and anonymous recipient) the AI intervened, and how members responded.
 
 ## Exporting
 
 - Original 8 exports: unchanged, one group at a time.
 - V2 exports: one group, or **all V2 groups** in one file (`?scope=all`). Every row names its group and condition; legacy groups are never included. Check the `data_quality_flags` column (`mock_ai_output`, `test_policy`, `not_started`, …) before analysis.
 - V2 exports contain only anonymous `student_id`s. The original exports contain nicknames; keep the linkage files restricted.
+- AI use per scenario: `v2_ai_usage` (see Monitoring above).
 - Adaptive popups: `v2_learner_models` (one row per member: posterior means and offer counts) and `v2_learner_model_events` (every model update). Popup help is not part of the original `ai_support` export, which still means Step 2 choices only.
 
 ## Tuning the adaptive suggestions
 
-Priors, the offer threshold, weights and safety limits live in the `adaptivePrivate` block of `policy-v2-2` in `src/data/intervention-policies.json`. They are starting values. To change them, copy `policy-v2-2` to a new version (e.g. `policy-v2-3`), edit the copy, set it as `current`, and deploy when no group is mid-session: groups already created keep `policy-v2-2`. To stop popups for new groups only, set `ADAPTIVE_V2_DEFAULT_CONDITION=proactive_group` (or choose that condition on `/admin`).
+Priors, the offer threshold, weights and safety limits live in the `adaptivePrivate` block of `policy-v2-2` in `src/data/intervention-policies.json`. They are starting values. To change them, copy `policy-v2-2` to a new version (e.g. `policy-v2-3`), edit the copy, set it as `current`, and deploy when no group is mid-session: groups already created keep `policy-v2-2`. To stop popups for new groups only, set `ADAPTIVE_V2_DEFAULT_CONDITION=proactive_group` (or create a group with that condition through `POST /api/admin/sessions`).
 
 ## Local commands
 

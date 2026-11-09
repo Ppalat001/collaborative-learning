@@ -8,7 +8,7 @@ A **group** (session) gets one condition when it is created, recorded once in `s
 
 V2 is on by default and every V2 group is handled the same way: there are no separate study modes. Groups that should not be analysed (e.g. your own test runs) are deleted on `/admin` or excluded by group code. Every V2 export carries data-quality flags (`mock_ai_output` when there was no API key, `test_policy`, `not_started`, …) to check before analysis.
 
-Allocation: home-page groups use the configured default condition, `proactive_adaptive` unless changed (`configured_default`; groups created before this default changed keep the condition they were assigned); the researcher can pick a current condition per group on `/admin` (`researcher_selected`); or a server-side random draw from an explicit list (`randomized`). The private-coach condition `dual_adaptive` is retired for new groups. It remains a valid stored value so existing assignments and historical data keep their meaning. The assignment method is stored per group.
+Allocation: home-page groups use the configured default condition, `proactive_adaptive` unless changed (`configured_default`; groups created before this default changed keep the condition they were assigned); the researcher can pick a current condition per group through the admin API, `POST /api/admin/sessions` (`researcher_selected`); or a server-side random draw from an explicit list (`randomized`). The private-coach condition `dual_adaptive` is retired for new groups. It remains a valid stored value so existing assignments and historical data keep their meaning. The assignment method is stored per group.
 
 ## Conditions (capabilities, not automatic experiments)
 
