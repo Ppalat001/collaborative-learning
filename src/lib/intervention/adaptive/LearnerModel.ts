@@ -48,6 +48,11 @@ export interface LearnerState {
   receptiveness: Beta;
   /** Probability that each kind of help is followed by the member's own progress. */
   arms: Record<AdaptiveArm, Beta>;
+  /**
+   * reward-v2-3 only: whether any own contribution followed each kind of help.
+   * Engagement, not learning; never used to choose help. Absent in older models.
+   */
+  activity?: Record<AdaptiveArm, Beta>;
   /** Last own contribution already folded into the pace estimate. */
   paceCursor: { scenarioOrder: number; at: string } | null;
   /** Number of posterior updates applied; part of every decision seed. */

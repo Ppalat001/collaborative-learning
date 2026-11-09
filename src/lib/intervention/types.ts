@@ -176,7 +176,7 @@ export interface CollaborationSnapshot {
 }
 
 export type ProgressState = "productive" | "stalled" | "unclear";
-export type AssessmentSource = "deterministic_rule" | "model_classifier" | "student_request";
+export type AssessmentSource = "deterministic_rule" | "model_classifier" | "student_request" | "group_state_estimator";
 
 export interface InterventionAssessment {
   trigger: InterventionTrigger;
@@ -254,4 +254,168 @@ export interface CheckpointView {
   text: string;
   raisedByName: string;
   createdAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// V2.3 learning-aware contracts (policy-v2-3 and later only). Observation,
+// inference, decision, exposure, outcome and learning are kept apart: an
+// observed message is not a diagnosis, an offer is not proof it was seen, and
+// missing evidence is recorded as missing, never as a negative result.
+// ---------------------------------------------------------------------------
+
+export const PROGRESS_STAGES = [
+  "task_understanding",
+  "idea_generation",
+  "evidence_comparison",
+  "answer_synthesis",
+  "consensus_review",
+  "uncertain",
+] as const;
+export type ProgressStage = (typeof PROGRESS_STAGES)[number];
+
+export const COLLABORATION_STATES = [
+  "productive",
+  "constructive_disagreement",
+  "possible_confusion",
+  "possible_stall",
+  "coordination_need",
+  "unproductive_conflict",
+  "uncertain",
+] as const;
+export type CollaborationState = (typeof COLLABORATION_STATES)[number];
+
+export type ProposedScope = "group" | "individual" | "none";
+
+export type ScaffoldingMove =
+  | "remain_silent"
+  | "offer_minimal"
+  | "maintain"
+  | "escalate"
+  | "fade"
+  | "group_process_prompt";
+
+export type EvidenceKind =
+  | "message"
+  | "edit"
+  | "checkpoint"
+  | "initial_idea"
+  | "participant_report"
+  | "support_request"
+  | "rating"
+  | "post_intervention_progress"
+  | "contextual_classification"
+  | "presence"
+  | "intervention";
+
+export interface EvidenceRef {
+  id: string;
+  kind: EvidenceKind;
+  at: string;
+}
+
+/**
+ * A cautious, evidence-linked hypothesis about the group, never a diagnosis of
+ * anyone. `confidence` is a heuristic score, not a calibrated probability.
+ */
+export interface EstimatedGroupState {
+  groupCode: string;
+  scenarioOrder: number;
+  stage: ProgressStage;
+  state: CollaborationState;
+  confidence: number;
+  evidence: EvidenceRef[];
+  counterEvidence: EvidenceRef[];
+  uncertaintyReasons: string[];
+  /** Short machine-readable reasons for the state (e.g. "new_reasons_in_window"). */
+  stateReasons: string[];
+  inferredAt: string;
+  estimatorVersion: string;
+  /** Set when an optional model classification refined the deterministic estimate. */
+  classifierModel?: string | null;
+  classifierNote?: string | null;
+}
+
+export interface ProposedIntervention {
+  scope: ProposedScope;
+  memberId?: string;
+  move: ScaffoldingMove;
+  supportType?: string;
+  rationaleCode: string;
+  evidence: EvidenceRef[];
+  policyVersion: string;
+  confidence: number;
+  safeToOffer: boolean;
+}
+
+export type DifficultyResolved = "yes" | "partly" | "no" | "unknown";
+export type UnderstandingEvidence = "supported" | "contradicted" | "not_assessed";
+export const PROGRESS_FEEDBACK_RESPONSES = ["yes", "partly", "no", "not_needed", "skip"] as const;
+export type ProgressFeedbackResponse = (typeof PROGRESS_FEEDBACK_RESPONSES)[number];
+export type OutcomeValidity = "usable" | "insufficient_evidence" | "confounded";
+
+export function isProgressFeedbackResponse(value: unknown): value is ProgressFeedbackResponse {
+  return (PROGRESS_FEEDBACK_RESPONSES as readonly unknown[]).includes(value);
+}
+
+/** Observational association only: an outcome never proves the support caused it. */
+export interface ObservedOutcome {
+  interventionId: string;
+  /** "group" for the group-level outcome of a shared prompt, else the member's id. */
+  subject: string;
+  windowStart: string;
+  windowEnd: string;
+  activityResumed: boolean | null;
+  difficultyResolved: DifficultyResolved;
+  /** Where difficultyResolved came from; only "observation" may update an arm on its own. */
+  resolutionSource: "feedback" | "observation" | "none";
+  understandingEvidence: UnderstandingEvidence;
+  participantFeedback: Exclude<ProgressFeedbackResponse, "skip"> | null;
+  wasVisible: boolean | null;
+  escalatedHelp: boolean;
+  confounds: string[];
+  validity: OutcomeValidity;
+  provenance: EvidenceRef[];
+  evaluatorVersion: string;
+}
+
+/** Per-member exposure lifecycle; only technically verifiable steps are recorded. */
+export const EXPOSURE_KINDS = [
+  "server_created",
+  "socket_delivered",
+  "client_displayed_in_viewport",
+  "user_opened",
+  "indicator_dismissed",
+  "accepted",
+  "deferred",
+  "dismissed",
+  "expired_unseen",
+  "expired_seen",
+] as const;
+export type ExposureKind = (typeof EXPOSURE_KINDS)[number];
+
+/** The kinds a client may report; everything else is recorded by the server. */
+export const CLIENT_EXPOSURE_KINDS = [
+  "socket_delivered",
+  "client_displayed_in_viewport",
+  "user_opened",
+  "indicator_dismissed",
+] as const satisfies readonly ExposureKind[];
+export type ClientExposureKind = (typeof CLIENT_EXPOSURE_KINDS)[number];
+
+export function isClientExposureKind(value: unknown): value is ClientExposureKind {
+  return (CLIENT_EXPOSURE_KINDS as readonly unknown[]).includes(value);
+}
+
+export type ScaffoldingTier = "no_offer" | "minimal" | "moderate" | "reassess";
+
+/** What a member's own client may know about V2.3 behaviour for one scenario. */
+export interface LearningAwareMemberState {
+  enabled: boolean;
+  dismissal: "per_member";
+  feedbackEnabled: boolean;
+  feedbackDelaySeconds: number;
+  /** This member chose "no more suggestions in this scenario". */
+  proactiveStopped: boolean;
+  /** This member's own progress feedback per intervention id. */
+  progressFeedback: Record<string, ProgressFeedbackResponse>;
 }

@@ -1,7 +1,9 @@
-import type { InterventionPolicy } from "./policies";
+import { learningAwareOf, type InterventionPolicy } from "./policies";
 import type {
   CollaborationSnapshot,
+  CollaborationState,
   ConditionCapabilities,
+  EstimatedGroupState,
   GroupSupportType,
   InterventionAssessment,
   InterventionDecision,
@@ -40,6 +42,12 @@ export interface DecisionContext {
   /** Group triggers whose offer was dismissed earlier in this scenario. */
   dismissedTriggers: InterventionTrigger[];
   recommendFor?: (participantId: string) => PrivateRecommendation;
+  /** policy-v2-3+: the group-state estimate; enables the context gate. */
+  groupState?: EstimatedGroupState | null;
+  /** policy-v2-3+: when the latest proactive group prompt was delivered. */
+  lastGroupDeliveredAt?: string | null;
+  /** policy-v2-3+: triggers whose earlier prompt this scenario was followed by the same obstacle. */
+  ineffectiveTriggers?: InterventionTrigger[];
 }
 
 export const TRIGGER_SUPPORT: Record<
@@ -94,7 +102,28 @@ const NO_ACTION_EXPLANATIONS: Record<string, string> = {
   previously_dismissed: "The group already declined an offer for this situation in this scenario.",
   insufficient_evidence: "The evidence was too weak to justify interrupting.",
   max_private_offers_reached: "This member already received the maximum private offers for this scenario.",
+  context_productive: "The group is producing new ideas, reasons or answer revisions; it is left alone.",
+  context_constructive_disagreement:
+    "The group disagrees but keeps adding new reasons or revising the answer; productive disagreement is left alone.",
+  context_gate_uncertain: "The evidence about the group's situation is weak, stale or contradictory; no interruption.",
+  context_state_mismatch: "The rule matched, but the group-state estimate does not show that difficulty.",
+  awaiting_outcome: "A group prompt was delivered recently; its effect is observed before offering another.",
+  previous_prompt_ineffective:
+    "The same kind of prompt was already delivered in this scenario and the difficulty continued; it is not repeated.",
 };
+
+/** Inferred patterns need the group-state estimate to agree before the group is interrupted. */
+const INFERRED_REQUIRED_STATE: Partial<Record<InterventionTrigger, CollaborationState[]>> = {
+  initial_silence: ["possible_stall"],
+  stalled_discussion: ["possible_stall"],
+  unresolved_disagreement: ["unproductive_conflict"],
+};
+const INFERRED: InterventionTrigger[] = [
+  "initial_silence",
+  "stalled_discussion",
+  "unresolved_disagreement",
+  "possible_participation_imbalance",
+];
 
 interface Candidate {
   assessment: InterventionAssessment;
@@ -118,6 +147,9 @@ export class InterventionDecisionEngine {
     if (snapshot.submitted) return this.noAction(base, top, "scenario_submitted");
     if (!ctx.allConsented) return this.noAction(base, top, "consent_incomplete");
     if (!top || top.trigger === "none") {
+      const state = ctx.groupState?.state;
+      if (state === "productive") return this.noAction(base, top, "context_productive");
+      if (state === "constructive_disagreement") return this.noAction(base, top, "context_constructive_disagreement");
       const progress = assessments[0]?.progressState;
       return this.noAction(base, top, progress === "productive" ? "productive_progress" : "no_difficulty_detected");
     }
@@ -203,13 +235,48 @@ export class InterventionDecisionEngine {
 
     const online = snapshot.onlineParticipantIds.filter((id) => snapshot.activeParticipantIds.includes(id));
     if (online.length < policy.minActiveMembersForGroupTriggers) return { ok: false, reasonCode: "group_not_present" };
-    if (!explicit && assessment.progressState === "productive") return { ok: false, reasonCode: "productive_progress" };
+    const learningAware = learningAwareOf(policy);
+    if (learningAware && ctx.groupState) {
+      // V2.3: the group-state estimate replaces the activity-only "productive" check,
+      // so a lively but circular argument is not mistaken for progress.
+      const gate = this.contextGate(assessment.trigger, ctx.groupState, learningAware.contextGate.minConfidenceToAct);
+      if (!gate.ok) return gate;
+      if (
+        !explicit &&
+        ctx.lastGroupDeliveredAt &&
+        Date.parse(snapshot.now) - Date.parse(ctx.lastGroupDeliveredAt) < learningAware.outcome.windowSeconds * 1000
+      ) {
+        return { ok: false, reasonCode: "awaiting_outcome" };
+      }
+      if (ctx.ineffectiveTriggers?.includes(assessment.trigger)) {
+        return { ok: false, reasonCode: "previous_prompt_ineffective" };
+      }
+    } else if (!explicit && assessment.progressState === "productive") {
+      return { ok: false, reasonCode: "productive_progress" };
+    }
     if (ctx.openGroupOffer) return { ok: false, reasonCode: "offer_pending" };
     if (ctx.proactiveGroupCount >= policy.maxProactiveGroupPerScenario) {
       return { ok: false, reasonCode: "max_prompts_reached" };
     }
     if (!this.checkCooldown(ctx.lastProactiveAt, snapshot.now, policy)) return { ok: false, reasonCode: "cooldown_active" };
     if (ctx.dismissedTriggers.includes(assessment.trigger)) return { ok: false, reasonCode: "previously_dismissed" };
+    return { ok: true };
+  }
+
+  /**
+   * V2.3 context gate for group prompts: productive work and constructive
+   * disagreement are protected, and inferred patterns need the estimate to agree
+   * with enough confidence. Explicit member requests are not second-guessed.
+   */
+  contextGate(trigger: InterventionTrigger, state: EstimatedGroupState, minConfidence: number): Eligibility {
+    if (!INFERRED.includes(trigger)) return { ok: true };
+    if (state.state === "productive") return { ok: false, reasonCode: "context_productive" };
+    if (state.state === "constructive_disagreement") return { ok: false, reasonCode: "context_constructive_disagreement" };
+    if (state.state === "uncertain" || state.confidence < minConfidence) {
+      return { ok: false, reasonCode: "context_gate_uncertain" };
+    }
+    const required = INFERRED_REQUIRED_STATE[trigger];
+    if (required && !required.includes(state.state)) return { ok: false, reasonCode: "context_state_mismatch" };
     return { ok: true };
   }
 

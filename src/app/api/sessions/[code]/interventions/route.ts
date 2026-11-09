@@ -39,6 +39,8 @@ export async function GET(
 /**
  * kind "group_request": ask the shared facilitator (shared_on_demand and up).
  * kind "personal_request": "I'm stuck" private offer (dual_adaptive only).
+ * kind "stop_proactive_for_scenario": no more private suggestions for the caller
+ * in this scenario (proactive_adaptive on policy-v2-3+).
  */
 export async function POST(
   request: Request,
@@ -69,6 +71,16 @@ export async function POST(
     if (body.kind === "personal_request") {
       const result = await getOrchestrator().handlePersonalRequest(input);
       return NextResponse.json({ intervention: result.view, duplicate: result.duplicate });
+    }
+    if (body.kind === "stop_proactive_for_scenario") {
+      const result = await getOrchestrator().stopProactiveForScenario({
+        session: auth.session,
+        assignment: auth.assignment,
+        participant: auth.participant,
+        scenarioOrder,
+        interventionId: body.interventionId,
+      });
+      return NextResponse.json(result);
     }
     return NextResponse.json({ error: "Unknown request kind" }, { status: 400 });
   } catch (error) {

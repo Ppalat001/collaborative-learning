@@ -71,7 +71,7 @@ export class AdaptiveLearner {
     return [...messages, ...edits].map((row) => row.at).sort();
   }
 
-  private stepTwoRows(participantId: string, scenarioOrder: number) {
+  protected stepTwoRows(participantId: string, scenarioOrder: number) {
     return db
       .select()
       .from(schema.individualScaffolds)

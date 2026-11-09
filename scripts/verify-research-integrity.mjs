@@ -295,6 +295,133 @@ if (missing.length === V2_TABLES.length) {
     "AI output rejected by the validator and replaced with a template",
     all("SELECT session_id, id FROM interventions WHERE ai_origin = 'template_fallback'")
   );
+
+  // Adaptive Scaffolding V2.3 (policy-v2-3 and later).
+  const V23_TABLES = [
+    "group_state_estimates",
+    "private_decision_traces",
+    "scaffolding_state_events",
+    "offer_exposures",
+    "intervention_outcome_evaluations",
+    "intervention_progress_feedback",
+    "open_answer_rubric_scores",
+    "human_review_labels",
+  ];
+  const missingV23 = V23_TABLES.filter((t) => !tables.has(t));
+  const learningAwarePolicies = Object.entries(policies)
+    .filter(([, p]) => p.learningAware)
+    .map(([version]) => version);
+  if (missingV23.length === V23_TABLES.length) {
+    add("info", "schema_v2_3", "No V2.3 tables yet (created by the next schema push).");
+    if (assignments.some((a) => learningAwarePolicies.includes(a.intervention_policy_version))) {
+      add("violation", "schema_v2_3", "Groups on a learning-aware policy exist but the V2.3 tables are missing");
+    }
+  } else {
+    if (missingV23.length) add("violation", "schema_v2_3", `Missing V2.3 tables: ${missingV23.join(", ")}`);
+    const present = (t) => tables.has(t);
+    const learningAwareList = learningAwarePolicies.map((v) => `'${v}'`).join(", ") || "''";
+    const policyOnlyTables = [
+      "group_state_estimates",
+      "private_decision_traces",
+      "scaffolding_state_events",
+      "offer_exposures",
+      "intervention_outcome_evaluations",
+      "intervention_progress_feedback",
+    ].filter(present);
+    add(
+      "violation",
+      "v2_3_rows_for_older_policies",
+      "V2.3 records in groups whose policy is not learning-aware (older cohorts must keep their original behaviour)",
+      policyOnlyTables.flatMap((table) =>
+        all(
+          `SELECT t.session_id, '${table}' AS tbl, a.intervention_policy_version AS policy FROM ${table} t
+             LEFT JOIN study_assignments a ON a.session_id = t.session_id
+            WHERE a.intervention_policy_version IS NULL OR a.intervention_policy_version NOT IN (${learningAwareList})
+            GROUP BY t.session_id`
+        )
+      )
+    );
+    if (present("offer_exposures") && present("intervention_progress_feedback")) {
+      add(
+        "violation",
+        "v2_3_private_leak",
+        "Exposure or progress feedback on a private suggestion recorded for someone other than its recipient",
+        all(
+          `SELECT e.session_id, e.intervention_id, e.participant_id, 'offer_exposures' AS tbl FROM offer_exposures e
+             JOIN interventions i ON i.id = e.intervention_id
+            WHERE i.scope = 'individual' AND e.participant_id IS NOT i.recipient_participant_id
+           UNION ALL
+           SELECT f.session_id, f.intervention_id, f.participant_id, 'intervention_progress_feedback' FROM intervention_progress_feedback f
+             JOIN interventions i ON i.id = f.intervention_id
+            WHERE i.scope = 'individual' AND f.participant_id IS NOT i.recipient_participant_id`
+        )
+      );
+      add(
+        "violation",
+        "v2_3_member_group",
+        "Exposure or feedback rows whose member or intervention belongs to a different group",
+        all(
+          `SELECT e.session_id, e.participant_id, 'offer_exposures' AS tbl FROM offer_exposures e
+             JOIN participants p ON p.id = e.participant_id
+             JOIN interventions i ON i.id = e.intervention_id
+            WHERE p.session_id <> e.session_id OR i.session_id <> e.session_id
+           UNION ALL
+           SELECT f.session_id, f.participant_id, 'intervention_progress_feedback' FROM intervention_progress_feedback f
+             JOIN participants p ON p.id = f.participant_id
+             JOIN interventions i ON i.id = f.intervention_id
+            WHERE p.session_id <> f.session_id OR i.session_id <> f.session_id`
+        )
+      );
+      add(
+        "warning",
+        "v2_3_feedback_on_undelivered",
+        "Progress feedback on support that was not delivered proactive support",
+        all(
+          `SELECT f.session_id, f.intervention_id, i.status, i.initiated_by FROM intervention_progress_feedback f
+             JOIN interventions i ON i.id = f.intervention_id
+            WHERE i.status <> 'delivered' OR i.initiated_by <> 'system'`
+        )
+      );
+    }
+    if (present("intervention_outcome_evaluations")) {
+      add(
+        "violation",
+        "v2_3_learning_from_unseen_or_group",
+        "Learner-model updates applied from unseen offers, from group outcomes (no group bandit) or from insufficient observational evidence",
+        all(
+          `SELECT session_id, intervention_id, subject_key, scope, was_visible, validity, resolution_source
+             FROM intervention_outcome_evaluations
+            WHERE update_applied = 1
+              AND (was_visible = 0 OR scope = 'group'
+                   OR (validity = 'insufficient_evidence' AND resolution_source <> 'feedback'))`
+        )
+      );
+      add(
+        "violation",
+        "v2_3_understanding_claim",
+        "Outcome rows claiming understanding evidence (the system does not assess understanding)",
+        all(
+          `SELECT session_id, intervention_id, understanding_evidence FROM intervention_outcome_evaluations
+            WHERE understanding_evidence <> 'not_assessed'`
+        )
+      );
+    }
+    if (present("open_answer_rubric_scores")) {
+      add(
+        "violation",
+        "open_rubric_range",
+        "Open-answer rubric totals outside 0-4",
+        all(
+          `SELECT session_id, assessment_id, rater_id, open_application_rubric_score FROM open_answer_rubric_scores
+            WHERE open_application_rubric_score < 0 OR open_application_rubric_score > 4`
+        )
+      );
+    }
+    const counts = V23_TABLES.filter(present).map(
+      (t) => `${db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get().n} ${t}`
+    );
+    add("info", "inventory_v2_3", `V2.3 rows: ${counts.join(", ")}.`);
+  }
 }
 db.close();
 

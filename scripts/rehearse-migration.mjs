@@ -97,7 +97,18 @@ const tokenRows = participantColumns.includes("auth_token_hash")
   : null;
 check.close();
 if (!tablesNow.has("study_assignments")) fail("study_assignments was not created");
-for (const table of ["learner_models", "learner_model_events"]) {
+for (const table of [
+  "learner_models",
+  "learner_model_events",
+  "group_state_estimates",
+  "private_decision_traces",
+  "scaffolding_state_events",
+  "offer_exposures",
+  "intervention_outcome_evaluations",
+  "intervention_progress_feedback",
+  "open_answer_rubric_scores",
+  "human_review_labels",
+]) {
   if (!tablesNow.has(table)) fail(`${table} was not created`);
 }
 if (tokenRows === null) fail("participants.auth_token_hash was not added");

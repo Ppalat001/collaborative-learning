@@ -18,6 +18,18 @@ const V2_EXPORTS = [
   { type: "v2_agreement_reasons", label: "Agreement reasons" },
 ] as const;
 
+const V23_EXPORTS = [
+  { type: "v2_3_group_states", label: "Group-state estimates" },
+  { type: "v2_3_private_decisions", label: "Private decision traces (incl. waits)" },
+  { type: "v2_3_scaffolding_events", label: "Fading and escalation" },
+  { type: "v2_3_exposures", label: "Offer exposure" },
+  { type: "v2_3_offer_funnel", label: "Offer funnel per member" },
+  { type: "v2_3_outcomes", label: "Observed outcomes (proxy)" },
+  { type: "v2_3_progress_feedback", label: "One-click progress feedback" },
+  { type: "v2_3_review_labels", label: "Human review labels" },
+  { type: "v2_3_open_rubric", label: "Open-answer rubric (optional)" },
+] as const;
+
 const CONDITION_LABELS: Record<string, string> = {
   baseline_private_request: "Baseline: private AI on request only",
   shared_on_demand: "Shared facilitator on request",
@@ -34,11 +46,63 @@ interface ReleaseInfo {
     assignment: string;
     randomizeConditions: string[];
     allowTestPolicy: boolean;
+    policyVersion: string | null;
   };
   aiMode: string;
   protocol: { version: string; status: string; consentVersion: string };
   conditions: string[];
-  policies: { version: string; testOnly: boolean; status: string }[];
+  currentPolicyVersion: string;
+  openAnswerRubricEnabled: boolean;
+  policies: { version: string; testOnly: boolean; status: string; learningAware: boolean }[];
+}
+
+interface LearningAwareDashboard {
+  stateTimeline: {
+    scenarioOrder: number;
+    at: string;
+    stage: string;
+    state: string;
+    confidence: number;
+    repeatCount: number;
+    uncertaintyReasons: string[];
+  }[];
+  states: Record<string, number>;
+  privateDecisions: Record<string, number>;
+  funnel: {
+    memberOffers: number;
+    deliveredToDevice: number;
+    seen: number;
+    ownAccepted: number;
+    ownDismissed: number;
+    contentDelivered: number;
+    effectiveProxyYes: number;
+    humanRated: number;
+  };
+  exposureByMember: { studentId: string; kinds: Record<string, number> }[];
+  outcomes: Record<string, number>;
+  fading: {
+    scenarioOrder: number;
+    studentId: string;
+    eventType: string;
+    fromTier: string | null;
+    toTier: string;
+    reasonCode: string;
+    at: string;
+  }[];
+  progressFeedback: Record<string, number>;
+  reviewLabels: number;
+}
+
+interface AgreementStat {
+  n: number;
+  percentAgreement: number | null;
+  kappa: number | null;
+}
+
+interface ReviewAgreementSummary {
+  labels: number;
+  systemVsHuman: { necessity: AgreementStat; state: AgreementStat };
+  humanVsHuman: { necessity: AgreementStat; state: AgreementStat; disagreement: AgreementStat };
 }
 
 interface Dashboard {
@@ -95,6 +159,7 @@ interface Dashboard {
   }[];
   dataQualityFlags: string[];
   warnings: string[];
+  learningAware: LearningAwareDashboard | null;
 }
 
 interface Props {
@@ -143,6 +208,146 @@ function Counts({ title, values }: { title: string; values: Record<string, numbe
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+function formatAgreement(stat: AgreementStat) {
+  if (stat.n === 0) return "no pairs yet";
+  const percent = stat.percentAgreement === null ? "-" : `${Math.round(stat.percentAgreement * 100)}%`;
+  const kappa = stat.kappa === null ? "undefined" : stat.kappa.toFixed(2);
+  return `n=${stat.n}, agreement ${percent}, kappa ${kappa}`;
+}
+
+/** policy-v2-3 groups: estimates, private decisions, exposure, outcomes, fading and review agreement. */
+function LearningAwareSection({
+  data,
+  group,
+  password,
+  run,
+}: {
+  data: LearningAwareDashboard;
+  group: string;
+  password: string;
+  run: (action: () => Promise<void>) => Promise<void>;
+}) {
+  const [agreement, setAgreement] = useState<ReviewAgreementSummary | null>(null);
+  const funnel: [string, number][] = [
+    ["Proposed (offer x member)", data.funnel.memberOffers],
+    ["Delivered to device", data.funnel.deliveredToDevice],
+    ["Seen (on screen, not proof of reading)", data.funnel.seen],
+    ["Accepted by this member", data.funnel.ownAccepted],
+    ["Dismissed by this member", data.funnel.ownDismissed],
+    ["Content delivered", data.funnel.contentDelivered],
+    ["Effective proxy = yes (associational)", data.funnel.effectiveProxyYes],
+    ["Human rated", data.funnel.humanRated],
+  ];
+  return (
+    <div className="space-y-3 rounded-xl border border-violet-200 bg-violet-50/40 p-4">
+      <h4 className="text-sm font-semibold text-slate-800">Learning-aware adaptation (policy-v2-3)</h4>
+      <p className="text-xs text-slate-500">
+        States are cautious estimates with heuristic confidence, not diagnoses. Outcomes are proxies and associational,
+        not proof that a suggestion caused learning.
+      </p>
+      <div className="grid gap-2 sm:grid-cols-4">
+        {funnel.map(([label, value]) => (
+          <div key={label} className="rounded-lg border border-slate-200 bg-white p-2">
+            <div className="text-[11px] text-slate-500">{label}</div>
+            <div className="font-mono text-sm text-slate-800">{value}</div>
+          </div>
+        ))}
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Counts title="Estimated states (incl. repeats)" values={data.states} />
+        <Counts title="Private decisions (action:reason)" values={data.privateDecisions} />
+        <Counts title="Outcomes (scope:resolved:validity)" values={data.outcomes} />
+        <Counts title="One-click progress feedback" values={data.progressFeedback} />
+      </div>
+      {data.exposureByMember.length > 0 && (
+        <div className="overflow-x-auto">
+          <h5 className="text-xs font-semibold text-slate-700">Exposure by member</h5>
+          <ul className="mt-1 space-y-0.5 text-xs text-slate-700">
+            {data.exposureByMember.map((m) => (
+              <li key={m.studentId}>
+                <span className="font-mono">{m.studentId}</span>:{" "}
+                {Object.entries(m.kinds)
+                  .map(([kind, n]) => `${kind} ${n}`)
+                  .join(", ")}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {data.fading.length > 0 && (
+        <div>
+          <h5 className="text-xs font-semibold text-slate-700">Fading and escalation trace</h5>
+          <ul className="mt-1 space-y-0.5 text-xs text-slate-700">
+            {data.fading.map((f) => (
+              <li key={`${f.studentId}-${f.at}-${f.eventType}`}>
+                Scenario {f.scenarioOrder} · <span className="font-mono">{f.studentId}</span> · {f.eventType}:{" "}
+                {f.fromTier ?? "-"} → {f.toTier} ({f.reasonCode})
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {data.stateTimeline.length > 0 && (
+        <div className="overflow-x-auto">
+          <h5 className="text-xs font-semibold text-slate-700">State timeline (latest 30)</h5>
+          <table className="mt-1 w-full text-left text-xs text-slate-700">
+            <thead className="text-slate-500">
+              <tr>
+                <th className="py-1 pr-2">Scenario</th>
+                <th className="py-1 pr-2">Time (UTC)</th>
+                <th className="py-1 pr-2">Stage</th>
+                <th className="py-1 pr-2">State</th>
+                <th className="py-1 pr-2">Confidence (heuristic)</th>
+                <th className="py-1 pr-2">Repeats</th>
+                <th className="py-1 pr-2">Uncertainty</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.stateTimeline.slice(-30).map((s) => (
+                <tr key={`${s.at}-${s.state}`} className="border-t border-slate-100">
+                  <td className="py-1 pr-2">{s.scenarioOrder}</td>
+                  <td className="py-1 pr-2 font-mono">{s.at.slice(0, 19)}</td>
+                  <td className="py-1 pr-2">{s.stage}</td>
+                  <td className="py-1 pr-2">{s.state}</td>
+                  <td className="py-1 pr-2">{s.confidence.toFixed(2)}</td>
+                  <td className="py-1 pr-2">{s.repeatCount}</td>
+                  <td className="py-1 pr-2">{s.uncertaintyReasons.join(", ") || "-"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div>
+        <button
+          type="button"
+          onClick={() =>
+            run(async () => {
+              const res = await adminRequest(
+                `/api/admin/v2-3/review?session=${encodeURIComponent(group)}&mode=agreement`,
+                password
+              );
+              setAgreement(await res.json());
+            })
+          }
+          className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs text-slate-700 hover:bg-slate-50"
+        >
+          Load review agreement ({data.reviewLabels} labels)
+        </button>
+        {agreement && (
+          <ul className="mt-2 space-y-0.5 text-xs text-slate-700">
+            <li>System vs human, necessity: {formatAgreement(agreement.systemVsHuman.necessity)}</li>
+            <li>System vs human, state: {formatAgreement(agreement.systemVsHuman.state)}</li>
+            <li>Rater vs rater, necessity: {formatAgreement(agreement.humanVsHuman.necessity)}</li>
+            <li>Rater vs rater, state: {formatAgreement(agreement.humanVsHuman.state)}</li>
+            <li>Rater vs rater, disagreement type: {formatAgreement(agreement.humanVsHuman.disagreement)}</li>
+          </ul>
+        )}
+      </div>
     </div>
   );
 }
@@ -279,6 +484,13 @@ export function ResearcherInterventionDashboard({ password, active, selectedCode
           <div>
             Consent version: <strong>{info.protocol.consentVersion}</strong>
           </div>
+          <div>
+            Policy for new groups: <strong>{release.policyVersion ?? info.currentPolicyVersion}</strong>
+            {release.policyVersion ? " (pinned by ADAPTIVE_V2_POLICY_VERSION)" : " (current default)"}
+          </div>
+          <div>
+            Open-answer rubric: <strong>{info.openAnswerRubricEnabled ? "on" : "off"}</strong>
+          </div>
           <div className="sm:col-span-2 text-xs text-slate-500">
             Protocol {info.protocol.version}: {info.protocol.status}
           </div>
@@ -318,6 +530,7 @@ export function ResearcherInterventionDashboard({ password, active, selectedCode
                 {info.policies.map((p) => (
                   <option key={p.version} value={p.version}>
                     {p.version}
+                    {p.learningAware ? " (learning-aware)" : ""}
                     {p.testOnly ? " (test only)" : ""}
                   </option>
                 ))}
@@ -364,6 +577,27 @@ export function ResearcherInterventionDashboard({ password, active, selectedCode
         </p>
         <div className="mt-2 flex flex-wrap gap-2">
           {V2_EXPORTS.map((item) => (
+            <button
+              key={item.type}
+              type="button"
+              onClick={() =>
+                run(() =>
+                  download(
+                    `/api/admin/export?type=${item.type}&scope=all`,
+                    `all-v2-groups-${item.type}.csv`,
+                    password
+                  )
+                )
+              }
+              className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-violet-700 hover:border-violet-400"
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <p className="mt-3 text-xs font-medium text-slate-600">V2.3 learning-aware exports (rows only for policy-v2-3 groups)</p>
+        <div className="mt-1 flex flex-wrap gap-2">
+          {V23_EXPORTS.map((item) => (
             <button
               key={item.type}
               type="button"
@@ -518,10 +752,14 @@ export function ResearcherInterventionDashboard({ password, active, selectedCode
             </div>
           )}
 
+          {dashboard.learningAware && (
+            <LearningAwareSection data={dashboard.learningAware} group={dashboard.group} password={password} run={run} />
+          )}
+
           <div>
             <h4 className="text-sm font-semibold text-slate-800">V2 exports for {dashboard.group}</h4>
             <div className="mt-2 flex flex-wrap gap-2">
-              {V2_EXPORTS.map((item) => (
+              {[...V2_EXPORTS, ...V23_EXPORTS].map((item) => (
                 <button
                   key={item.type}
                   type="button"

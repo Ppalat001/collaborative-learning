@@ -85,6 +85,8 @@ export interface V2ReleaseConfig {
   assignment: "fixed" | "randomized";
   randomizeConditions: AssignableResearchCondition[];
   allowTestPolicy: boolean;
+  /** Policy for new groups; null uses the registry's current policy. */
+  policyVersion: string | null;
 }
 
 function parseConditions(value: string | undefined): AssignableResearchCondition[] {
@@ -109,6 +111,7 @@ export function readReleaseConfig(env: EnvSource = process.env): V2ReleaseConfig
     assignment: env.ADAPTIVE_V2_ASSIGNMENT?.trim() === "randomized" ? "randomized" : "fixed",
     randomizeConditions: parseConditions(env.ADAPTIVE_V2_RANDOMIZE_CONDITIONS),
     allowTestPolicy: env.ADAPTIVE_V2_ALLOW_TEST_POLICY?.trim() === "true",
+    policyVersion: env.ADAPTIVE_V2_POLICY_VERSION?.trim() || null,
   };
 }
 
@@ -202,7 +205,7 @@ export class ResearchConditionManager {
       };
     }
 
-    const policyVersion = request.policyVersion ?? CURRENT_POLICY_VERSION;
+    const policyVersion = request.policyVersion ?? config.policyVersion ?? CURRENT_POLICY_VERSION;
     if (!hasPolicy(policyVersion)) {
       return { ok: false, error: `Unknown intervention policy ${policyVersion}` };
     }

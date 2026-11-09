@@ -82,7 +82,7 @@ describe("ResearchConditionManager release gate", () => {
     const result = new ResearchConditionManager({}).planAssignment({ createdVia: "home_page" });
     assert.ok(result.ok && result.plan);
     assert.equal(result.plan.researchCondition, "proactive_adaptive");
-    assert.equal(result.plan.interventionPolicyVersion, "policy-v2-2");
+    assert.equal(result.plan.interventionPolicyVersion, "policy-v2-3");
     assert.equal(result.plan.assignmentMethod, "configured_default");
     assert.equal(result.plan.createdVia, "home_page");
     assert.equal(result.plan.minGroupSize, 2);
@@ -136,7 +136,41 @@ describe("ResearchConditionManager release gate", () => {
     assert.equal(result.ok, false);
     const current = manager.planAssignment({ createdVia: "admin", condition: "proactive_adaptive" });
     assert.ok(current.ok && current.plan);
-    assert.equal(current.plan.interventionPolicyVersion, "policy-v2-2");
+    assert.equal(current.plan.interventionPolicyVersion, "policy-v2-3");
+  });
+
+  test("ADAPTIVE_V2_POLICY_VERSION pins new groups of an ongoing cohort to policy-v2-2", () => {
+    const pinned = new ResearchConditionManager({ ADAPTIVE_V2_POLICY_VERSION: "policy-v2-2" });
+    const home = pinned.planAssignment({ createdVia: "home_page" });
+    assert.ok(home.ok && home.plan);
+    assert.equal(home.plan.interventionPolicyVersion, "policy-v2-2");
+    assert.equal(home.plan.researchCondition, "proactive_adaptive");
+    const explicit = pinned.planAssignment({ createdVia: "admin", condition: "proactive_group", policyVersion: "policy-v2-3" });
+    assert.ok(explicit.ok && explicit.plan);
+    assert.equal(explicit.plan.interventionPolicyVersion, "policy-v2-3");
+  });
+
+  test("policy-v2-2 is unchanged and policy-v2-3 keeps its group thresholds", () => {
+    const v22 = getPolicy("policy-v2-2");
+    const v23 = getPolicy("policy-v2-3");
+    assert.equal(v22.learningAware, undefined);
+    assert.equal(v22.adaptivePrivate?.modelVersion, "adaptive-bandit-v1");
+    assert.equal(v23.testOnly, false);
+    assert.equal(v23.learningAware?.groupOffers.dismissal, "per_member");
+    for (const key of [
+      "initialSilenceSeconds",
+      "stallSeconds",
+      "productiveWindowSeconds",
+      "recentWindowSeconds",
+      "disagreementPersistSeconds",
+      "cooldownSeconds",
+      "maxProactiveGroupPerScenario",
+      "maxProactivePrivatePerParticipantPerScenario",
+      "offerExpirySeconds",
+      "deferSeconds",
+    ] as const) {
+      assert.equal(v23[key], v22[key], key);
+    }
   });
 
   test("groups record every version and the condition", () => {

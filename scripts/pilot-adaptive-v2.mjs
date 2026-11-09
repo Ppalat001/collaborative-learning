@@ -3,11 +3,12 @@
  * End-to-end check of Adaptive Scaffolding V2 over real HTTP and Socket.IO.
  * Checks that a home-page group is a proactive_adaptive V2 group by default,
  * runs one proactive_group (no popups) and one proactive_adaptive group (private
- * popup offered, accepted, rated and exported), all on the test-only accelerated
- * policy with mock AI.
+ * popup offered, accepted, rated and exported), both on the test-only accelerated
+ * policy with mock AI, and one proactive_adaptive group on the accelerated
+ * policy-v2-3 (per-member dismissal, exposure, one-click feedback, stop, V2.3 exports).
  *
  * Run it through `npm run pilot:isolated` (throwaway database). Against a running
- * server it needs ADAPTIVE_V2_ALLOW_TEST_POLICY=true, and it writes three test
+ * server it needs ADAPTIVE_V2_ALLOW_TEST_POLICY=true, and it writes four test
  * groups into that server's database.
  */
 import { io } from "socket.io-client";
@@ -395,18 +396,19 @@ async function main() {
   ok("original exports still work for the V2 group; dashboard warns about demo AI text");
 
   await adaptivePopupPilot({ statements, homeCode: home.code });
+  await learningAwarePilot({ statements });
 
   console.log("Adaptive Scaffolding V2 pilot PASSED");
 }
 
-/** Creates a started two-member group on the accelerated test policy. */
-async function startedGroup(condition, statements) {
+/** Creates a started two-member group on an accelerated test policy. */
+async function startedGroup(condition, statements, policyVersion = "policy-v2-test-accelerated") {
   const created = await expectOk("/api/admin/sessions", {
     method: "POST",
     admin: true,
     body: {
       condition,
-      policyVersion: "policy-v2-test-accelerated",
+      policyVersion,
       features: { openingPrompt: true, checkpoints: true, roles: false, initialIdea: "off", agreementReason: "off" },
     },
   });
@@ -557,6 +559,135 @@ async function adaptivePopupPilot({ statements, homeCode }) {
 
   const homeModels = await exportRows("v2_learner_models", homeCode);
   assert(homeModels.length === 0, "A group that never started has no learner models");
+}
+
+/** policy-v2-3: per-member dismissal, exposure reports, one-click feedback, the stop option and the V2.3 exports. */
+async function learningAwarePilot({ statements }) {
+  const policyVersion = "policy-v2-3-test-accelerated";
+  const { code, C, D } = await startedGroup("proactive_adaptive", statements, policyVersion);
+  ok(`researcher created and started group ${code} (proactive_adaptive, ${policyVersion})`);
+  for (const member of [C, D]) {
+    await expectOk(`/api/sessions/${code}/scenario/1?participantId=${member.id}`, { token: member.token });
+  }
+  const sc = await connect(code, C, 1);
+  const sd = await connect(code, D, 1);
+  assert(!sc.denied && !sd.denied, "Members' sockets should join");
+  const exposure = (member, id, kind) =>
+    call(`/api/sessions/${code}/interventions/${id}/exposure`, {
+      method: "POST",
+      token: member.token,
+      body: { participantId: member.id, kind, clientAt: new Date().toISOString() },
+    });
+  const progress = (member, id, response) =>
+    call(`/api/sessions/${code}/interventions/${id}/progress`, {
+      method: "POST",
+      token: member.token,
+      body: { participantId: member.id, response },
+    });
+  const stateOf = (member) =>
+    expectOk(`/api/sessions/${code}/interventions?scenarioOrder=1&participantId=${member.id}`, { token: member.token });
+
+  const offered = await waitFor(
+    sc.events,
+    (e) => e.event === "intervention:offered" && e.payload.scope === "group",
+    "a shared prompt after the initial silence"
+  );
+  const shared = offered.payload;
+  for (const member of [C, D]) {
+    const delivered = await exposure(member, shared.id, "socket_delivered");
+    assert(delivered.status === 200 && delivered.data.recorded, `${member.name}: socket delivery should be recorded`);
+  }
+  const shown = await exposure(C, shared.id, "client_displayed_in_viewport");
+  assert(shown.status === 200 && shown.data.recorded, "C's display in the viewport should be recorded");
+  const replay = await exposure(C, shared.id, "client_displayed_in_viewport");
+  assert(replay.data.duplicate === true, "A replayed exposure report should be ignored");
+  ok("both clients reported receiving the shared prompt; C's display was recorded once (replay ignored)");
+
+  const dismissed = await expectOk(`/api/sessions/${code}/interventions/${shared.id}/feedback`, {
+    method: "POST",
+    token: C.token,
+    body: { participantId: C.id, action: "dismissed" },
+  });
+  assert(
+    dismissed.intervention.status === "suggested" && dismissed.intervention.myFeedback === "dismissed",
+    "C's dismissal should hide the prompt for C only"
+  );
+  const dState = await stateOf(D);
+  const forD = dState.interventions.find((i) => i.id === shared.id);
+  assert(forD?.status === "suggested" && forD.myFeedback === null, "The shared prompt should stay open for D");
+  assert(dState.learningAware?.enabled && dState.learningAware.dismissal === "per_member", "D's state should be learning-aware");
+  ok("C dismissed the shared prompt for themselves; it stays open for D (per-member dismissal)");
+
+  const isPopup = (e) => e.event === "intervention:offered" && e.payload?.trigger === "adaptive_need";
+  let popup = null;
+  for (let attempt = 1; attempt <= 6 && !popup; attempt++) {
+    await expectOk(`/api/sessions/${code}/messages`, {
+      method: "POST",
+      token: C.token,
+      body: { scenarioOrder: 1, participantId: C.id, text: "I'm confused, I don't understand what this question is asking." },
+    });
+    popup = await waitFor(sc.events, isPopup, "an adaptive private popup for C", 8_000).catch(() => null);
+  }
+  assert(popup, "C should be offered a private popup after saying they are unsure");
+  const offer = popup.payload;
+  assert(offer.scaffoldLevel === "1", `The first popup should be minimal help, got level ${offer.scaffoldLevel}`);
+  assert(/Don't suggest again in this scenario/.test(offer.reasonExplanation ?? ""), "The popup should mention the stop option");
+  assert(!sd.events.some((e) => e.payload?.id === offer.id), "D must not receive C's popup");
+  const foreign = await exposure(D, offer.id, "client_displayed_in_viewport");
+  assert(foreign.status === 404, `D reporting exposure of C's popup should be 404, got ${foreign.status}`);
+  ok(`C was offered a minimal private ${offer.supportType} popup; D can neither receive it nor report on it`);
+
+  await exposure(C, offer.id, "client_displayed_in_viewport");
+  const yes = await expectOk(`/api/sessions/${code}/interventions/${offer.id}/feedback`, {
+    method: "POST",
+    token: C.token,
+    body: { participantId: C.id, action: "accepted" },
+  });
+  assert(yes.intervention.status === "delivered", "Yes should deliver the help");
+  const otherAnswer = await progress(D, offer.id, "yes");
+  assert(otherAnswer.status === 404, `D answering for C's popup should be 404, got ${otherAnswer.status}`);
+  const first = await progress(C, offer.id, "partly");
+  assert(first.status === 200 && first.data.response === "partly" && first.data.duplicate === false, "C's answer should be saved");
+  const second = await progress(C, offer.id, "yes");
+  assert(second.data.duplicate === true && second.data.response === "partly", "A second answer should not replace the first");
+  ok("C saw and accepted the popup and answered 'Did this help?' once (Partly); repeats and other members are refused");
+
+  const cState = await stateOf(C);
+  assert(cState.learningAware.progressFeedback[offer.id] === "partly", "C's own state should show C's answer");
+  assert(!JSON.stringify(await stateOf(D)).includes(offer.id), "D's state must contain nothing about C's popup");
+  const stopped = await expectOk(`/api/sessions/${code}/interventions`, {
+    method: "POST",
+    token: C.token,
+    body: { kind: "stop_proactive_for_scenario", scenarioOrder: 1, participantId: C.id },
+  });
+  assert(stopped.stopped === true, "The stop option should be accepted");
+  assert((await stateOf(C)).learningAware.proactiveStopped === true, "C's state should show the stop");
+  assert((await stateOf(D)).learningAware.proactiveStopped === false, "The stop is C's alone");
+  ok("C chose 'Don't suggest again in this scenario'; it applies to C only");
+  sc.socket.close();
+  sd.socket.close();
+
+  const states = await exportRows("v2_3_group_states", code);
+  assert(states.length > 0 && states.every((r) => r.intervention_policy_version === policyVersion), "Group states should be exported");
+  const decisions = await exportRows("v2_3_private_decisions", code);
+  assert(decisions.some((r) => r.action === "offer") && decisions.some((r) => r.action === "wait"), "Offer and wait decisions should be exported");
+  const exposures = await exportRows("v2_3_exposures", code);
+  assert(exposures.some((r) => r.intervention_id === offer.id && r.counts_as_seen === "yes"), "The popup display should be exported");
+  const funnel = await exportRows("v2_3_offer_funnel", code);
+  const popupRow = funnel.find((r) => r.intervention_id === offer.id);
+  assert(popupRow?.content_delivered === "yes" && popupRow.progress_feedback === "partly", "The popup funnel should be complete");
+  const sharedRows = funnel.filter((r) => r.intervention_id === shared.id);
+  assert(
+    sharedRows.length === 2 && sharedRows.some((r) => r.own_response === "dismissed") && sharedRows.some((r) => r.own_response === "none"),
+    "The shared prompt should have one funnel row per member"
+  );
+  const scaffolding = await exportRows("v2_3_scaffolding_events", code);
+  assert(scaffolding.some((r) => r.event_type === "preference_stop"), "The stop should be exported");
+  const exported = JSON.stringify([...states, ...decisions, ...exposures, ...funnel, ...scaffolding]);
+  assert(![C.name, D.name, C.id, D.id].some((secret) => exported.includes(secret)), "V2.3 exports must use anonymous ids only");
+  const dashboard = await expectOk(`/api/admin/interventions?session=${code}`, { admin: true });
+  assert(dashboard.learningAware?.funnel, "The dashboard should include the V2.3 section");
+  ok(`V2.3 exports: ${states.length} group states, ${decisions.length} private decisions, ${exposures.length} exposures, anonymous ids only`);
 }
 
 main().catch((error) => {

@@ -4,6 +4,7 @@ import { getSessionByCode } from "@/lib/services/sessions";
 import { isAdminRequest } from "@/lib/utils/admin";
 import { buildGroupExport, isExportType, toCsv } from "@/lib/utils/export";
 import { buildV2Export, isV2ExportType, listV2SessionIds } from "@/lib/utils/exportV2";
+import { buildV23Export, isV23ExportType } from "@/lib/utils/exportV23";
 
 function csvResponse(csv: string, filename: string) {
   // BOM so Excel opens names and answers with accents correctly.
@@ -17,8 +18,8 @@ function csvResponse(csv: string, filename: string) {
 
 /**
  * Original exports: `?type=<legacy type>&session=CODE` (unchanged).
- * V2 exports: `?type=v2_*&session=CODE` for one V2 group, or `?type=v2_*&scope=all`
- * for every V2 group in one file (legacy groups are never included).
+ * V2 and V2.3 exports: `?type=v2_*|v2_3_*&session=CODE` for one V2 group, or
+ * `&scope=all` for every V2 group in one file (legacy groups are never included).
  */
 export async function GET(request: Request) {
   if (!isAdminRequest(request)) {
@@ -28,10 +29,12 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const type = searchParams.get("type") ?? "scenarios";
 
-  if (isV2ExportType(type)) {
+  if (isV2ExportType(type) || isV23ExportType(type)) {
+    const build = (sessionIds: string[]) =>
+      isV23ExportType(type) ? buildV23Export(type, sessionIds) : buildV2Export(type, sessionIds);
     try {
       if (searchParams.get("scope") === "all") {
-        const { columns, rows } = buildV2Export(type, listV2SessionIds());
+        const { columns, rows } = build(listV2SessionIds());
         return csvResponse(toCsv(columns, rows), `all-v2-groups-${type}.csv`);
       }
       const code = searchParams.get("session")?.trim().toUpperCase();
@@ -48,7 +51,7 @@ export async function GET(request: Request) {
           { status: 400 }
         );
       }
-      const { columns, rows } = buildV2Export(type, [session.id]);
+      const { columns, rows } = build([session.id]);
       return csvResponse(toCsv(columns, rows), `${session.code}-${type}.csv`);
     } catch (error) {
       console.error("V2 export error:", error);

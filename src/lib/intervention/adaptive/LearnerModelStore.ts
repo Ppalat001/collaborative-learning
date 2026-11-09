@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
-import type { AdaptivePrivatePolicy } from "../policies";
+import { applyLearningSignal, type LearningSignal } from "../learning/BanditRewardPolicy";
+import type { AdaptivePrivatePolicy, LearningAwareRewards } from "../policies";
 import type { AdaptiveDecision } from "./AdaptivePrivatePolicy";
 import { initialState, type LearnerState } from "./LearnerModel";
 import { applySignal, contributionGaps, type LearnerSignal } from "./rewards";
@@ -20,6 +21,8 @@ export interface ModelRef {
   policyVersion: string;
   policy: AdaptivePrivatePolicy;
   now: string;
+  /** policy-v2-3+: apply the reward-v2-3 rules instead of the original V2 rules. */
+  rewards?: LearningAwareRewards;
 }
 
 export class LearnerModelStore {
@@ -98,6 +101,25 @@ export class LearnerModelStore {
     );
   }
 
+  /** Every event key already logged for this member (optionally only some event types). */
+  eventKeys(participantId: string, eventTypes?: string[]): Set<string> {
+    return new Set(
+      db
+        .select({ key: schema.learnerModelEvents.eventKey })
+        .from(schema.learnerModelEvents)
+        .where(
+          eventTypes
+            ? and(
+                eq(schema.learnerModelEvents.participantId, participantId),
+                inArray(schema.learnerModelEvents.eventType, eventTypes)
+              )
+            : eq(schema.learnerModelEvents.participantId, participantId)
+        )
+        .all()
+        .map((row) => row.key)
+    );
+  }
+
   /**
    * Applies one signal at most once per event key and logs it. Signals that leave
    * the posteriors unchanged are still logged, so the audit shows they were assessed.
@@ -106,11 +128,11 @@ export class LearnerModelStore {
     ref: ModelRef & {
       scenarioOrder: number | null;
       eventKey: string;
-      signal: LearnerSignal | null;
+      signal: LearnerSignal | LearningSignal | null;
       interventionId?: string | null;
       detail?: Record<string, unknown>;
     }
-  ): { applied: boolean; state: LearnerState } {
+  ): { applied: boolean; changed: boolean; state: LearnerState } {
     return db.transaction((tx) => {
       const row = this.loadIn(tx, ref);
       const seen = tx
@@ -123,10 +145,12 @@ export class LearnerModelStore {
           )
         )
         .get();
-      if (seen) return { applied: false, state: row.state };
-      const result = ref.signal
-        ? applySignal(row.state, ref.signal, ref.policy)
-        : { state: row.state, changed: false, reward: null, weight: 0 };
+      if (seen) return { applied: false, changed: false, state: row.state };
+      const result: ReturnType<typeof applySignal> & { detail?: Record<string, unknown> } = !ref.signal
+        ? { state: row.state, changed: false, reward: null, weight: 0 }
+        : ref.rewards
+          ? applyLearningSignal(row.state, ref.signal as LearningSignal, ref.policy, ref.rewards)
+          : applySignal(row.state, ref.signal as LearnerSignal, ref.policy);
       if (result.changed) {
         tx.update(schema.learnerModels)
           .set({ state: result.state, updatedAt: ref.now })
@@ -143,13 +167,13 @@ export class LearnerModelStore {
           interventionId: ref.interventionId ?? null,
           reward: result.reward,
           weight: result.weight,
-          detail: { ...(ref.signal ?? {}), ...(ref.detail ?? {}) },
+          detail: { ...(ref.signal ?? {}), ...(ref.detail ?? {}), ...(result.detail ?? {}) },
           stateBefore: row.state,
           stateAfter: result.state,
           createdAt: ref.now,
         })
         .run();
-      return { applied: true, state: result.state };
+      return { applied: true, changed: result.changed, state: result.state };
     });
   }
 

@@ -8,7 +8,7 @@ import {
 } from "drizzle-orm/sqlite-core";
 import type { AuthorRun } from "@/lib/types";
 import type { LearnerState } from "@/lib/intervention/adaptive/LearnerModel";
-import type { StudyFeatures } from "@/lib/intervention/types";
+import type { EvidenceRef, StudyFeatures } from "@/lib/intervention/types";
 
 export const sessions = sqliteTable("sessions", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -668,5 +668,273 @@ export const learnerModelEvents = sqliteTable(
   (table) => [
     uniqueIndex("learner_model_events_key_unique").on(table.participantId, table.eventKey),
     index("learner_model_events_participant").on(table.participantId, table.createdAt),
+  ]
+);
+
+// ---------------------------------------------------------------------------
+// Adaptive Scaffolding V2.3 (policy-v2-3 and later). Additive only: groups on
+// older policies never write these tables, and no existing table changes.
+// ---------------------------------------------------------------------------
+
+/**
+ * The group-state estimate behind an evaluation: a cautious hypothesis with its
+ * evidence, never a diagnosis. Unchanged repeats are collapsed by context_signature.
+ */
+export const groupStateEstimates = sqliteTable(
+  "group_state_estimates",
+  {
+    id: id(),
+    sessionId: sessionRef(),
+    attemptId: text("attempt_id")
+      .notNull()
+      .references(() => scenarioAttempts.id, { onDelete: "cascade" }),
+    scenarioOrder: integer("scenario_order").notNull(),
+    evaluationId: text("evaluation_id").references(() => interventionEvaluations.id, {
+      onDelete: "set null",
+    }),
+    policyVersion: text("policy_version").notNull(),
+    estimatorVersion: text("estimator_version").notNull(),
+    stage: text("stage").notNull(),
+    state: text("state").notNull(),
+    /** Heuristic score in [0, 1]; not a calibrated probability. */
+    confidence: real("confidence").notNull(),
+    evidence: text("evidence", { mode: "json" }).$type<EvidenceRef[]>().notNull(),
+    counterEvidence: text("counter_evidence", { mode: "json" }).$type<EvidenceRef[]>().notNull(),
+    uncertaintyReasons: text("uncertainty_reasons", { mode: "json" }).$type<string[]>().notNull(),
+    stateReasons: text("state_reasons", { mode: "json" }).$type<string[]>().notNull(),
+    classifierModel: text("classifier_model"),
+    classifierNote: text("classifier_note"),
+    contextSignature: text("context_signature").notNull(),
+    repeatCount: integer("repeat_count").notNull().default(1),
+    estimatedAt: text("estimated_at").notNull().$defaultFn(() => new Date().toISOString()),
+    lastRepeatedAt: text("last_repeated_at"),
+  },
+  (table) => [index("group_state_estimates_attempt").on(table.attemptId, table.estimatedAt)]
+);
+
+/** Every adaptive private decision per member, including "wait", with its reason. */
+export const privateDecisionTraces = sqliteTable(
+  "private_decision_traces",
+  {
+    id: id(),
+    sessionId: sessionRef(),
+    attemptId: text("attempt_id")
+      .notNull()
+      .references(() => scenarioAttempts.id, { onDelete: "cascade" }),
+    scenarioOrder: integer("scenario_order").notNull(),
+    participantId: text("participant_id")
+      .notNull()
+      .references(() => participants.id, { onDelete: "cascade" }),
+    policyVersion: text("policy_version").notNull(),
+    modelVersion: text("model_version").notNull(),
+    rewardVersion: text("reward_version").notNull(),
+    scaffoldingVersion: text("scaffolding_version").notNull(),
+    /** offer | wait */
+    action: text("action").notNull(),
+    reasonCode: text("reason_code").notNull(),
+    tier: text("tier").notNull(),
+    move: text("move").notNull(),
+    supportType: text("support_type"),
+    evidence: text("evidence", { mode: "json" }).$type<Record<string, unknown>>().notNull(),
+    groupStateEstimateId: text("group_state_estimate_id").references(() => groupStateEstimates.id, {
+      onDelete: "set null",
+    }),
+    interventionId: text("intervention_id").references(() => interventions.id, { onDelete: "set null" }),
+    signature: text("signature").notNull(),
+    repeatCount: integer("repeat_count").notNull().default(1),
+    decidedAt: text("decided_at").notNull().$defaultFn(() => new Date().toISOString()),
+    lastRepeatedAt: text("last_repeated_at"),
+  },
+  (table) => [index("private_decision_traces_member").on(table.participantId, table.scenarioOrder)]
+);
+
+/** Escalation, fading, reassessment and stop-preference events of each member's scaffolding state. */
+export const scaffoldingStateEvents = sqliteTable(
+  "scaffolding_state_events",
+  {
+    id: id(),
+    sessionId: sessionRef(),
+    participantId: text("participant_id")
+      .notNull()
+      .references(() => participants.id, { onDelete: "cascade" }),
+    scenarioOrder: integer("scenario_order").notNull(),
+    policyVersion: text("policy_version").notNull(),
+    scaffoldingVersion: text("scaffolding_version").notNull(),
+    /** escalation | fading | reassess | preference_stop | fading_reset */
+    eventType: text("event_type").notNull(),
+    fromTier: text("from_tier"),
+    toTier: text("to_tier").notNull(),
+    move: text("move").notNull(),
+    reasonCode: text("reason_code").notNull(),
+    interventionId: text("intervention_id").references(() => interventions.id, { onDelete: "set null" }),
+    detail: text("detail", { mode: "json" }).$type<Record<string, unknown>>().notNull(),
+    eventKey: text("event_key").notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("scaffolding_state_events_key_unique").on(table.participantId, table.eventKey),
+    index("scaffolding_state_events_member").on(table.participantId, table.scenarioOrder),
+  ]
+);
+
+/**
+ * Per-member exposure of an offer. Only technically verifiable steps are stored;
+ * a display event means it was on screen, not that it was read or understood.
+ */
+export const offerExposures = sqliteTable(
+  "offer_exposures",
+  {
+    id: id(),
+    sessionId: sessionRef(),
+    interventionId: text("intervention_id")
+      .notNull()
+      .references(() => interventions.id, { onDelete: "cascade" }),
+    participantId: text("participant_id")
+      .notNull()
+      .references(() => participants.id, { onDelete: "cascade" }),
+    scenarioOrder: integer("scenario_order").notNull(),
+    kind: text("kind").notNull(),
+    /** server | client */
+    source: text("source").notNull(),
+    /** Client clock time, kept only when within the policy's allowed skew. */
+    clientAt: text("client_at"),
+    clientClockRejected: integer("client_clock_rejected", { mode: "boolean" }).notNull().default(false),
+    serverAt: text("server_at").notNull().$defaultFn(() => new Date().toISOString()),
+    policyVersion: text("policy_version").notNull(),
+  },
+  (table) => [
+    uniqueIndex("offer_exposures_unique").on(table.interventionId, table.participantId, table.kind),
+    index("offer_exposures_participant").on(table.participantId),
+  ]
+);
+
+/**
+ * Observed outcome after a delivered intervention, per member (private) or for
+ * the group (shared). Associational only; missing evidence stays missing.
+ */
+export const interventionOutcomeEvaluations = sqliteTable(
+  "intervention_outcome_evaluations",
+  {
+    id: id(),
+    sessionId: sessionRef(),
+    interventionId: text("intervention_id")
+      .notNull()
+      .references(() => interventions.id, { onDelete: "cascade" }),
+    /** "group" or the member's participant id */
+    subjectKey: text("subject_key").notNull(),
+    participantId: text("participant_id").references(() => participants.id, { onDelete: "cascade" }),
+    scenarioOrder: integer("scenario_order").notNull(),
+    scope: text("scope").notNull(),
+    windowStart: text("window_start").notNull(),
+    windowEnd: text("window_end").notNull(),
+    activityResumed: integer("activity_resumed", { mode: "boolean" }),
+    /** yes | partly | no | unknown */
+    difficultyResolved: text("difficulty_resolved").notNull(),
+    /** feedback | observation | none */
+    resolutionSource: text("resolution_source").notNull(),
+    /** Not assessed by default: the system does not measure understanding. */
+    understandingEvidence: text("understanding_evidence").notNull().default("not_assessed"),
+    participantFeedback: text("participant_feedback"),
+    wasVisible: integer("was_visible", { mode: "boolean" }),
+    escalatedHelp: integer("escalated_help", { mode: "boolean" }).notNull().default(false),
+    confounds: text("confounds", { mode: "json" }).$type<string[]>().notNull(),
+    /** usable | insufficient_evidence | confounded */
+    validity: text("validity").notNull(),
+    provenance: text("provenance", { mode: "json" }).$type<EvidenceRef[]>().notNull(),
+    evaluatorVersion: text("evaluator_version").notNull(),
+    rewardVersion: text("reward_version"),
+    policyVersion: text("policy_version").notNull(),
+    /** True when a learner-model update was applied from this outcome. */
+    updateApplied: integer("update_applied", { mode: "boolean" }).notNull().default(false),
+    learnerEventKey: text("learner_event_key"),
+    evaluatedAt: text("evaluated_at").notNull().$defaultFn(() => new Date().toISOString()),
+    amendedAt: text("amended_at"),
+  },
+  (table) => [
+    uniqueIndex("intervention_outcome_evaluations_unique").on(table.interventionId, table.subjectKey),
+  ]
+);
+
+/** One-click "did this help you move forward?" after delivered proactive support. Operational, not an instrument. */
+export const interventionProgressFeedback = sqliteTable(
+  "intervention_progress_feedback",
+  {
+    id: id(),
+    sessionId: sessionRef(),
+    interventionId: text("intervention_id")
+      .notNull()
+      .references(() => interventions.id, { onDelete: "cascade" }),
+    participantId: text("participant_id")
+      .notNull()
+      .references(() => participants.id, { onDelete: "cascade" }),
+    scenarioOrder: integer("scenario_order").notNull(),
+    /** yes | partly | no | not_needed | skip */
+    response: text("response").notNull(),
+    policyVersion: text("policy_version").notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("intervention_progress_feedback_unique").on(table.interventionId, table.participantId),
+  ]
+);
+
+/**
+ * Optional researcher rubric for the written pre/post question. Stored apart from
+ * the MCQ score, which is never changed. Disabled unless ADAPTIVE_V2_OPEN_ANSWER_RUBRIC=true.
+ */
+export const openAnswerRubricScores = sqliteTable(
+  "open_answer_rubric_scores",
+  {
+    id: id(),
+    sessionId: sessionRef(),
+    assessmentId: text("assessment_id")
+      .notNull()
+      .references(() => assessments.id, { onDelete: "cascade" }),
+    participantId: text("participant_id").references(() => participants.id, { onDelete: "set null" }),
+    assessmentType: text("assessment_type").notNull(),
+    questionId: text("question_id").notNull(),
+    rubricVersion: text("rubric_version").notNull(),
+    criteria: text("criteria", { mode: "json" }).$type<Record<string, number>>().notNull(),
+    /** Sum of the 0/1 criteria (0-4). Never mixed into the 0-8 MCQ score. */
+    openApplicationRubricScore: integer("open_application_rubric_score").notNull(),
+    raterId: text("rater_id").notNull(),
+    blind: integer("blind", { mode: "boolean" }).notNull(),
+    notes: text("notes"),
+    createdAt: createdAt(),
+    updatedAt: text("updated_at").notNull().$defaultFn(() => new Date().toISOString()),
+  },
+  (table) => [
+    uniqueIndex("open_answer_rubric_scores_unique").on(table.assessmentId, table.questionId, table.raterId),
+  ]
+);
+
+/** Researcher labels for evaluating system decisions against human judgement. */
+export const humanReviewLabels = sqliteTable(
+  "human_review_labels",
+  {
+    id: id(),
+    sessionId: sessionRef(),
+    attemptId: text("attempt_id").references(() => scenarioAttempts.id, { onDelete: "cascade" }),
+    scenarioOrder: integer("scenario_order").notNull(),
+    /** evaluation | intervention */
+    targetType: text("target_type").notNull(),
+    targetId: text("target_id").notNull(),
+    raterId: text("rater_id").notNull(),
+    blind: integer("blind", { mode: "boolean" }).notNull(),
+    /** necessary | unnecessary | uncertain */
+    necessity: text("necessity").notNull(),
+    /** appropriate | inappropriate | unclear; null when no support was offered */
+    supportAppropriateness: text("support_appropriateness"),
+    /** productive_disagreement | unproductive_conflict | no_disagreement | unclear */
+    disagreementLabel: text("disagreement_label"),
+    /** The rater's own collaboration-state label, compared with the estimator. */
+    stateLabel: text("state_label"),
+    notes: text("notes"),
+    reviewProtocolVersion: text("review_protocol_version").notNull(),
+    createdAt: createdAt(),
+    updatedAt: text("updated_at").notNull().$defaultFn(() => new Date().toISOString()),
+  },
+  (table) => [
+    uniqueIndex("human_review_labels_unique").on(table.targetType, table.targetId, table.raterId),
   ]
 );

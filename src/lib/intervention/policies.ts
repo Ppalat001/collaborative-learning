@@ -46,6 +46,56 @@ export interface AdaptivePrivatePolicy {
   };
 }
 
+/** Reward weights for the V2.3 learner rules (`reward-v2-3`); see BanditRewardPolicy. */
+export interface LearningAwareRewards {
+  rewardVersion: string;
+  accepted: number;
+  dismissed: number;
+  deferred: number;
+  feedbackYes: number;
+  /** "Partly" adds this much to both alpha and beta (a fractional pseudo-count). */
+  feedbackPartly: number;
+  feedbackNo: number;
+  /** Arm update from a corroborated observed outcome, when no explicit feedback exists. */
+  observedOutcome: number;
+  activityResponse: number;
+  independentScenario: number;
+  notNeeded: number;
+  helpUseful: number;
+  selfReportedDifficulty: number;
+  surveyTooMuch: number;
+  surveyTooLittle: number;
+  surveyAboutRight: number;
+}
+
+/**
+ * The V2.3 learning-aware extension. Present only on policy-v2-3 and later;
+ * groups on older policies keep their original behaviour.
+ */
+export interface LearningAwarePolicy {
+  engineVersion: string;
+  estimatorVersion: string;
+  evaluatorVersion: string;
+  scaffoldingVersion: string;
+  contextGate: { minConfidenceToAct: number };
+  estimator: {
+    progressWindowSeconds: number;
+    /** Token-overlap above which two messages count as the same statement. */
+    repetitionSimilarity: number;
+    minRepeatedMessagesForLoop: number;
+    loopMinSeconds: number;
+    staleEvidenceSeconds: number;
+    answerSynthesisMinChars: number;
+  };
+  classifier: { enabled: boolean; timeoutMs: number; minConfidence: number; minSecondsBetweenCalls: number };
+  groupOffers: { dismissal: "per_member" };
+  outcome: { windowSeconds: number; confoundWindowSeconds: number };
+  feedback: { enabled: boolean; promptDelaySeconds: number };
+  scaffolding: { fadeAfterIndependentScenarios: number; requireCorroboratedNeed: boolean };
+  exposure: { maxClientClockSkewSeconds: number; maxEventsPerMinute: number };
+  rewards: LearningAwareRewards;
+}
+
 export interface InterventionPolicy {
   version: string;
   status: string;
@@ -82,6 +132,7 @@ export interface InterventionPolicy {
   };
   /** Only in policies that support the proactive_adaptive condition. */
   adaptivePrivate?: AdaptivePrivatePolicy;
+  learningAware?: LearningAwarePolicy;
 }
 
 type PolicyBody = Omit<InterventionPolicy, "version">;
@@ -119,7 +170,57 @@ function validatePolicy(version: string, body: PolicyBody): InterventionPolicy {
     throw new Error(`Intervention policy ${version}: imbalanceTopShare must be at most 1`);
   }
   if (body.adaptivePrivate) validateAdaptive(version, body.adaptivePrivate);
+  if (body.learningAware) validateLearningAware(version, body.learningAware, Boolean(body.adaptivePrivate));
   return { version, ...body };
+}
+
+function validateLearningAware(version: string, la: LearningAwarePolicy, hasAdaptive: boolean) {
+  const fail = (message: string) => {
+    throw new Error(`Intervention policy ${version}: learningAware.${message}`);
+  };
+  for (const key of ["engineVersion", "estimatorVersion", "evaluatorVersion", "scaffoldingVersion"] as const) {
+    if (typeof la[key] !== "string" || !la[key]) fail(`${key} is required`);
+  }
+  if (typeof la.rewards?.rewardVersion !== "string" || !la.rewards.rewardVersion) fail("rewards.rewardVersion is required");
+  const rewardWeights = Object.entries(la.rewards).filter(([k]) => k !== "rewardVersion");
+  const numeric: [string, unknown][] = [
+    ["contextGate.minConfidenceToAct", la.contextGate?.minConfidenceToAct],
+    ...Object.entries(la.estimator ?? {}).map(([k, v]) => [`estimator.${k}`, v] as [string, unknown]),
+    ["classifier.timeoutMs", la.classifier?.timeoutMs],
+    ["classifier.minConfidence", la.classifier?.minConfidence],
+    ["classifier.minSecondsBetweenCalls", la.classifier?.minSecondsBetweenCalls],
+    ["outcome.windowSeconds", la.outcome?.windowSeconds],
+    ["outcome.confoundWindowSeconds", la.outcome?.confoundWindowSeconds],
+    ["feedback.promptDelaySeconds", la.feedback?.promptDelaySeconds],
+    ["scaffolding.fadeAfterIndependentScenarios", la.scaffolding?.fadeAfterIndependentScenarios],
+    ["exposure.maxClientClockSkewSeconds", la.exposure?.maxClientClockSkewSeconds],
+    ["exposure.maxEventsPerMinute", la.exposure?.maxEventsPerMinute],
+    ...rewardWeights.map(([k, v]) => [`rewards.${k}`, v] as [string, unknown]),
+  ];
+  for (const [key, value] of numeric) {
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) fail(`${key} must be a non-negative number`);
+  }
+  for (const [key, value] of [
+    ["contextGate.minConfidenceToAct", la.contextGate.minConfidenceToAct],
+    ["estimator.repetitionSimilarity", la.estimator.repetitionSimilarity],
+    ["classifier.minConfidence", la.classifier.minConfidence],
+  ] as const) {
+    if (value > 1) fail(`${key} must be at most 1`);
+  }
+  for (const [key, value] of [
+    ["classifier.enabled", la.classifier.enabled],
+    ["feedback.enabled", la.feedback.enabled],
+    ["scaffolding.requireCorroboratedNeed", la.scaffolding.requireCorroboratedNeed],
+  ] as const) {
+    if (typeof value !== "boolean") fail(`${key} must be true or false`);
+  }
+  if (la.groupOffers?.dismissal !== "per_member") fail('groupOffers.dismissal must be "per_member"');
+  if (!hasAdaptive) fail("requires adaptivePrivate settings");
+}
+
+/** The V2.3 settings of a policy, or null for policies that predate V2.3. */
+export function learningAwareOf(policy: InterventionPolicy | null | undefined): LearningAwarePolicy | null {
+  return policy?.learningAware ?? null;
 }
 
 function validateAdaptive(version: string, adaptive: AdaptivePrivatePolicy) {

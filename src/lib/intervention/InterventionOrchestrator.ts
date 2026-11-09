@@ -21,12 +21,23 @@ import {
   decisionEngine,
   type DecisionContext,
 } from "@/lib/intervention/InterventionDecisionEngine";
+import { estimatorAssessments, refineWithClassifier } from "@/lib/intervention/GroupStateEstimator";
 import {
   researchLogger,
   type EvaluationSource,
   type InterventionRow,
 } from "@/lib/intervention/InterventionResearchLogger";
-import { getPolicy, type InterventionPolicy } from "@/lib/intervention/policies";
+import { groupStateMemory } from "@/lib/intervention/learning/GroupStateMemory";
+import { learnerEvidence, learningAwareMemberState } from "@/lib/intervention/learning/LearnerEvidenceAggregator";
+import { decideLearningAwareOffer, type LearningAwareDecision } from "@/lib/intervention/learning/LearningAwarePrivateDecision";
+import { exposureService } from "@/lib/intervention/OfferExposureService";
+import { outcomeEvaluator } from "@/lib/intervention/OutcomeEvaluator";
+import {
+  getPolicy,
+  learningAwareOf,
+  type InterventionPolicy,
+  type LearningAwarePolicy,
+} from "@/lib/intervention/policies";
 import { listActiveRooms } from "@/lib/intervention/presence";
 import {
   FACILITATOR_PROMPT_VERSION,
@@ -41,14 +52,18 @@ import {
 import { EligibilityError, eligibilityGuard } from "@/lib/intervention/ResearchEligibilityGuard";
 import {
   isGroupSupportType,
+  isProgressFeedbackResponse,
   MANUAL_GROUP_SUPPORT_TYPES,
   type CollaborationSnapshot,
+  type EstimatedGroupState,
+  type ExposureKind,
   type FeedbackAction,
   type GroupSupportType,
   type InterventionDecision,
   type InterventionTrigger,
   type InterventionView,
   type PrivateOfferSupportType,
+  type ProgressFeedbackResponse,
 } from "@/lib/intervention/types";
 import { emitToGroup, emitToParticipant } from "@/lib/realtime/emit";
 import {
@@ -64,6 +79,7 @@ import {
   toInterventionView,
 } from "@/lib/services/interventions";
 import { getOrCreateAttempt } from "@/lib/services/sessions";
+import { logResearchEvent } from "@/lib/utils/export";
 import { getScenarioByOrder } from "@/lib/utils/scenarios";
 
 /**
@@ -115,6 +131,8 @@ export class InterventionOrchestrator {
   private readonly facilitator: GroupAIFacilitator;
   private readonly coach: PersonalInterventionCoach;
   private readonly classifier: DisagreementClassifier | null;
+  /** Last group-state classification per attempt (rate limit and reuse while nothing changed). */
+  private readonly classifierCache = new Map<string, { at: number; key: string; estimate: EstimatedGroupState }>();
 
   constructor(deps: OrchestratorDeps = {}) {
     this.clock = deps.clock ?? (() => new Date());
@@ -238,7 +256,8 @@ export class InterventionOrchestrator {
     if (shadowOnly && !policy.shadowMonitoringInPassiveConditions) return null;
 
     const now = this.now();
-    for (const row of expireStaleOffers(attempt.id, now)) this.broadcast(session, row, "intervention:state");
+    const learningAware = learningAwareOf(policy);
+    this.expireOffers(session, assignment, expireStaleOffers(attempt.id, now), now);
 
     const snapshot = loadSnapshot({ session, assignment, attempt, now, policy });
     const monitor = new CollaborationMonitor(policy);
@@ -246,28 +265,65 @@ export class InterventionOrchestrator {
       classifier: this.classifier,
       allowClassifier: !shadowOnly && isRealAiConfigured(),
     });
+    const watermark = activityWatermark(snapshot);
     const ctx = this.decisionContext(snapshot, policy, assignment);
+    let assessments = result.assessments;
+    let groupState: EstimatedGroupState | null = null;
+    if (learningAware) {
+      outcomeEvaluator.evaluateDue({
+        sessionId,
+        attemptId: attempt.id,
+        scenarioOrder,
+        policy,
+        activeParticipantIds: snapshot.activeParticipantIds,
+        now,
+        submittedAt: null,
+      });
+      groupState = groupStateMemory.estimate(session.code, snapshot, policy);
+      groupState = await this.refineGroupState(
+        attempt.id,
+        watermark,
+        groupState,
+        snapshot,
+        learningAware,
+        !shadowOnly && isRealAiConfigured()
+      );
+      assessments = [...assessments, ...estimatorAssessments(groupState, assessments, result.progress.state)];
+      ctx.groupState = groupState;
+      ctx.lastGroupDeliveredAt = groupStateMemory.lastGroupDeliveredAt(attempt.id);
+      ctx.ineffectiveTriggers = groupStateMemory.ineffectiveTriggers(attempt.id);
+    }
     // With adaptive private suggestions, one member's own "I'm unsure" is answered privately, not with a group prompt.
     const groupAssessments = capabilities.adaptivePrivate
-      ? result.assessments.filter((a) => !(a.trigger === "explicit_confusion" && a.participantId))
-      : result.assessments;
+      ? assessments.filter((a) => !(a.trigger === "explicit_confusion" && a.participantId))
+      : assessments;
     const decision = decisionEngine.decide(snapshot, groupAssessments, ctx);
-    const watermark = activityWatermark(snapshot);
     const logged = researchLogger.logDecision({
       sessionId,
       attemptId: attempt.id,
       scenarioOrder,
       source,
       decision,
-      assessments: result.assessments,
+      assessments,
       watermark,
       onlineCount: snapshot.onlineParticipantIds.length,
       activeMemberCount: snapshot.activeParticipantIds.length,
-      classifierModel: result.classifierModel,
-      classifierNote: result.classifierNote,
+      classifierModel: result.classifierModel ?? groupState?.classifierModel ?? null,
+      classifierNote: result.classifierNote ?? groupState?.classifierNote ?? null,
       shadowOnly,
       now,
     });
+    const estimateId = groupState
+      ? groupStateMemory.record({
+          sessionId,
+          attemptId: attempt.id,
+          scenarioOrder,
+          evaluationId: logged.evaluationId,
+          policyVersion: policy.version,
+          estimate: groupState,
+          now,
+        }).id
+      : null;
 
     let intervention: InterventionRow | null = null;
     if (decision.action === "offer") {
@@ -283,9 +339,49 @@ export class InterventionOrchestrator {
       });
     }
     if (capabilities.adaptivePrivate) {
-      await this.evaluateAdaptivePrivate({ session, assignment, attempt, policy, snapshot, monitor: result });
+      await this.evaluateAdaptivePrivate({
+        session,
+        assignment,
+        attempt,
+        policy,
+        snapshot,
+        monitor: result,
+        groupState,
+        estimateId,
+      });
     }
     return { decision, evaluationId: logged.evaluationId, collapsed: logged.collapsed, intervention };
+  }
+
+  /**
+   * Optional classification of an ambiguous disagreement, at most once per
+   * policy interval per attempt and reused while the discussion is unchanged.
+   */
+  private async refineGroupState(
+    attemptId: string,
+    watermark: string,
+    estimate: EstimatedGroupState,
+    snapshot: CollaborationSnapshot,
+    la: LearningAwarePolicy,
+    allowed: boolean
+  ): Promise<EstimatedGroupState> {
+    if (!allowed || !la.classifier.enabled || !this.classifier) return estimate;
+    const key = `${watermark}|${estimate.state}`;
+    const cached = this.classifierCache.get(attemptId);
+    const nowMs = Date.parse(snapshot.now);
+    if (cached?.key === key) return cached.estimate;
+    if (cached && nowMs - cached.at < la.classifier.minSecondsBetweenCalls * 1000) return estimate;
+    const refined = await refineWithClassifier(estimate, snapshot, this.classifier, la);
+    if (refined.classifierModel) this.classifierCache.set(attemptId, { at: nowMs, key, estimate: refined });
+    return refined;
+  }
+
+  /** Expired offers: broadcast, and (V2.3) record whether each member could have seen them. */
+  private expireOffers(session: Session, assignment: StudyAssignment, rows: InterventionRow[], now: string) {
+    for (const row of rows) {
+      this.broadcast(session, row, "intervention:state");
+      exposureService.recordExpiry(row, getActiveRosterIds(assignment), now);
+    }
   }
 
   private learnerRef(assignment: StudyAssignment, participantId: string, now: string): LearnerRef | null {
@@ -311,10 +407,22 @@ export class InterventionOrchestrator {
     policy: InterventionPolicy;
     snapshot: CollaborationSnapshot;
     monitor: MonitorResult;
+    groupState: EstimatedGroupState | null;
+    estimateId: string | null;
   }) {
     const { session, assignment, attempt, snapshot } = input;
     const adaptive = input.policy.adaptivePrivate;
     if (!adaptive) return;
+    if (learningAwareOf(input.policy)) {
+      for (const participantId of snapshot.activeParticipantIds) {
+        try {
+          await this.evaluateLearningAwarePrivate({ ...input, participantId });
+        } catch (error) {
+          console.error("Learning-aware private evaluation failed:", error);
+        }
+      }
+      return;
+    }
     for (const participantId of snapshot.activeParticipantIds) {
       const ref = this.learnerRef(assignment, participantId, snapshot.now)!;
       try {
@@ -338,6 +446,68 @@ export class InterventionOrchestrator {
     }
   }
 
+  /**
+   * policy-v2-3: due rewards first, then this member's own decision (offer or
+   * wait), which is always traced with its reason, tier and the group estimate.
+   */
+  private async evaluateLearningAwarePrivate(input: {
+    session: Session;
+    assignment: StudyAssignment;
+    attempt: Attempt;
+    policy: InterventionPolicy;
+    snapshot: CollaborationSnapshot;
+    monitor: MonitorResult;
+    groupState: EstimatedGroupState | null;
+    estimateId: string | null;
+    participantId: string;
+  }) {
+    const { session, assignment, attempt, policy, snapshot, participantId } = input;
+    const ref = learnerEvidence.ref(assignment, participantId, snapshot.now);
+    if (!ref) return;
+    learnerEvidence.reconcile(ref);
+    const ownConfusion = input.monitor.assessments.find(
+      (a) => a.trigger === "explicit_confusion" && a.participantId === participantId
+    );
+    if (ownConfusion) {
+      learnerEvidence.selfReportedDifficulty(ref, attempt.scenarioOrder, ownConfusion.evidenceMessageIds[0] ?? null);
+    }
+    if (!snapshot.onlineParticipantIds.includes(participantId)) return;
+    if (await checkV2PrivateSupportGate(assignment, participantId, attempt.scenarioOrder)) return;
+    const state = learnerEvidence.syncPace(ref, attempt.scenarioOrder);
+    const context = learnerEvidence.learningContext({
+      ref,
+      snapshot,
+      monitor: input.monitor,
+      groupState: input.groupState,
+      policyRecentWindowSeconds: policy.recentWindowSeconds,
+    });
+    let decision: LearningAwareDecision = decideLearningAwareOffer(state, context, ref.policy, ref.la, policy.version);
+    let interventionId: string | null = null;
+    if (decision.action === "offer") {
+      interventionId =
+        this.createAdaptiveOffer({ session, assignment, attempt, policy, participantId, decision, now: snapshot.now })?.id ??
+        null;
+      // Offers are idempotent per decision seed: an unchanged draw is never offered twice.
+      if (!interventionId) {
+        decision = {
+          action: "wait",
+          reasonCode: "already_offered_for_this_evidence",
+          tier: decision.tier,
+          move: "remain_silent",
+          evidence: decision.evidence,
+        };
+      }
+    }
+    learnerEvidence.logTrace({
+      ref,
+      attemptId: attempt.id,
+      scenarioOrder: attempt.scenarioOrder,
+      decision,
+      groupStateEstimateId: input.estimateId,
+      interventionId,
+    });
+  }
+
   private createAdaptiveOffer(input: {
     session: Session;
     assignment: StudyAssignment;
@@ -346,7 +516,7 @@ export class InterventionOrchestrator {
     participantId: string;
     decision: Extract<AdaptiveDecision, { action: "offer" }>;
     now: string;
-  }) {
+  }): InterventionRow | null {
     const { session, assignment, attempt, policy, participantId, decision, now } = input;
     const { row, created } = researchLogger.logOffer(
       {
@@ -374,7 +544,7 @@ export class InterventionOrchestrator {
       },
       { proactive: true, now }
     );
-    if (!created) return;
+    if (!created) return null;
     learnerStore.logDecision({
       sessionId: session.id,
       participantId,
@@ -383,15 +553,25 @@ export class InterventionOrchestrator {
       decision,
       now,
     });
+    exposureService.recordServer(row, [participantId], "server_created", now);
     this.broadcast(session, row, "intervention:offered");
+    return row;
   }
 
-  /** A Step 2 choice can settle an open popup outcome early (asking for more direct help). */
+  /** The member's learner: reward-v2-3 for policy-v2-3+ groups, the original V2 rules otherwise. */
+  private learnerFor(assignment: StudyAssignment, participantId: string, now: string) {
+    const learningRef = learnerEvidence.ref(assignment, participantId, now);
+    if (learningRef) return { learner: learnerEvidence, ref: learningRef as LearnerRef };
+    const ref = this.learnerRef(assignment, participantId, now);
+    return ref ? { learner: adaptiveLearner, ref } : null;
+  }
+
+  /** A Step 2 choice can settle an open popup outcome early (V2: asking for more direct help). */
   onStepTwoSelection(input: { assignment: StudyAssignment; participantId: string }) {
-    const ref = this.learnerRef(input.assignment, input.participantId, this.now());
-    if (!ref) return;
+    const target = this.learnerFor(input.assignment, input.participantId, this.now());
+    if (!target) return;
     try {
-      adaptiveLearner.reconcile(ref);
+      target.learner.reconcile(target.ref);
     } catch (error) {
       console.error("Adaptive learner update after Step 2 failed:", error);
     }
@@ -399,10 +579,10 @@ export class InterventionOrchestrator {
 
   /** The end-of-scenario "support amount" rating updates how often this member is offered help. */
   onSurveyRated(input: { assignment: StudyAssignment; participantId: string; scenarioOrder: number; supportAmount: unknown }) {
-    const ref = this.learnerRef(input.assignment, input.participantId, this.now());
-    if (!ref) return;
+    const target = this.learnerFor(input.assignment, input.participantId, this.now());
+    if (!target) return;
     try {
-      adaptiveLearner.surveyRated(ref, input.scenarioOrder, input.supportAmount);
+      target.learner.surveyRated(target.ref, input.scenarioOrder, input.supportAmount);
     } catch (error) {
       console.error("Adaptive learner update after the survey failed:", error);
     }
@@ -504,6 +684,12 @@ export class InterventionOrchestrator {
       { proactive: true, now }
     );
     if (!created) return row;
+    exposureService.recordServer(
+      row,
+      isGroup ? getActiveRosterIds(input.assignment) : decision.targetParticipantId ? [decision.targetParticipantId] : [],
+      "server_created",
+      now
+    );
     if (!isGroup && decision.targetParticipantId) {
       adaptiveEngine.ensureRecommendation({
         sessionId: session.id,
@@ -761,8 +947,11 @@ export class InterventionOrchestrator {
   }
 
   /**
-   * Group offers: the first member to accept makes the content public for all;
-   * the first to dismiss closes it for all; "Not now" only hides it for that member.
+   * Group offers: the first member to accept makes the content public for all
+   * (exactly one generation, through the atomic transition); "Not now" only hides
+   * it for that member. Dismissal closes it for everyone on older policies; from
+   * policy-v2-3 it only hides it for that member, and the offer closes once every
+   * active member has dismissed it (or it expires).
    * Private offers: only the recipient can respond.
    */
   async handlePrivateOfferResponse(input: {
@@ -805,6 +994,10 @@ export class InterventionOrchestrator {
       comment,
       now,
     });
+    const learningAware = learningAwareOf(policy);
+    if (learningAware && (action === "accepted" || action === "deferred" || action === "dismissed")) {
+      exposureService.recordServer(row, [participant.id], action satisfies ExposureKind, now);
+    }
 
     let current = row;
     if (action === "accepted") {
@@ -816,6 +1009,14 @@ export class InterventionOrchestrator {
       if (won) {
         this.broadcast(session, won, "intervention:state");
         current = await this.generateFor(session, assignment, won);
+      }
+    } else if (action === "dismissed" && row.scope === "group" && learningAware) {
+      if (this.everyActiveMemberDismissed(row.id, getActiveRosterIds(assignment))) {
+        const closed = researchLogger.transition(row.id, ["suggested", "deferred"], { status: "dismissed", resolvedAt: now });
+        if (closed) {
+          current = closed;
+          this.broadcast(session, closed, "intervention:state");
+        }
       }
     } else if (action === "dismissed") {
       const closed = researchLogger.transition(row.id, ["suggested", "deferred"], { status: "dismissed", resolvedAt: now });
@@ -835,10 +1036,10 @@ export class InterventionOrchestrator {
     }
 
     if (row.reasonCode === ADAPTIVE_REASON_CODE && ["accepted", "dismissed", "deferred"].includes(action)) {
-      const ref = this.learnerRef(assignment, participant.id, this.now());
-      if (ref) {
+      const target = this.learnerFor(assignment, participant.id, this.now());
+      if (target) {
         try {
-          adaptiveLearner.reconcile(ref);
+          target.learner.reconcile(target.ref);
         } catch (error) {
           console.error("Adaptive learner update after a response failed:", error);
         }
@@ -848,6 +1049,155 @@ export class InterventionOrchestrator {
     this.emitFeedback(session, row, participant.id, action);
     const fresh = db.select().from(schema.interventions).where(eq(schema.interventions.id, row.id)).get() ?? current;
     return this.viewFor(session, fresh, participant.id, policy);
+  }
+
+  /** Each active member's latest decision on this offer is "dismissed". */
+  private everyActiveMemberDismissed(interventionId: string, activeIds: string[]): boolean {
+    const latest = new Map<string, string>();
+    for (const f of db
+      .select()
+      .from(schema.interventionFeedback)
+      .where(eq(schema.interventionFeedback.interventionId, interventionId))
+      .all()
+      .filter((f) => ["accepted", "dismissed", "deferred"].includes(f.action))
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
+      latest.set(f.participantId, f.action);
+    }
+    return activeIds.length > 0 && activeIds.every((id) => latest.get(id) === "dismissed");
+  }
+
+  /**
+   * One-click "Did this help you make progress?" after delivered proactive
+   * support (policy-v2-3+). Voluntary, once per member and intervention; not an
+   * instrument item. Missing feedback stays missing.
+   */
+  async handleProgressFeedback(input: {
+    session: Session;
+    assignment: StudyAssignment;
+    participant: Participant;
+    interventionId: string;
+    response: unknown;
+  }): Promise<{ response: ProgressFeedbackResponse; duplicate: boolean }> {
+    const { session, assignment, participant } = input;
+    const policy = getPolicy(assignment.interventionPolicyVersion);
+    const learningAware = learningAwareOf(policy);
+    if (!learningAware?.feedback.enabled) {
+      throw new EligibilityError("Progress feedback is not part of this group's policy", "not_in_policy", 409);
+    }
+    if (!isProgressFeedbackResponse(input.response)) {
+      throw new EligibilityError("Unknown answer", "invalid_response", 400);
+    }
+    const row = db
+      .select()
+      .from(schema.interventions)
+      .where(and(eq(schema.interventions.id, input.interventionId), eq(schema.interventions.sessionId, session.id)))
+      .get();
+    if (!row || (row.scope === "individual" && row.recipientParticipantId !== participant.id)) {
+      throw new EligibilityError("Suggestion not found", "not_found", 404);
+    }
+    if (row.initiatedBy !== "system" || row.status !== "delivered") {
+      throw new EligibilityError("Feedback is only asked for delivered proactive support", "not_applicable", 409);
+    }
+    if (!getActiveRosterIds(assignment).includes(participant.id)) {
+      throw new EligibilityError("You are not an active member of this group", "not_in_roster", 403);
+    }
+    const attempt = db.select().from(schema.scenarioAttempts).where(eq(schema.scenarioAttempts.id, row.attemptId)).get();
+    if (attempt?.submitted) throw new EligibilityError("This scenario is finished", "scenario_submitted", 409);
+
+    const now = this.now();
+    const inserted = db
+      .insert(schema.interventionProgressFeedback)
+      .values({
+        sessionId: session.id,
+        interventionId: row.id,
+        participantId: participant.id,
+        scenarioOrder: row.scenarioOrder,
+        response: input.response,
+        policyVersion: row.policyVersion,
+        createdAt: now,
+      })
+      .onConflictDoNothing()
+      .returning()
+      .get();
+    if (!inserted) {
+      const existing = db
+        .select()
+        .from(schema.interventionProgressFeedback)
+        .where(
+          and(
+            eq(schema.interventionProgressFeedback.interventionId, row.id),
+            eq(schema.interventionProgressFeedback.participantId, participant.id)
+          )
+        )
+        .get();
+      return { response: (existing?.response ?? input.response) as ProgressFeedbackResponse, duplicate: true };
+    }
+    try {
+      const active = getActiveRosterIds(assignment);
+      outcomeEvaluator.amendWithFeedback(row.id, row.scope === "group" ? "group" : participant.id, policy, active, now);
+      if (row.reasonCode === ADAPTIVE_REASON_CODE) {
+        const ref = learnerEvidence.ref(assignment, participant.id, now);
+        if (ref) learnerEvidence.reconcile(ref);
+      }
+    } catch (error) {
+      console.error("Applying progress feedback failed:", error);
+    }
+    return { response: input.response, duplicate: false };
+  }
+
+  /** "Don't suggest again in this scenario" from the private popup (policy-v2-3+, proactive_adaptive). */
+  async stopProactiveForScenario(input: {
+    session: Session;
+    assignment: StudyAssignment;
+    participant: Participant;
+    scenarioOrder: number;
+    interventionId?: unknown;
+  }): Promise<{ stopped: true; intervention: InterventionView | null }> {
+    const { session, assignment, participant, scenarioOrder } = input;
+    const ref = learnerEvidence.ref(assignment, participant.id, this.now());
+    if (!ref) {
+      throw new EligibilityError("This option is not part of this group's study condition", "not_in_policy", 409);
+    }
+    const attempt = await getOrCreateAttempt(session.id, scenarioOrder);
+    if (attempt.submitted) throw new EligibilityError("This scenario is finished", "scenario_submitted", 409);
+    let view: InterventionView | null = null;
+    const interventionId = typeof input.interventionId === "string" ? input.interventionId : null;
+    if (interventionId) {
+      const row = db
+        .select()
+        .from(schema.interventions)
+        .where(and(eq(schema.interventions.id, interventionId), eq(schema.interventions.sessionId, session.id)))
+        .get();
+      if (!row || row.recipientParticipantId !== participant.id || row.reasonCode !== ADAPTIVE_REASON_CODE) {
+        throw new EligibilityError("Suggestion not found", "not_found", 404);
+      }
+      if (row.status === "suggested") {
+        view = await this.handlePrivateOfferResponse({ session, assignment, participant, interventionId, action: "dismissed" });
+      }
+    }
+    learnerEvidence.stopForScenario(ref, scenarioOrder, interventionId);
+    await logResearchEvent(session.id, "adaptive_private_stopped_for_scenario", { scenarioOrder }, participant.id);
+    return { stopped: true, intervention: view };
+  }
+
+  /** Client-observed exposure of an offer (policy-v2-3+); validation lives in the exposure service. */
+  recordClientExposure(input: {
+    session: Session;
+    assignment: StudyAssignment;
+    participant: Participant;
+    interventionId: string;
+    kind: unknown;
+    clientAt: unknown;
+  }) {
+    return exposureService.recordClient({
+      assignment: input.assignment,
+      sessionId: input.session.id,
+      participantId: input.participant.id,
+      interventionId: input.interventionId,
+      kind: input.kind,
+      clientAt: input.clientAt,
+      now: this.now(),
+    });
   }
 
   /** Everything a member may see for a scenario: group items + own private items. */
@@ -864,7 +1214,12 @@ export class InterventionOrchestrator {
       )
       .get();
     const capabilities = capabilitiesFor(conditionOf(input.assignment));
-    if (attempt) expireStaleOffers(attempt.id, this.now());
+    if (attempt) {
+      const now = this.now();
+      for (const row of expireStaleOffers(attempt.id, now)) {
+        exposureService.recordExpiry(row, getActiveRosterIds(input.assignment), now);
+      }
+    }
     return {
       interventions: attempt
         ? listVisibleInterventions(attempt.id, input.participantId, input.session.id, policy.deferSeconds)
@@ -873,6 +1228,7 @@ export class InterventionOrchestrator {
       checkpoints: input.assignment.features.checkpoints
         ? await listCheckpointViews(input.session.id, input.scenarioOrder)
         : [],
+      learningAware: learningAwareMemberState(input.assignment, input.participantId, input.scenarioOrder),
     };
   }
 
@@ -897,22 +1253,48 @@ export class InterventionOrchestrator {
         )
       )
       .all();
-    for (const row of open) {
-      const expired = researchLogger.transition(row.id, ["suggested", "deferred"], { status: "expired", resolvedAt: now });
-      if (expired) this.broadcast(session, expired, "intervention:state");
-    }
-
     const assignment = db
       .select()
       .from(schema.studyAssignments)
       .where(eq(schema.studyAssignments.sessionId, input.sessionId))
       .get();
+    const expired = open.flatMap(
+      (row) => researchLogger.transition(row.id, ["suggested", "deferred"], { status: "expired", resolvedAt: now }) ?? []
+    );
+    if (assignment) this.expireOffers(session, assignment, expired, now);
+    else for (const row of expired) this.broadcast(session, row, "intervention:state");
     if (!assignment) return;
+
+    const policy = getPolicy(assignment.interventionPolicyVersion);
+    if (learningAwareOf(policy)) {
+      const attempt = db
+        .select()
+        .from(schema.scenarioAttempts)
+        .where(
+          and(eq(schema.scenarioAttempts.sessionId, input.sessionId), eq(schema.scenarioAttempts.scenarioOrder, input.scenarioOrder))
+        )
+        .get();
+      if (attempt) {
+        try {
+          outcomeEvaluator.evaluateDue({
+            sessionId: input.sessionId,
+            attemptId: attempt.id,
+            scenarioOrder: input.scenarioOrder,
+            policy,
+            activeParticipantIds: getActiveRosterIds(assignment),
+            now,
+            submittedAt: now,
+          });
+        } catch (error) {
+          console.error("Outcome evaluation after submission failed:", error);
+        }
+      }
+    }
     for (const participantId of getActiveRosterIds(assignment)) {
-      const ref = this.learnerRef(assignment, participantId, now);
-      if (!ref) return;
+      const target = this.learnerFor(assignment, participantId, now);
+      if (!target) return;
       try {
-        adaptiveLearner.scenarioFinished(ref, input.scenarioOrder);
+        target.learner.scenarioFinished(target.ref, input.scenarioOrder);
       } catch (error) {
         console.error("Adaptive learner update after submission failed:", error);
       }

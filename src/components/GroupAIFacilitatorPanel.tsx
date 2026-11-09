@@ -1,8 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { InterventionFeedbackControls } from "@/components/InterventionFeedbackControls";
-import type { FeedbackAction, InterventionView, SharedIdeaView } from "@/lib/intervention/types";
+import { ProgressFeedbackPrompt } from "@/components/ProgressFeedbackPrompt";
+import type {
+  ClientExposureKind,
+  FeedbackAction,
+  InterventionView,
+  LearningAwareMemberState,
+  ProgressFeedbackResponse,
+  SharedIdeaView,
+} from "@/lib/intervention/types";
 
 function time(iso: string | null) {
   return iso ? new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
@@ -10,6 +18,21 @@ function time(iso: string | null) {
 
 function isHiddenForMe(view: InterventionView, now: number) {
   return view.myFeedback === "deferred" && !!view.deferredUntil && Date.parse(view.deferredUntil) > now;
+}
+
+/** Per-member dismissal (policy-v2-3+): the offer stays open for the others. */
+function isDismissedByMe(view: InterventionView, perMember: boolean) {
+  return perMember && view.myFeedback === "dismissed" && (view.status === "suggested" || view.status === "deferred");
+}
+
+function tracksExposure(view: InterventionView, now: number, perMember: boolean) {
+  if (view.initiatedBy !== "system") return false;
+  if (view.status === "delivered") return true;
+  return (
+    (view.status === "suggested" || view.status === "deferred") &&
+    !isHiddenForMe(view, now) &&
+    !isDismissedByMe(view, perMember)
+  );
 }
 
 function facilitatorCardClass(status: InterventionView["status"]) {
@@ -40,6 +63,9 @@ export function GroupAIFacilitatorPanel({
   onRequest,
   onRespond,
   onViewed,
+  learningAware = null,
+  onExposure,
+  onProgressFeedback,
 }: {
   items: InterventionView[];
   sharedIdeas: SharedIdeaView[];
@@ -50,7 +76,12 @@ export function GroupAIFacilitatorPanel({
   onRequest: (supportType: string) => void;
   onRespond: (id: string, action: FeedbackAction) => void;
   onViewed: (id: string) => void;
+  learningAware?: LearningAwareMemberState | null;
+  onExposure?: (id: string, kind: ClientExposureKind) => void;
+  onProgressFeedback?: (id: string, response: ProgressFeedbackResponse) => void;
 }) {
+  const perMember = learningAware?.dismissal === "per_member";
+  const listRef = useRef<HTMLOListElement>(null);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 5000);
@@ -59,9 +90,40 @@ export function GroupAIFacilitatorPanel({
 
   useEffect(() => {
     for (const item of items) {
-      if (item.status === "suggested" && !isHiddenForMe(item, now)) onViewed(item.id);
+      if (item.status === "suggested" && !isHiddenForMe(item, now) && !isDismissedByMe(item, perMember)) {
+        onViewed(item.id);
+      }
     }
-  }, [items, now, onViewed]);
+  }, [items, now, onViewed, perMember]);
+
+  // policy-v2-3: an offer counts as displayed only when at least half of its card is on screen in a visible tab.
+  useEffect(() => {
+    const root = listRef.current;
+    if (!learningAware?.enabled || !onExposure || !root || typeof IntersectionObserver === "undefined") return;
+    const onScreen = new Set<string>();
+    const report = () => {
+      if (document.visibilityState !== "visible") return;
+      for (const id of onScreen) onExposure(id, "client_displayed_in_viewport");
+    };
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const id = (entry.target as HTMLElement).dataset.exposureId;
+          if (!id) continue;
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.5) onScreen.add(id);
+          else onScreen.delete(id);
+        }
+        report();
+      },
+      { threshold: [0, 0.5, 1] }
+    );
+    root.querySelectorAll<HTMLElement>("[data-exposure-id]").forEach((element) => observer.observe(element));
+    document.addEventListener("visibilitychange", report);
+    return () => {
+      observer.disconnect();
+      document.removeEventListener("visibilitychange", report);
+    };
+  }, [items, now, learningAware?.enabled, onExposure]);
 
   const timeline = [
     ...items.map((item) => ({ kind: "intervention" as const, at: item.createdAt, item })),
@@ -82,7 +144,7 @@ export function GroupAIFacilitatorPanel({
       </p>
 
       {timeline.length === 0 && <p className="mt-4 text-sm text-slate-500">Nothing here yet.</p>}
-      <ol className="mt-4 space-y-3">
+      <ol ref={listRef} className="mt-4 space-y-3">
         {timeline.map((entry) => {
           if (entry.kind === "idea") {
             const { idea } = entry;
@@ -104,19 +166,29 @@ export function GroupAIFacilitatorPanel({
               ? `Requested by ${item.requestedByName ?? "a member"}`
               : "Suggested by the facilitator";
           return (
-            <li key={item.id} className={facilitatorCardClass(item.status)}>
+            <li
+              key={item.id}
+              id={`facilitator-item-${item.id}`}
+              tabIndex={-1}
+              data-exposure-id={tracksExposure(item, now, perMember) ? item.id : undefined}
+              className={`${facilitatorCardClass(item.status)} focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500`}
+            >
               <p className="text-xs font-medium text-violet-900">
                 {time(item.createdAt)} · <strong>AI facilitator</strong> · {item.supportLabel} · {origin}
                 {item.aiOrigin === "mock" && " · demo text (no AI service)"}
               </p>
               {(item.status === "suggested" || item.status === "deferred") &&
-                (isHiddenForMe(item, now) ? (
+                (isDismissedByMe(item, perMember) ? (
+                  <p className="mt-2 text-sm text-slate-500">You dismissed this suggestion. It stays hidden for you.</p>
+                ) : isHiddenForMe(item, now) ? (
                   <p className="mt-2 text-sm text-slate-500">You chose &quot;Not now&quot;. This will show again shortly.</p>
                 ) : (
                   <>
                     <p className="mt-2 text-sm text-slate-800">{item.offerText}</p>
                     <p className="mt-1 text-xs text-slate-500">
-                      If one member opens it, everyone sees it. If one member dismisses it, it closes for everyone.
+                      {perMember
+                        ? "If one member opens it, everyone sees it. Dismissing it only hides it for you."
+                        : "If one member opens it, everyone sees it. If one member dismisses it, it closes for everyone."}
                     </p>
                     <InterventionFeedbackControls
                       view={item}
@@ -133,9 +205,21 @@ export function GroupAIFacilitatorPanel({
                 <>
                   <p className="mt-2 text-sm whitespace-pre-line text-slate-900">{item.content}</p>
                   <InterventionFeedbackControls view={item} acceptLabel="" busy={busy} onRespond={onRespond} />
+                  {onProgressFeedback && !locked && (
+                    <ProgressFeedbackPrompt
+                      item={item}
+                      learningAware={learningAware}
+                      busy={busy}
+                      onAnswer={onProgressFeedback}
+                    />
+                  )}
                 </>
               )}
-              {item.status === "dismissed" && <p className="mt-2 text-sm text-slate-500">A member dismissed this suggestion.</p>}
+              {item.status === "dismissed" && (
+                <p className="mt-2 text-sm text-slate-500">
+                  {perMember ? "Every member dismissed this suggestion." : "A member dismissed this suggestion."}
+                </p>
+              )}
               {item.status === "expired" && <p className="mt-2 text-sm text-slate-500">This suggestion expired.</p>}
               {item.status === "failed" && (
                 <p className="mt-2 text-sm text-amber-800">

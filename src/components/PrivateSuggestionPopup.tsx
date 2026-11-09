@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { FeedbackAction, InterventionView } from "@/lib/intervention/types";
+import { ProgressFeedbackPrompt } from "@/components/ProgressFeedbackPrompt";
+import type {
+  ClientExposureKind,
+  FeedbackAction,
+  InterventionView,
+  LearningAwareMemberState,
+  ProgressFeedbackResponse,
+} from "@/lib/intervention/types";
 
 type Respond = (id: string, action: FeedbackAction) => void;
 
@@ -16,12 +23,18 @@ export function PrivateSuggestionPopup({
   busy,
   onRespond,
   onViewed,
+  learningAware = null,
+  onExposure,
+  onStop,
 }: {
   items: InterventionView[];
   locked: boolean;
   busy: string | null;
   onRespond: Respond;
   onViewed: (id: string) => void;
+  learningAware?: LearningAwareMemberState | null;
+  onExposure?: (id: string, kind: ClientExposureKind) => void;
+  onStop?: (id: string) => void;
 }) {
   const [opened, setOpened] = useState<string[]>([]);
   const [closed, setClosed] = useState<string[]>([]);
@@ -45,6 +58,8 @@ export function PrivateSuggestionPopup({
       }}
       onRespond={onRespond}
       onClose={() => setClosed((current) => [...current, shown.id])}
+      onExposure={learningAware?.enabled ? onExposure : undefined}
+      onStop={learningAware?.enabled ? onStop : undefined}
     />
   );
 }
@@ -55,16 +70,31 @@ function SuggestionCard({
   onAccept,
   onRespond,
   onClose,
+  onExposure,
+  onStop,
 }: {
   item: InterventionView;
   busy: string | null;
   onAccept: () => void;
   onRespond: Respond;
   onClose: () => void;
+  onExposure?: (id: string, kind: ClientExposureKind) => void;
+  onStop?: (id: string) => void;
 }) {
   const [showWhy, setShowWhy] = useState(false);
   const pending = busy?.startsWith(`${item.id}:`) ?? false;
   const titleId = `suggestion-${item.id}`;
+
+  // The card is fixed on screen, so it is displayed whenever the tab itself is visible.
+  useEffect(() => {
+    if (!onExposure || item.status !== "suggested") return;
+    const report = () => {
+      if (document.visibilityState === "visible") onExposure(item.id, "client_displayed_in_viewport");
+    };
+    report();
+    document.addEventListener("visibilitychange", report);
+    return () => document.removeEventListener("visibilitychange", report);
+  }, [item.id, item.status, onExposure]);
 
   return (
     <div
@@ -107,6 +137,16 @@ function SuggestionCard({
               No thanks
             </button>
           </div>
+          {onStop && (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => onStop(item.id)}
+              className="mt-2 block text-xs text-slate-600 underline hover:text-slate-800 disabled:opacity-50"
+            >
+              Don&apos;t suggest again in this scenario
+            </button>
+          )}
         </>
       )}
 
@@ -153,7 +193,19 @@ function SuggestionCard({
 }
 
 /** Read-only copy in Step 2 of the pop-up help this member accepted. Not an extra option. */
-export function AcceptedSuggestions({ items }: { items: InterventionView[] }) {
+export function AcceptedSuggestions({
+  items,
+  learningAware = null,
+  locked = false,
+  busy = null,
+  onProgressFeedback,
+}: {
+  items: InterventionView[];
+  learningAware?: LearningAwareMemberState | null;
+  locked?: boolean;
+  busy?: string | null;
+  onProgressFeedback?: (id: string, response: ProgressFeedbackResponse) => void;
+}) {
   const delivered = items.filter((item) => item.status === "delivered" && item.content);
   if (delivered.length === 0) return null;
   return (
@@ -168,6 +220,9 @@ export function AcceptedSuggestions({ items }: { items: InterventionView[] }) {
               {item.aiOrigin === "mock" && " · demo text (no AI service)"}
             </p>
             <p className="mt-1 text-sm whitespace-pre-line text-slate-900">{item.content}</p>
+            {onProgressFeedback && !locked && (
+              <ProgressFeedbackPrompt item={item} learningAware={learningAware} busy={busy} onAnswer={onProgressFeedback} />
+            )}
           </li>
         ))}
       </ul>

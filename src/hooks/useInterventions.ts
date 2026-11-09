@@ -1,12 +1,15 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { RealtimeEventName } from "@/hooks/useCollaboration";
 import { participantHeaders } from "@/lib/client/participant";
 import type {
   CheckpointView,
+  ClientExposureKind,
   FeedbackAction,
   InterventionView,
+  LearningAwareMemberState,
+  ProgressFeedbackResponse,
   SharedIdeaView,
 } from "@/lib/intervention/types";
 
@@ -20,6 +23,7 @@ interface InitialState {
   sharedIdeas: SharedIdeaView[];
   checkpoints: CheckpointView[];
   roles: ChosenRole[];
+  learningAware?: LearningAwareMemberState | null;
 }
 
 function byTime<T extends { createdAt: string }>(items: T[]): T[] {
@@ -51,7 +55,10 @@ export function useInterventions({
   const [roles, setRoles] = useState<ChosenRole[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [learningAware, setLearningAware] = useState<LearningAwareMemberState | null>(null);
   const viewedRef = useRef(new Set<string>());
+  const exposedRef = useRef(new Set<string>());
+  const learningAwareRef = useRef(false);
   const [loadedInitial, setLoadedInitial] = useState<InitialState | null>(null);
 
   if (initial !== loadedInitial) {
@@ -61,8 +68,28 @@ export function useInterventions({
       setSharedIdeas(byTime(initial.sharedIdeas));
       setCheckpoints(byTime(initial.checkpoints));
       setRoles(initial.roles);
+      setLearningAware(initial.learningAware ?? null);
     }
   }
+
+  useEffect(() => {
+    learningAwareRef.current = Boolean(learningAware?.enabled);
+  }, [learningAware]);
+
+  /** policy-v2-3: what this member's client observed about an offer (once per kind and page load). */
+  const reportExposure = useCallback(
+    (id: string, kind: ClientExposureKind) => {
+      const key = `${id}:${kind}`;
+      if (!participantId || !learningAwareRef.current || exposedRef.current.has(key)) return;
+      exposedRef.current.add(key);
+      void fetch(`/api/sessions/${sessionCode}/interventions/${id}/exposure`, {
+        method: "POST",
+        headers: participantHeaders(),
+        body: JSON.stringify({ participantId, kind, clientAt: new Date().toISOString() }),
+      }).catch(() => undefined);
+    },
+    [sessionCode, participantId]
+  );
 
   /** Broadcast payloads carry no per-member feedback, so keep this member's own. */
   const mergeView = useCallback((view: InterventionView) => {
@@ -82,7 +109,10 @@ export function useInterventions({
         case "intervention:delivered":
         case "intervention:state": {
           const view = payload as InterventionView;
-          if (view?.scenarioOrder === scenarioOrder) mergeView(view);
+          if (view?.scenarioOrder === scenarioOrder) {
+            mergeView(view);
+            if (event === "intervention:offered") reportExposure(view.id, "socket_delivered");
+          }
           break;
         }
         case "ideas:shared": {
@@ -106,7 +136,7 @@ export function useInterventions({
           break;
       }
     },
-    [scenarioOrder, mergeView]
+    [scenarioOrder, mergeView, reportExposure]
   );
 
   const reload = useCallback(async () => {
@@ -120,6 +150,7 @@ export function useInterventions({
     setItems(byTime(data.interventions ?? []));
     setSharedIdeas(byTime(data.sharedIdeas ?? []));
     setCheckpoints(byTime(data.checkpoints ?? []));
+    setLearningAware(data.learningAware ?? null);
   }, [sessionCode, scenarioOrder, participantId]);
 
   const post = useCallback(
@@ -176,6 +207,28 @@ export function useInterventions({
     [sessionCode, participantId]
   );
 
+  /** One-click "Did this help you make progress?" (voluntary, once per suggestion). */
+  const sendProgressFeedback = async (id: string, response: ProgressFeedbackResponse) => {
+    const data = await post(`/api/sessions/${sessionCode}/interventions/${id}/progress`, { response }, `${id}:progress`);
+    if (data?.response) {
+      setLearningAware((current) =>
+        current ? { ...current, progressFeedback: { ...current.progressFeedback, [id]: data.response } } : current
+      );
+    }
+  };
+
+  /** "Don't suggest again in this scenario" (private suggestions only). */
+  const stopForScenario = async (interventionId: string | null) => {
+    const data = await post(
+      `/api/sessions/${sessionCode}/interventions`,
+      { kind: "stop_proactive_for_scenario", interventionId },
+      interventionId ? `${interventionId}:stop` : "stop"
+    );
+    if (!data?.stopped) return;
+    if (data.intervention) setItems((current) => upsertById(current, data.intervention));
+    setLearningAware((current) => (current ? { ...current, proactiveStopped: true } : current));
+  };
+
   const collaborate = (action: string, body: Record<string, unknown>) =>
     post(`/api/sessions/${sessionCode}/collaboration`, { action, ...body }, action);
 
@@ -213,5 +266,9 @@ export function useInterventions({
     raiseCheckpoint,
     chooseRole,
     collaborate,
+    learningAware,
+    reportExposure,
+    sendProgressFeedback,
+    stopForScenario,
   };
 }

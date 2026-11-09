@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { describeModelConfig } from "@/lib/ai/provider";
-import { getPolicy, listPolicyVersions } from "@/lib/intervention/policies";
+import { isOpenRubricEnabled } from "@/lib/intervention/learning/OpenAnswerRubric";
+import { CURRENT_POLICY_VERSION, getPolicy, listPolicyVersions } from "@/lib/intervention/policies";
 import {
   ASSIGNABLE_RESEARCH_CONDITIONS,
   readReleaseConfig,
@@ -9,6 +10,7 @@ import {
 import { getSessionByCode } from "@/lib/services/sessions";
 import { isAdminRequest } from "@/lib/utils/admin";
 import { buildV2Dashboard } from "@/lib/utils/exportV2";
+import { buildV23Dashboard } from "@/lib/utils/exportV23";
 
 /**
  * Without `session`: the V2 release configuration (no secrets).
@@ -30,10 +32,13 @@ export async function GET(request: Request) {
           consentVersion: STUDY_PROTOCOL.consent.version,
         },
         conditions: ASSIGNABLE_RESEARCH_CONDITIONS,
+        currentPolicyVersion: CURRENT_POLICY_VERSION,
+        openAnswerRubricEnabled: isOpenRubricEnabled(),
         policies: listPolicyVersions().map((version) => ({
           version,
           testOnly: getPolicy(version).testOnly,
           status: getPolicy(version).status,
+          learningAware: Boolean(getPolicy(version).learningAware),
         })),
       });
     }
@@ -41,7 +46,7 @@ export async function GET(request: Request) {
     if (!session) return NextResponse.json({ error: `Group ${code} not found` }, { status: 404 });
     const dashboard = buildV2Dashboard(session.id);
     if (!dashboard) return NextResponse.json({ legacy: true, group: session.code });
-    return NextResponse.json(dashboard);
+    return NextResponse.json({ ...dashboard, learningAware: buildV23Dashboard(session.id) });
   } catch (error) {
     console.error("Admin interventions error:", error);
     return NextResponse.json({ error: "Failed to load the intervention summary" }, { status: 500 });

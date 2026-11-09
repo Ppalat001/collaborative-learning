@@ -7,6 +7,8 @@ import {
   ROLE_CARDS,
   type CheckpointKind,
 } from "@/lib/intervention/GroupDiscussionCoordinator";
+import { learningAwareMemberState } from "@/lib/intervention/learning/LearnerEvidenceAggregator";
+import { exposureService } from "@/lib/intervention/OfferExposureService";
 import { getOnlineParticipantIds, getOnlineSince } from "@/lib/intervention/presence";
 import { getPolicy, type InterventionPolicy } from "@/lib/intervention/policies";
 import { GROUP_SUPPORT_LABELS, PRIVATE_OFFER_LABELS } from "@/lib/intervention/prompts";
@@ -492,7 +494,9 @@ export async function getScenarioV2State(input: {
   const features = assignment.features;
   const roster = assignment.frozenRosterIds ?? [];
   const now = new Date().toISOString();
-  expireStaleOffers(attempt.id, now);
+  for (const row of expireStaleOffers(attempt.id, now)) {
+    exposureService.recordExpiry(row, getActiveRosterIds(assignment), now);
+  }
 
   const roles = features.roles
     ? {
@@ -548,6 +552,7 @@ export async function getScenarioV2State(input: {
       : [],
     privateOptIn: capabilities.proactivePrivate && participantId ? getPrivateOptIn(participantId) : null,
     recommendation,
+    learningAware: learningAwareMemberState(assignment, participantId, scenario.order),
   };
 }
 

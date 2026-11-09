@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DiscussionChat } from "@/components/DiscussionChat";
 import { GroupAIFacilitatorPanel } from "@/components/GroupAIFacilitatorPanel";
+import { GroupSuggestionIndicator } from "@/components/GroupSuggestionIndicator";
 import { GroupAnswerEditor, GroupAnswerNote } from "@/components/GroupAnswerEditor";
 import { GroupDiscussionStarter } from "@/components/GroupDiscussionStarter";
 import { MetacognitionPrompt, type MetacognitionAnswers } from "@/components/MetacognitionPrompt";
@@ -174,6 +175,7 @@ export function ScenarioView({
             sharedIdeas: v2.sharedIdeas,
             checkpoints: v2.checkpoints?.raised ?? [],
             roles: v2.roles?.chosen ?? [],
+            learningAware: v2.learningAware ?? null,
           }
         : null,
     [v2]
@@ -428,6 +430,9 @@ export function ScenarioView({
               : null
           }
         />
+        {v2 && showFacilitator && interventions.learningAware?.enabled && !submitted && (
+          <GroupSuggestionIndicator items={interventions.groupItems} onExposure={interventions.reportExposure} />
+        )}
       </Step>
 
       {v2 && showFacilitator && (
@@ -441,6 +446,9 @@ export function ScenarioView({
           onRequest={interventions.requestGroupHelp}
           onRespond={interventions.respond}
           onViewed={interventions.markViewed}
+          learningAware={interventions.learningAware}
+          onExposure={interventions.reportExposure}
+          onProgressFeedback={interventions.sendProgressFeedback}
         />
       )}
 
@@ -474,7 +482,13 @@ export function ScenarioView({
             onToggle={toggleSupport}
           />
         </div>
-        <AcceptedSuggestions items={suggestions} />
+        <AcceptedSuggestions
+          items={suggestions}
+          learningAware={interventions.learningAware}
+          locked={submitted}
+          busy={interventions.busy}
+          onProgressFeedback={interventions.sendProgressFeedback}
+        />
         {v2?.capabilities.sharing && !submitted && (
           <ShareIdeaControl
             sources={shareSources}
@@ -546,6 +560,9 @@ export function ScenarioView({
           busy={interventions.busy}
           onRespond={interventions.respond}
           onViewed={interventions.markViewed}
+          learningAware={interventions.learningAware}
+          onExposure={interventions.reportExposure}
+          onStop={(id) => void interventions.stopForScenario(id)}
         />
       )}
     </div>
