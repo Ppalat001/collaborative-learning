@@ -14,15 +14,13 @@ export function NoExternalCallsNote({
       >
         {forTest ? (
           <>
-            <strong>This test is individual.</strong> Answer on your own, with no Skype,
-            Zoom, messaging, other people or AI tools. Outside help would distort the
-            outcome and the metrics, both for you and for your group.
+            <strong>Please complete this test on your own.</strong> Do not ask other
+            people or AI tools for help.
           </>
         ) : (
           <>
-            <strong>No external calls.</strong> Do not use Skype, Zoom, Teams, WhatsApp or
-            similar during this study. All group talk stays in this platform&apos;s chat, so
-            the outcome and the metrics stay accurate for the group and for each of you.
+            <strong>Please use only this platform&apos;s group chat.</strong> Do not call
+            or message anyone outside the platform during the study.
           </>
         )}
       </p>
@@ -35,25 +33,21 @@ export function NoExternalCallsNote({
       aria-labelledby="no-external-calls-title"
     >
       <h2 id="no-external-calls-title" className="font-semibold text-amber-900">
-        Important: no external calls or messaging during the whole study
+        Please use only this platform
       </h2>
       <p className="mt-2 text-sm text-amber-900">
-        From the pre-test until the end of the study, please do <strong>not</strong> use
-        any external calls or messaging with your group or anyone else (for example Skype,
-        Zoom, Microsoft Teams, Google Meet, WhatsApp, Discord or phone calls).
+        Please do not call or message anyone outside the platform during the study.
       </p>
       <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-amber-900">
         <li>
-          The <strong>pre-test and post-test</strong> are individual: answer them on your
-          own, without help from others or from AI tools.
+          Complete the <strong>pre-test and post-test on your own</strong>, without help
+          from other people or AI tools.
         </li>
         <li>
-          During the scenarios, <strong>all group communication happens in the
-          platform&apos;s group chat</strong>.
+          During the scenarios, use only the <strong>group chat in this platform</strong>.
         </li>
         <li>
-          Outside communication is not recorded, so it would distort the outcome and the
-          metrics of this study, both for your group and for each of you individually.
+          Outside communication is not recorded and may affect the study results.
         </li>
       </ul>
     </section>

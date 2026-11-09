@@ -12,7 +12,6 @@ interface ConsentDocument {
   checkboxes: { id: string; text: string }[];
   contact: string;
   withdrawal: string;
-  draft: boolean;
 }
 
 /** One participant's own consent on their own device (V2 groups). */
@@ -81,15 +80,7 @@ export function ResearchConsentForm({
   return (
     <section className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-6">
       <h2 className="font-semibold text-slate-900">{doc.title}</h2>
-      <p className="mt-1 text-xs text-slate-500">
-        Each member confirms this for themselves. Consent version {doc.version}; information sheet{" "}
-        {doc.informationSheetVersion}.
-      </p>
-      {doc.draft && (
-        <p className="mt-2 rounded-lg bg-amber-100 px-3 py-2 text-xs font-medium text-amber-900">
-          Draft wording: this consent text has not been finalised by the researcher yet.
-        </p>
-      )}
+      <p className="mt-1 text-sm text-slate-600">Please read this and confirm for yourself.</p>
       <div className="mt-3 space-y-2 text-sm text-slate-700">
         {doc.paragraphs.map((paragraph) => (
           <p key={paragraph}>{paragraph}</p>

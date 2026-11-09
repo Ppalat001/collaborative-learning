@@ -4,22 +4,22 @@
   "consent": {
     "version": "consent-v2-draft-1",
     "informationSheetVersion": "info-sheet-v2-draft-1",
-    "title": "Your consent to take part",
+    "title": "Before you take part",
     "paragraphs": [
-      "This activity is part of a master's dissertation study on how and when an AI assistant should support small groups that learn together.",
-      "If you agree, the study records what you type on this platform: your test answers, your group chat messages, your edits to the shared group answer, the AI support you choose or accept, your responses to AI suggestions (for example accepting or dismissing them), and your questionnaire answers. Times are recorded in UTC.",
-      "AI processing: when you or your group ask for AI support, or accept an AI suggestion, the scenario, the relevant recorded group chat and the current shared answer are sent to the configured AI provider to generate a reply. Names are replaced by labels such as \"Member A\" where possible. The provider is asked not to store the request.",
-      "Private and shared AI: support you choose in \"AI support (just for you)\" is private; other members never see it unless you explicitly share an idea. Items in the \"Shared group facilitator\" panel are visible to everyone in your group.",
-      "Your group sees your nickname. Research data is analysed under an anonymous code, but nicknames are not full anonymity.",
-      "Taking part is voluntary. You can stop at any time and you can withdraw your consent using the link in the lobby. Withdrawal is recorded; how already collected data is handled follows the approved study protocol described in the information sheet."
+      "This study looks at how AI can support people learning in small groups.",
+      "If you take part, we will record what you do in this platform, including your test and questionnaire answers, group messages, edits, and use of AI support.",
+      "When AI help is requested, the task, relevant group chat, and shared answer may be sent to the AI provider. Names are replaced with labels such as \"Member A\" where possible.",
+      "Private AI help stays private unless you choose to share it. Group facilitator suggestions are visible to your group.",
+      "Your group can see your nickname, but your research data uses an anonymous code.",
+      "Taking part is your choice. You can stop or withdraw at any time."
     ],
     "checkboxes": [
-      { "id": "read_information", "text": "I have read the information above and the information sheet for this study." },
-      { "id": "ai_processing", "text": "I understand that my group's chat and shared answer may be processed by an AI provider when AI support is requested or accepted." },
-      { "id": "voluntary", "text": "I take part voluntarily and know I can stop or withdraw." }
+      { "id": "read_information", "text": "I have read and understood the study information." },
+      { "id": "ai_processing", "text": "I understand that relevant group content may be sent to an AI provider when help is requested." },
+      { "id": "voluntary", "text": "I agree to take part and know I can stop at any time." }
     ],
-    "contact": "Researcher contact: [to be inserted from the approved information sheet]",
-    "withdrawal": "To withdraw, click \"Withdraw my consent\" in the lobby or contact the researcher. Withdrawal is recorded and your later data is not collected."
+    "contact": "If you have questions, please contact the study researcher.",
+    "withdrawal": "To withdraw, select \"Withdraw my consent\" in the lobby. We will stop collecting new data from you."
   },
   "groupSize": {
     "min": 2,
