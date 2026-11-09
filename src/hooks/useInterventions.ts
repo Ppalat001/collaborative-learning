@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RealtimeEventName } from "@/hooks/useCollaboration";
 import { participantHeaders } from "@/lib/client/participant";
 import type {
@@ -34,9 +34,13 @@ function upsertById<T extends { id: string; createdAt: string }>(items: T[], nex
   return byTime([...items.filter((item) => item.id !== next.id), next]);
 }
 
+/** Where an error is shown: next to the Step 1 chat, or in Step 2 (private help). */
+export type ErrorScope = "chat" | "private";
+
 /**
- * V2 facilitator state for one scenario. The database is the source of truth:
- * socket events are merged in, and everything is reloaded after a reconnect.
+ * V2 AI state for one scenario: group AI items for the Step 1 chat and this
+ * member's private items. The database is the source of truth: socket events
+ * are merged in, and everything is reloaded after a reconnect.
  */
 export function useInterventions({
   sessionCode,
@@ -54,7 +58,9 @@ export function useInterventions({
   const [checkpoints, setCheckpoints] = useState<CheckpointView[]>([]);
   const [roles, setRoles] = useState<ChosenRole[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ scope: ErrorScope; message: string } | null>(null);
+  /** How long this member's group AI buttons wait, as reported by the server (retryAfterSeconds). */
+  const [groupCooldown, setGroupCooldown] = useState<{ until: number; seconds: number } | null>(null);
   const [learningAware, setLearningAware] = useState<LearningAwareMemberState | null>(null);
   const viewedRef = useRef(new Set<string>());
   const exposedRef = useRef(new Set<string>());
@@ -154,7 +160,13 @@ export function useInterventions({
   }, [sessionCode, scenarioOrder, participantId]);
 
   const post = useCallback(
-    async (url: string, body: Record<string, unknown>, busyKey: string) => {
+    async (
+      url: string,
+      body: Record<string, unknown>,
+      busyKey: string,
+      scope: ErrorScope = "private",
+      onRateLimited?: (retryAfterSeconds: number) => void
+    ) => {
       setBusy(busyKey);
       setError(null);
       try {
@@ -165,12 +177,14 @@ export function useInterventions({
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          setError(data.error ?? "Something went wrong");
+          const retryAfter = Number(data.retryAfterSeconds);
+          if (res.status === 429 && onRateLimited && retryAfter > 0) onRateLimited(retryAfter);
+          else setError({ scope, message: data.error ?? "Something went wrong" });
           return null;
         }
         return data;
       } catch {
-        setError("Could not reach the server");
+        setError({ scope, message: "Could not reach the server" });
         return null;
       } finally {
         setBusy(null);
@@ -179,17 +193,31 @@ export function useInterventions({
     [participantId, scenarioOrder]
   );
 
+  const startGroupCooldown = useCallback((seconds: number) => {
+    setGroupCooldown(seconds > 0 ? { until: Date.now() + seconds * 1000, seconds } : null);
+  }, []);
+
+  /** One click = one request id, so a retried network call cannot create a second reply. */
   const requestGroupHelp = async (supportType: string) => {
     const data = await post(
       `/api/sessions/${sessionCode}/interventions`,
       { kind: "group_request", supportType, requestId: crypto.randomUUID() },
-      `group:${supportType}`
+      `group:${supportType}`,
+      "chat",
+      startGroupCooldown
     );
     if (data?.intervention) mergeView(data.intervention);
+    if (data && Number(data.retryAfterSeconds) > 0) startGroupCooldown(Number(data.retryAfterSeconds));
   };
 
   const respond = async (id: string, action: FeedbackAction) => {
-    const data = await post(`/api/sessions/${sessionCode}/interventions/${id}/feedback`, { action }, `${id}:${action}`);
+    const scope = items.find((item) => item.id === id)?.scope === "group" ? "chat" : "private";
+    const data = await post(
+      `/api/sessions/${sessionCode}/interventions/${id}/feedback`,
+      { action },
+      `${id}:${action}`,
+      scope
+    );
     if (data?.intervention) setItems((current) => upsertById(current, data.intervention));
   };
 
@@ -229,8 +257,11 @@ export function useInterventions({
     setLearningAware((current) => (current ? { ...current, proactiveStopped: true } : current));
   };
 
-  const collaborate = (action: string, body: Record<string, unknown>) =>
-    post(`/api/sessions/${sessionCode}/collaboration`, { action, ...body }, action);
+  const groupItems = useMemo(() => items.filter((item) => item.scope === "group"), [items]);
+  const privateItems = useMemo(() => items.filter((item) => item.scope === "individual"), [items]);
+
+  const collaborate = (action: string, body: Record<string, unknown>, scope: ErrorScope = "private") =>
+    post(`/api/sessions/${sessionCode}/collaboration`, { action, ...body }, action, scope);
 
   const share = async (sourceType: "individual_scaffold" | "intervention", sourceId: string, sharedText: string) => {
     const data = await collaborate("share", { sourceType, sourceId, sharedText, confirmed: true });
@@ -239,24 +270,25 @@ export function useInterventions({
   };
 
   const raiseCheckpoint = async (kind: string) => {
-    const data = await collaborate("checkpoint", { kind });
+    const data = await collaborate("checkpoint", { kind }, "chat");
     if (data?.checkpoint) setCheckpoints((current) => upsertById(current, data.checkpoint));
   };
 
   const chooseRole = async (role: string) => {
-    const data = await collaborate("role", { role });
+    const data = await collaborate("role", { role }, "chat");
     if (data?.chosen) setRoles(data.chosen);
   };
 
   return {
     items,
-    groupItems: items.filter((item) => item.scope === "group"),
-    privateItems: items.filter((item) => item.scope === "individual"),
+    groupItems,
+    privateItems,
     sharedIdeas,
     checkpoints,
     roles,
     busy,
-    error,
+    errorFor: (scope: ErrorScope) => (error?.scope === scope ? error.message : null),
+    groupCooldown,
     onRealtimeEvent,
     reload,
     requestGroupHelp,

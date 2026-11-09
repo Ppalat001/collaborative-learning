@@ -1,5 +1,5 @@
 {
-  "protocolVersion": "adaptive-v2-protocol-draft-3",
+  "protocolVersion": "adaptive-v2-protocol-draft-4",
   "status": "DRAFT - consent wording, contact details and retention must be approved before use with participants",
   "consent": {
     "version": "consent-v2-draft-1",
@@ -34,9 +34,9 @@
   },
   "conditionDisclosure": {
     "baseline_private_request": "In this session you can ask the AI privately for support in Step 2.",
-    "shared_on_demand": "In this session you can ask the AI privately for support, and your group can ask a shared AI facilitator for collaboration help that everyone sees.",
-    "proactive_group": "In this session you can ask the AI privately for support, your group can ask a shared AI facilitator for collaboration help, and the facilitator may sometimes offer the whole group a collaboration prompt. You decide whether to view or dismiss these offers.",
-    "dual_adaptive": "In this session you can ask the AI privately for support in Step 2, your group can ask a shared AI facilitator for collaboration help, and the facilitator may sometimes offer the whole group a collaboration prompt. The separate private AI coach has been removed.",
-    "proactive_adaptive": "In this session you can ask the AI privately for support in Step 2, your group can ask a shared AI facilitator for collaboration help, and the facilitator may sometimes offer the whole group a collaboration prompt. In addition, a small private pop-up may sometimes ask whether you would like a hint or a guiding question. Only you see it, nothing is sent to the AI unless you click Yes, and it adapts to how you respond: if you choose No thanks, you will be offered fewer. It never gives the answer."
+    "shared_on_demand": "In this session you can ask the AI privately for support in Step 2. In the Step 1 group chat, anyone can ask the AI Collaboration Assistant for collaboration help; its reply appears in the chat for everyone.",
+    "proactive_group": "In this session you can ask the AI privately for support in Step 2. In the Step 1 group chat, anyone can ask the AI Collaboration Assistant for collaboration help, and it may now and then offer your group a collaboration question. Its replies appear in the chat for everyone. You decide whether to open or hide these offers.",
+    "dual_adaptive": "In this session you can ask the AI privately for support in Step 2. In the Step 1 group chat, anyone can ask the AI Collaboration Assistant for collaboration help, and it may now and then offer your group a collaboration question. Its replies appear in the chat for everyone. The separate private AI coach has been removed.",
+    "proactive_adaptive": "In this session you can ask the AI privately for support in Step 2. In the Step 1 group chat, anyone can ask the AI Collaboration Assistant for collaboration help, and it may now and then offer your group a collaboration question. Its replies appear in the chat for everyone. In addition, a small private pop-up may sometimes ask whether you would like a hint or a guiding question. Only you see it, nothing is sent to the AI unless you click Yes, and it adapts to how you respond: if you choose No thanks, you will be offered fewer. It never gives the answer."
   }
 }

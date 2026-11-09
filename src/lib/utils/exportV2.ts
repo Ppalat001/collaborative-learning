@@ -737,6 +737,82 @@ export function listV2SessionIds(): string[] {
     .map((row) => row.sessionId);
 }
 
+/**
+ * How the group used AI, each kind counted on its own: human chat messages are
+ * never mixed with AI items, an offer is not a delivery, and an unknown outcome
+ * stays unknown. Step 2 responses carry no token counts, so `tokens` covers group
+ * AI and private suggestions only.
+ */
+function buildAiUsage(group: V2Group) {
+  const sessionId = group.session.id;
+  const groupManual = group.interventions.filter((i) => i.scope === "group" && i.initiatedBy === "participant");
+  const groupProactive = group.interventions.filter((i) => i.scope === "group" && i.initiatedBy === "system");
+  const popups = group.interventions.filter((i) => i.scope === "individual");
+  const step2 = db
+    .select({ aiModel: schema.individualScaffolds.aiModel })
+    .from(schema.individualScaffolds)
+    .where(eq(schema.individualScaffolds.sessionId, sessionId))
+    .all();
+  const generated = group.interventions.filter((i) => i.status === "delivered");
+  const countBy = <T>(rows: T[], pick: (row: T) => string | null) =>
+    rows.reduce<Record<string, number>>((acc, row) => {
+      const key = pick(row) ?? "none";
+      acc[key] = (acc[key] ?? 0) + 1;
+      return acc;
+    }, {});
+  const outcomes = db
+    .select({ difficultyResolved: schema.interventionOutcomeEvaluations.difficultyResolved })
+    .from(schema.interventionOutcomeEvaluations)
+    .where(eq(schema.interventionOutcomeEvaluations.sessionId, sessionId))
+    .all();
+  const progress = db
+    .select({ response: schema.interventionProgressFeedback.response })
+    .from(schema.interventionProgressFeedback)
+    .where(eq(schema.interventionProgressFeedback.sessionId, sessionId))
+    .all();
+  const humanMessages = db
+    .select({ id: schema.discussionMessages.id })
+    .from(schema.discussionMessages)
+    .where(eq(schema.discussionMessages.sessionId, sessionId))
+    .all().length;
+
+  return {
+    humanMessages,
+    groupAi: {
+      manualRequests: groupManual.length,
+      manualReplies: groupManual.filter((i) => i.status === "delivered").length,
+      proactiveOffers: groupProactive.length,
+      proactiveAccepted: groupProactive.filter((i) => i.acceptedAt !== null).length,
+      proactiveReplies: groupProactive.filter((i) => i.status === "delivered").length,
+      proactiveExpired: groupProactive.filter((i) => i.status === "expired").length,
+      proactiveClosedByMembers: groupProactive.filter((i) => i.status === "dismissed").length,
+    },
+    privateAi: {
+      manualCalls: step2.length,
+      popupsOffered: popups.length,
+      popupsAccepted: popups.filter((i) => i.acceptedAt !== null).length,
+      popupsDeclined: popups.filter((i) => i.status === "dismissed").length,
+      popupsDeferred: popups.filter((i) => i.status === "deferred").length,
+      popupsExpired: popups.filter((i) => i.status === "expired").length,
+    },
+    sharedExcerpts: group.sharing.length,
+    origins: {
+      groupAndPopups: countBy(generated, (i) => i.aiOrigin),
+      step2: countBy(step2, (s) => (s.aiModel === "mock" ? "mock" : "real")),
+    },
+    feedback: {
+      progress: countBy(progress, (p) => p.response),
+      outcomes: countBy(outcomes, (o) => o.difficultyResolved),
+      unknownOutcomes: outcomes.filter((o) => o.difficultyResolved === "unknown").length,
+    },
+    tokens: {
+      input: group.interventions.reduce((sum, i) => sum + (i.inputTokens ?? 0), 0),
+      output: group.interventions.reduce((sum, i) => sum + (i.outputTokens ?? 0), 0),
+    },
+    failures: group.interventions.filter((i) => i.status === "failed").length,
+  };
+}
+
 /** Researcher dashboard summary for one V2 group (counts, failures, warnings). */
 export function buildV2Dashboard(sessionId: string) {
   const group = loadV2Group(sessionId);
@@ -837,6 +913,7 @@ export function buildV2Dashboard(sessionId: string) {
       learnerModels: group.learnerModels.length,
       learnerModelUpdates: group.learnerEvents.length,
     },
+    aiUsage: buildAiUsage(group),
     failures: failures.map((f) => ({
       id: f.id,
       scenarioOrder: f.scenarioOrder,

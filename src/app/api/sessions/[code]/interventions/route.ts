@@ -32,12 +32,12 @@ export async function GET(
     });
     return NextResponse.json(state);
   } catch (error) {
-    return errorResponse(error, "Failed to load AI facilitator items");
+    return errorResponse(error, "Failed to load AI items");
   }
 }
 
 /**
- * kind "group_request": ask the shared facilitator (shared_on_demand and up).
+ * kind "group_request": one of the Step 1 group AI buttons (shared_on_demand and up).
  * kind "personal_request": "I'm stuck" private offer (dual_adaptive only).
  * kind "stop_proactive_for_scenario": no more private suggestions for the caller
  * in this scenario (proactive_adaptive on policy-v2-3+).
@@ -66,7 +66,11 @@ export async function POST(
     };
     if (body.kind === "group_request") {
       const result = await getOrchestrator().handleManualGroupRequest({ ...input, supportType: body.supportType });
-      return NextResponse.json({ intervention: result.view, duplicate: result.duplicate });
+      return NextResponse.json({
+        intervention: result.view,
+        duplicate: result.duplicate,
+        retryAfterSeconds: result.retryAfterSeconds ?? 0,
+      });
     }
     if (body.kind === "personal_request") {
       const result = await getOrchestrator().handlePersonalRequest(input);
@@ -84,6 +88,6 @@ export async function POST(
     }
     return NextResponse.json({ error: "Unknown request kind" }, { status: 400 });
   } catch (error) {
-    return errorResponse(error, "Failed to request AI facilitator help");
+    return errorResponse(error, "Failed to request AI help");
   }
 }

@@ -3,8 +3,6 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DiscussionChat } from "@/components/DiscussionChat";
-import { GroupAIFacilitatorPanel } from "@/components/GroupAIFacilitatorPanel";
-import { GroupSuggestionIndicator } from "@/components/GroupSuggestionIndicator";
 import { GroupAnswerEditor, GroupAnswerNote } from "@/components/GroupAnswerEditor";
 import { GroupDiscussionStarter } from "@/components/GroupDiscussionStarter";
 import { MetacognitionPrompt, type MetacognitionAnswers } from "@/components/MetacognitionPrompt";
@@ -334,7 +332,7 @@ export function ScenarioView({
 
   const ideaBlocksAi =
     !!v2 && v2.initialIdea.mode === "required" && !v2.initialIdea.submitted && !submitted;
-  const showFacilitator =
+  const groupAiInChat =
     !!v2 && (v2.capabilities.sharedManual || v2.capabilities.proactiveGroup || v2.capabilities.sharing);
   const suggestions = v2?.capabilities.adaptivePrivate
     ? interventions.privateItems.filter((item) => item.trigger === "adaptive_need")
@@ -415,6 +413,7 @@ export function ScenarioView({
 
       <Step number={1} title="Group discussion">
         <DiscussionChat
+          scenarioOrder={scenarioOrder}
           messages={collaboration.messages}
           participantId={participantId}
           disabled={submitted}
@@ -429,28 +428,29 @@ export function ScenarioView({
                 }
               : null
           }
+          assistant={
+            v2 && groupAiInChat
+              ? {
+                  buttons: v2.manualGroupSupport,
+                  items: interventions.groupItems,
+                  sharedIdeas: interventions.sharedIdeas,
+                  busy: interventions.busy,
+                  error: interventions.errorFor("chat"),
+                  cooldown: interventions.groupCooldown,
+                  learningAware: interventions.learningAware,
+                  onRequest: interventions.requestGroupHelp,
+                  onRespond: interventions.respond,
+                  onViewed: interventions.markViewed,
+                  onExposure: interventions.reportExposure,
+                  onProgressFeedback: interventions.sendProgressFeedback,
+                }
+              : null
+          }
         />
-        {v2 && showFacilitator && interventions.learningAware?.enabled && !submitted && (
-          <GroupSuggestionIndicator items={interventions.groupItems} onExposure={interventions.reportExposure} />
+        {v2 && !groupAiInChat && interventions.errorFor("chat") && (
+          <p className="mt-2 text-sm text-red-700">{interventions.errorFor("chat")}</p>
         )}
       </Step>
-
-      {v2 && showFacilitator && (
-        <GroupAIFacilitatorPanel
-          items={interventions.groupItems}
-          sharedIdeas={interventions.sharedIdeas}
-          manualTypes={v2.manualGroupSupport}
-          locked={submitted}
-          busy={interventions.busy}
-          error={interventions.error}
-          onRequest={interventions.requestGroupHelp}
-          onRespond={interventions.respond}
-          onViewed={interventions.markViewed}
-          learningAware={interventions.learningAware}
-          onExposure={interventions.reportExposure}
-          onProgressFeedback={interventions.sendProgressFeedback}
-        />
-      )}
 
       <Step number={2} title="AI support (just for you)">
         <p className="mt-1 text-sm text-slate-600">
@@ -496,8 +496,8 @@ export function ScenarioView({
             onShare={(source, text) => interventions.share(source.sourceType, source.sourceId, text)}
           />
         )}
-        {v2 && interventions.error && (
-          <p className="mt-3 text-sm text-red-700">{interventions.error}</p>
+        {v2 && interventions.errorFor("private") && (
+          <p className="mt-3 text-sm text-red-700">{interventions.errorFor("private")}</p>
         )}
       </Step>
 

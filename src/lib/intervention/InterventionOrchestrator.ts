@@ -122,6 +122,18 @@ function addSeconds(iso: string, seconds: number): string {
   return new Date(Date.parse(iso) + seconds * 1000).toISOString();
 }
 
+/**
+ * Whole seconds until this member may ask the group AI again (0 = now). Both
+ * times are server times; a stored time in the future (the server clock moved
+ * back) does not block the member.
+ */
+export function manualCooldownRemaining(lastRequestAt: string, now: string, cooldownSeconds: number): number {
+  const elapsedMs = Date.parse(now) - Date.parse(lastRequestAt);
+  if (!Number.isFinite(elapsedMs) || elapsedMs < 0) return 0;
+  const remainingMs = cooldownSeconds * 1000 - elapsedMs;
+  return remainingMs > 0 ? Math.ceil(remainingMs / 1000) : 0;
+}
+
 export class InterventionOrchestrator {
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly running = new Map<string, Promise<EvaluationOutcome | null>>();
@@ -597,6 +609,7 @@ export class InterventionOrchestrator {
     const capabilities = capabilitiesFor(condition);
     const items = snapshot.previousInterventions;
     const proactiveGroup = items.filter((i) => i.scope === "group" && i.initiatedBy === "system");
+    const manualGroup = items.filter((i) => i.scope === "group" && i.initiatedBy === "participant");
     const privateItems = items.filter((i) => i.scope === "individual");
     const privateOfferCounts: Record<string, number> = {};
     for (const item of privateItems) {
@@ -617,6 +630,8 @@ export class InterventionOrchestrator {
         .filter((i) => OPEN_PRIVATE.includes(i.status) && i.recipientParticipantId)
         .map((i) => i.recipientParticipantId!),
       dismissedTriggers: proactiveGroup.filter((i) => i.status === "dismissed").map((i) => i.trigger),
+      lastManualGroupAt: manualGroup.map((i) => i.createdAt).sort().at(-1) ?? null,
+      groupGenerationInProgress: items.some((i) => i.scope === "group" && i.status === "accepted"),
       recommendFor: capabilities.fading
         ? (participantId) => {
             const history = adaptiveEngine.buildHistory(
@@ -670,7 +685,7 @@ export class InterventionOrchestrator {
         scaffoldLevel: String(decision.recommendedLevel ?? (isGroup ? "process" : 1)),
         status: "suggested",
         offerText: isGroup
-          ? `The AI facilitator has a suggestion for your group: ${GROUP_SUPPORT_LABELS[supportType as GroupSupportType] ?? "a process prompt"}. Would you like to see it?`
+          ? `The AI has a collaboration question for your group (${GROUP_SUPPORT_LABELS[supportType as GroupSupportType] ?? "a process prompt"}). Would you like to see it?`
           : this.coach.makePrivateOffer(supportType as PrivateOfferSupportType),
         reasonCode: decision.reasonCode,
         reasonExplanation: decision.reasonExplanation,
@@ -707,7 +722,11 @@ export class InterventionOrchestrator {
   // Member actions
   // ---------------------------------------------------------------------------
 
-  /** A member asks the shared facilitator for process help; everyone sees the result. */
+  /**
+   * One of the five Step 1 buttons: generated at once (the click is the request),
+   * shown to everyone in the group chat. Rejected requests (limit, cooldown) are
+   * thrown before anything is stored or generated.
+   */
   async handleManualGroupRequest(input: {
     session: Session;
     assignment: StudyAssignment;
@@ -715,11 +734,11 @@ export class InterventionOrchestrator {
     scenarioOrder: number;
     supportType: unknown;
     requestId?: unknown;
-  }): Promise<{ view: InterventionView; duplicate: boolean }> {
+  }): Promise<{ view: InterventionView; duplicate: boolean; retryAfterSeconds?: number }> {
     const { session, assignment, participant, scenarioOrder } = input;
     const capabilities = capabilitiesFor(conditionOf(assignment));
     if (!capabilities.sharedManual) {
-      throw new EligibilityError("The shared AI facilitator is not part of this study condition", "not_in_condition", 403);
+      throw new EligibilityError("Group AI help is not part of this study condition", "not_in_condition", 403);
     }
     if (!isGroupSupportType(input.supportType) || !MANUAL_GROUP_SUPPORT_TYPES.includes(input.supportType)) {
       throw new EligibilityError("Unknown kind of group help", "invalid_support_type", 400);
@@ -756,7 +775,11 @@ export class InterventionOrchestrator {
     const generating = manual.find((m) => m.status === "accepted" && m.supportType === supportType);
     if (generating) return { view: this.viewFor(session, generating, participant.id, policy), duplicate: true };
     if (manual.length >= policy.maxManualGroupRequestsPerScenario) {
-      throw new EligibilityError("Your group has used all facilitator requests for this scenario", "request_limit", 429);
+      throw new EligibilityError(
+        `Your group has used all ${policy.maxManualGroupRequestsPerScenario} group AI requests for this scenario`,
+        "request_limit",
+        429
+      );
     }
     const now = this.now();
     const mineLatest = manual
@@ -764,8 +787,15 @@ export class InterventionOrchestrator {
       .map((m) => m.createdAt)
       .sort()
       .at(-1);
-    if (mineLatest && Date.parse(now) - Date.parse(mineLatest) < policy.manualRequestCooldownSeconds * 1000) {
-      throw new EligibilityError("Please wait a moment before asking again", "too_fast", 429);
+    const waitSeconds = mineLatest ? manualCooldownRemaining(mineLatest, now, policy.manualRequestCooldownSeconds) : 0;
+    if (waitSeconds > 0) {
+      throw new EligibilityError(
+        `You can ask the group AI again in ${waitSeconds} second${waitSeconds === 1 ? "" : "s"}`,
+        "too_fast",
+        429,
+        [],
+        waitSeconds
+      );
     }
 
     const snapshot = loadSnapshot({ session, assignment, attempt, now, policy });
@@ -776,7 +806,7 @@ export class InterventionOrchestrator {
       supportType,
       recommendedLevel: "process",
       reasonCode: "student_requested",
-      reasonExplanation: "A group member asked the shared AI facilitator for this.",
+      reasonExplanation: "A group member asked the AI for this collaboration help.",
       policyVersion: policy.version,
       condition: conditionOf(assignment),
       assessment: {
@@ -831,7 +861,11 @@ export class InterventionOrchestrator {
     if (!created) return { view: this.viewFor(session, row, participant.id, policy), duplicate: true };
     this.broadcast(session, row, "intervention:state");
     const final = await this.generateFor(session, assignment, row);
-    return { view: this.viewFor(session, final, participant.id, policy), duplicate: false };
+    return {
+      view: this.viewFor(session, final, participant.id, policy),
+      duplicate: false,
+      retryAfterSeconds: manualCooldownRemaining(now, this.now(), policy.manualRequestCooldownSeconds),
+    };
   }
 
   /** "I'm stuck" (dual_adaptive): a private offer at the recommended level; nothing is generated until accepted. */

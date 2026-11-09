@@ -5,10 +5,12 @@
  * runs one proactive_group (no popups) and one proactive_adaptive group (private
  * popup offered, accepted, rated and exported), both on the test-only accelerated
  * policy with mock AI, and one proactive_adaptive group on the accelerated
- * policy-v2-3 (per-member dismissal, exposure, one-click feedback, stop, V2.3 exports).
+ * policy-v2-3 (per-member dismissal, exposure, one-click feedback, stop, V2.3 exports),
+ * and one on the accelerated policy-unified-1 (one group chat with the AI in it,
+ * server-side cooldowns, one proactive offer per scenario, shared excerpts in the chat).
  *
  * Run it through `npm run pilot:isolated` (throwaway database). Against a running
- * server it needs ADAPTIVE_V2_ALLOW_TEST_POLICY=true, and it writes four test
+ * server it needs ADAPTIVE_V2_ALLOW_TEST_POLICY=true, and it writes five test
  * groups into that server's database.
  */
 import { io } from "socket.io-client";
@@ -322,7 +324,7 @@ async function main() {
   });
   assert(manual.intervention.scope === "group" && manual.intervention.initiatedBy === "participant", "Manual request should be a group item");
   await waitFor(sb.events, (e) => e.payload?.id === manual.intervention.id, "B sees A's manual group request");
-  ok("manual shared facilitator request is visible to the whole group");
+  ok("a manual group AI request is visible to the whole group");
 
   const hint = await expectOk(`/api/sessions/${code}/scaffold`, {
     method: "POST",
@@ -397,6 +399,7 @@ async function main() {
 
   await adaptivePopupPilot({ statements, homeCode: home.code });
   await learningAwarePilot({ statements });
+  await unifiedPilot({ statements, homeCode: home.code });
 
   console.log("Adaptive Scaffolding V2 pilot PASSED");
 }
@@ -688,6 +691,203 @@ async function learningAwarePilot({ statements }) {
   const dashboard = await expectOk(`/api/admin/interventions?session=${code}`, { admin: true });
   assert(dashboard.learningAware?.funnel, "The dashboard should include the V2.3 section");
   ok(`V2.3 exports: ${states.length} group states, ${decisions.length} private decisions, ${exposures.length} exposures, anonymous ids only`);
+}
+
+/** policy-unified-1: one group chat with human messages, group AI, the one proactive offer and shared excerpts. */
+async function unifiedPilot({ statements, homeCode }) {
+  const [homeAssignment] = await exportRows("v2_assignment", homeCode);
+  assert(
+    homeAssignment?.intervention_policy_version === "policy-unified-1",
+    `A new home-page group should use policy-unified-1, got ${homeAssignment?.intervention_policy_version}`
+  );
+  ok("a new home-page group uses policy-unified-1 (proactive_adaptive)");
+
+  const policyVersion = "policy-unified-1-test-accelerated";
+  const { code, C, D } = await startedGroup("proactive_adaptive", statements, policyVersion);
+  ok(`researcher created and started group ${code} (proactive_adaptive, ${policyVersion})`);
+  for (const member of [C, D]) {
+    await expectOk(`/api/sessions/${code}/scenario/1?participantId=${member.id}`, { token: member.token });
+  }
+  const sc = await connect(code, C, 1);
+  const sd = await connect(code, D, 1);
+  assert(!sc.denied && !sd.denied, "Members' sockets should join");
+  const timelineOf = async (member) =>
+    (await expectOk(`/api/sessions/${code}/timeline?scenarioOrder=1&participantId=${member.id}`, { token: member.token })).events;
+  const say = (member, text) =>
+    expectOk(`/api/sessions/${code}/messages`, {
+      method: "POST",
+      token: member.token,
+      body: { scenarioOrder: 1, participantId: member.id, text },
+    });
+  const groupRequest = (member, supportType, requestId) =>
+    call(`/api/sessions/${code}/interventions`, {
+      method: "POST",
+      token: member.token,
+      body: { kind: "group_request", supportType, scenarioOrder: 1, participantId: member.id, requestId },
+    });
+  const answerOffer = (member, id, action) =>
+    call(`/api/sessions/${code}/interventions/${id}/feedback`, {
+      method: "POST",
+      token: member.token,
+      body: { participantId: member.id, action },
+    });
+  const isProactiveOffer = (e) =>
+    e.event === "intervention:offered" && e.payload?.scope === "group" && e.payload.initiatedBy === "system";
+
+  // 1. The quiet start gets one in-chat offer; two members saying yes at once give one reply.
+  const offered = await waitFor(sc.events, isProactiveOffer, "an in-chat group offer after the quiet start");
+  const offer = offered.payload;
+  assert(offer.trigger === "initial_silence" && offer.content === null, `Unexpected offer: ${offer.trigger}`);
+  assert(/^No new group activity/.test(offer.reasonExplanation ?? ""), "The offer should say why it appeared in plain words");
+  await waitFor(sd.events, (e) => isProactiveOffer(e) && e.payload.id === offer.id, "D sees the same offer");
+  for (const member of [C, D]) {
+    const item = (await timelineOf(member)).find((e) => e.key === `intervention:${offer.id}`);
+    assert(item?.kind === "group_ai_offer" && item.item.content === null, `${member.name}: the offer should be in the chat without content`);
+  }
+  ok(`after the quiet start both members see one "AI group suggestion available" line in the chat (${offer.supportType})`);
+
+  const [yesC, yesD] = await Promise.all([answerOffer(C, offer.id, "accepted"), answerOffer(D, offer.id, "accepted")]);
+  assert(yesC.status === 200 && yesD.status === 200, `Both answers should be accepted: ${yesC.status}/${yesD.status}`);
+  for (const socket of [sc, sd]) {
+    await waitFor(socket.events, (e) => e.event === "intervention:delivered" && e.payload.id === offer.id, "the reply reaches both members");
+  }
+  const afterAccept = await timelineOf(D);
+  const replies = afterAccept.filter((e) => e.key === `intervention:${offer.id}`);
+  assert(replies.length === 1 && replies[0].kind === "group_ai_message" && replies[0].item.content, "One AI reply should replace the offer");
+  ok("C and D both said yes at the same moment; one reply was written and shown to both in the chat");
+
+  // 2. Human messages and a manual group request share one ordered chat.
+  await say(C, "I think option A is fairer because everyone gets the same chance.");
+  await say(D, "Option B costs less, so more people could use it.");
+  const manual = await groupRequest(C, "discussion_summary", "unified-summary-1");
+  assert(manual.status === 200, `Manual request failed: ${manual.status} ${JSON.stringify(manual.data)}`);
+  const summary = manual.data.intervention;
+  assert(summary.status === "delivered" && summary.requestedByName === C.name, "The reply should name who asked");
+  assert(manual.data.retryAfterSeconds === 1, `The server should send the wait time, got ${manual.data.retryAfterSeconds}`);
+  await waitFor(sd.events, (e) => e.event === "intervention:delivered" && e.payload.id === summary.id, "D receives C's summary");
+  const [forC, forD] = [await timelineOf(C), await timelineOf(D)];
+  assert(JSON.stringify(forC.map((e) => e.key)) === JSON.stringify(forD.map((e) => e.key)), "Both members should see the same chat");
+  const tail = forD.slice(-3).map((e) => e.kind).join(",");
+  assert(tail === "human_message,human_message,group_ai_message", `Unexpected chat order: ${tail}`);
+  ok(`C clicked "Summarize"; the AI reply sits after the two messages in one chat for both members ("Requested by ${C.name}")`);
+
+  const tooFast = await groupRequest(C, "reasoning_prompt", "unified-question-1");
+  assert(
+    tooFast.status === 429 && tooFast.data.code === "too_fast",
+    `Expected a cooldown refusal, got ${tooFast.status} ${JSON.stringify(tooFast.data)}`
+  );
+  assert(
+    /^You can ask the group AI again in \d+ seconds?$/.test(tooFast.data.error) && tooFast.data.retryAfterSeconds >= 1,
+    `The refusal should name the wait: ${JSON.stringify(tooFast.data)}`
+  );
+  const otherMember = await groupRequest(D, "reasoning_prompt", "unified-question-2");
+  assert(otherMember.status === 200, `The cooldown is per member, but D was refused: ${otherMember.status}`);
+  ok(`an immediate second click by C was refused ("${tooFast.data.error}"); D could still ask straight away`);
+
+  // 3. Private help stays private; an edited excerpt is shared into the chat on purpose.
+  const hint = await expectOk(`/api/sessions/${code}/scaffold`, {
+    method: "POST",
+    token: C.token,
+    body: { action: "select", scenarioOrder: 1, participantId: C.id, scaffoldingType: "hint" },
+  });
+  const privateText = hint.scaffold.aiResponse;
+  assert(privateText, "Step 2 private help should still respond");
+  assert(!JSON.stringify(await timelineOf(D)).includes(privateText), "C's private help must not reach D's chat");
+  await expectStatus(
+    `/api/sessions/${code}/collaboration`,
+    {
+      method: "POST",
+      token: C.token,
+      body: { scenarioOrder: 1, participantId: C.id, action: "share", sourceType: "individual_scaffold", sourceId: "full_answer", sharedText: "x", confirmed: true },
+    },
+    400,
+    "a full expert answer cannot be quick-shared"
+  );
+  const excerpt = "Check whether both options treat every group the same way.";
+  const shared = await expectOk(`/api/sessions/${code}/collaboration`, {
+    method: "POST",
+    token: C.token,
+    body: { scenarioOrder: 1, participantId: C.id, action: "share", sourceType: "individual_scaffold", sourceId: "hint", sharedText: excerpt, confirmed: true },
+  });
+  await waitFor(sd.events, (e) => e.event === "ideas:shared" && e.payload.id === shared.sharedIdea.id, "D receives the shared excerpt");
+  const sharedForD = (await timelineOf(D)).find((e) => e.key === `share:${shared.sharedIdea.id}`);
+  assert(sharedForD?.kind === "shared_ai_excerpt" && sharedForD.excerpt.sharedText === excerpt, "The excerpt should be in D's chat");
+  assert(!JSON.stringify(sharedForD).includes(privateText), "Only the edited excerpt is shared, not the private original");
+  ok("C's private hint stayed private; C's edited excerpt appeared in the chat as an AI-assisted excerpt");
+
+  // 4. A private popup reaches only C.
+  const isPopup = (e) => e.event === "intervention:offered" && e.payload?.trigger === "adaptive_need";
+  let popup = null;
+  for (let attempt = 1; attempt <= 6 && !popup; attempt++) {
+    await say(C, "I'm confused, I don't understand what this question is asking.");
+    popup = await waitFor(sc.events, isPopup, "an adaptive private popup for C", 8_000).catch(() => null);
+  }
+  assert(popup, "C should be offered a private popup after saying they are unsure");
+  assert(!sd.events.some((e) => e.payload?.id === popup.payload.id), "D must not receive C's popup");
+  assert(!JSON.stringify(await timelineOf(D)).includes(popup.payload.id), "C's popup must not be in the group chat");
+  assert(!JSON.stringify(await timelineOf(C)).includes(popup.payload.id), "Popups are private and never part of the chat");
+  ok(`C was offered a private ${popup.payload.supportType} popup; it is not in anyone's group chat`);
+
+  // 5. Nobody else can read the chat.
+  await expectStatus(`/api/sessions/${code}/timeline?scenarioOrder=1&participantId=${C.id}`, {}, 401, "the chat is refused without a device token");
+  await expectStatus(
+    `/api/sessions/${code}/timeline?scenarioOrder=1&participantId=${C.id}`,
+    { token: D.token },
+    401,
+    "D's device cannot read the chat as C"
+  );
+  await expectStatus(
+    `/api/sessions/${homeCode}/timeline?scenarioOrder=1&participantId=${C.id}`,
+    { token: C.token },
+    403,
+    "a member of another group cannot read this chat"
+  );
+
+  // 6. Only one proactive offer in the scenario, then submit.
+  const proactiveIds = new Set([...sc.events, ...sd.events].filter(isProactiveOffer).map((e) => e.payload.id));
+  assert(proactiveIds.size === 1, `Only one proactive group offer is allowed per scenario, saw ${proactiveIds.size}`);
+  ok("only one proactive group offer was made in the scenario");
+  const answer = "Option A, because it treats every group the same way, even though it costs a little more.";
+  await expectOk(`/api/sessions/${code}/sync`, {
+    method: "POST",
+    token: D.token,
+    body: {
+      scenarioOrder: 1,
+      participantId: D.id,
+      fields: { finalAnswer: answer },
+      authorship: [{ participantId: D.id, length: answer.length }],
+      edits: [{ field: "finalAnswer", charsAdded: answer.length, charsRemoved: 0, insertedText: answer }],
+    },
+  });
+  for (const m of [C, D]) {
+    await expectOk(`/api/sessions/${code}/scenario/1`, {
+      method: "PUT",
+      token: m.token,
+      body: { action: "ready", participantId: m.id, ready: true },
+    });
+  }
+  const afterSubmit = await groupRequest(D, "reflection_checkpoint", "unified-after-submit");
+  assert(afterSubmit.status === 409, `No group AI after submission, got ${afterSubmit.status}`);
+  ok("the group submitted; group AI requests are refused afterwards");
+  sc.socket.close();
+  sd.socket.close();
+
+  // 7. Exports stay human-only; the dashboard counts AI use separately.
+  const humanCount = (await timelineOf(C)).filter((e) => e.kind === "human_message").length;
+  const messages = await exportRows("messages", code);
+  assert(messages.length === humanCount, `The chat export should hold ${humanCount} human messages, got ${messages.length}`);
+  assert(messages.every((r) => r.student === C.name || r.student === D.name), "The chat export must contain human messages only");
+  const usage = (await expectOk(`/api/admin/interventions?session=${code}`, { admin: true })).aiUsage;
+  assert(usage.humanMessages === humanCount, `Dashboard human messages: ${usage.humanMessages}`);
+  assert(usage.groupAi.manualRequests === 2 && usage.groupAi.manualReplies === 2, "Two manual group requests should be counted");
+  assert(usage.groupAi.proactiveOffers === 1 && usage.groupAi.proactiveAccepted === 1 && usage.groupAi.proactiveReplies === 1, "One accepted proactive offer");
+  assert(usage.privateAi.manualCalls === 1 && usage.privateAi.popupsOffered >= 1, "Private help and popups should be counted");
+  assert(usage.sharedExcerpts === 1, "One shared excerpt");
+  assert(usage.origins.groupAndPopups.mock >= 3 && usage.failures === 0, "Demo AI origin should be counted");
+  ok(
+    `dashboard counts: ${usage.humanMessages} human messages, ${usage.groupAi.manualRequests} manual group requests, ` +
+      `1 accepted proactive offer, ${usage.privateAi.popupsOffered} popup(s), 1 shared excerpt; the chat export holds human messages only`
+  );
 }
 
 main().catch((error) => {

@@ -217,15 +217,11 @@ The `learningAware` block returned by `GET /api/sessions/[code]/interventions` c
 
 **UI:**
 
-- `GroupSuggestionIndicator`:
-  - a `role="status"`, `aria-live="polite"` notice under the chat: "The group facilitator has a suggestion for your group."
-  - "Show me" scrolls to and focuses the facilitator card, and records `user_opened`
-  - "Hide" hides the notice for this member only, and records `indicator_dismissed`
+- `DiscussionChat` (since `policy-unified-1`, for every V2 group; it replaced `GroupSuggestionIndicator` and `GroupAIFacilitatorPanel`):
+  - shared offers and group AI replies are items in the Step 1 chat, built by `buildGroupTimeline` (see [`HOW_THE_FINAL_SYSTEM_WORKS.md`](../../HOW_THE_FINAL_SYSTEM_WORKS.md))
+  - reports `client_displayed_in_viewport` via `IntersectionObserver` on the chat list, only when the tab is visible
+  - under per-member dismissal the offer's "Hide for me" hides it for this member only; a hidden offer shows "You hid an AI group suggestion. The others can still open it."
   - no modal, sound or flashing
-- `GroupAIFacilitatorPanel`:
-  - reports `client_displayed_in_viewport` via `IntersectionObserver`, only when the tab is visible
-  - under per-member dismissal it explains "Dismissing it only hides it for you"
-  - a dismissed card shows "You dismissed this suggestion. It stays hidden for you."
 - `PrivateSuggestionPopup`:
   - reports display and open events
   - offers "Don't suggest again in this scenario"

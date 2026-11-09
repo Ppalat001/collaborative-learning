@@ -19,6 +19,7 @@ import {
 } from "@/lib/intervention/ResearchConditionManager";
 import { consentIsActive, EligibilityError } from "@/lib/intervention/ResearchEligibilityGuard";
 import {
+  GROUP_BUTTON_LABELS,
   MANUAL_GROUP_SUPPORT_TYPES,
   type CheckpointView,
   type CollaborationSnapshot,
@@ -136,6 +137,7 @@ export function loadSnapshot(input: {
     discussion: messages,
     groupAnswer: attempt.finalAnswer,
     submitted: attempt.submitted,
+    readyParticipantIds: (attempt.readyParticipantIds ?? []).filter((id) => activeSet.has(id)),
     previousInterventions: previous.map((p) => ({
       id: p.id,
       trigger: p.trigger as InterventionTrigger,
@@ -196,8 +198,9 @@ export function toInterventionView(
     reasonExplanation: row.reasonExplanation,
     aiOrigin: row.aiOrigin,
     createdAt: row.createdAt,
+    acceptedAt: row.acceptedAt,
     deliveredAt: row.deliveredAt,
-    failureReason: row.status === "failed" ? "The AI facilitator is unavailable right now." : null,
+    failureReason: row.status === "failed" ? "The AI is unavailable right now." : null,
     myFeedback: (latest?.action as FeedbackAction | undefined) ?? null,
     deferredUntil,
   };
@@ -548,7 +551,11 @@ export async function getScenarioV2State(input: {
       : [],
     sharedIdeas: capabilities.sharing ? listSharedIdeas(session.id, scenario.order) : [],
     manualGroupSupport: capabilities.sharedManual
-      ? MANUAL_GROUP_SUPPORT_TYPES.map((type) => ({ type, label: GROUP_SUPPORT_LABELS[type] }))
+      ? MANUAL_GROUP_SUPPORT_TYPES.map((type) => ({
+          type,
+          label: GROUP_SUPPORT_LABELS[type],
+          shortLabel: GROUP_BUTTON_LABELS[type] ?? GROUP_SUPPORT_LABELS[type],
+        }))
       : [],
     privateOptIn: capabilities.proactivePrivate && participantId ? getPrivateOptIn(participantId) : null,
     recommendation,

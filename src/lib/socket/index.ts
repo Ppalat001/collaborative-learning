@@ -3,7 +3,7 @@ import type { Server as SocketServer, Socket } from "socket.io";
 import { checkParticipantToken } from "@/lib/auth/participantAuth";
 import { isSharedField, type SharedField } from "@/lib/instruments";
 import { registerPresence, unregisterPresence } from "@/lib/intervention/presence";
-import { EligibilityError, eligibilityGuard } from "@/lib/intervention/ResearchEligibilityGuard";
+import { eligibilityGuard, isEligibilityError } from "@/lib/intervention/ResearchEligibilityGuard";
 import { participantRoom } from "@/lib/realtime/emit";
 import { getParticipantInSession, getSessionByCode } from "@/lib/services/sessions";
 import type { AuthorRun } from "@/lib/types";
@@ -98,7 +98,7 @@ async function authorizeJoin(payload: JoinPayload): Promise<JoinResult> {
   try {
     await eligibilityGuard.assertScenarioAccess(assignment, participant.id);
   } catch (error) {
-    return { kind: "denied", reason: error instanceof EligibilityError ? error.code : "denied" };
+    return { kind: "denied", reason: isEligibilityError(error) ? error.code : "denied" };
   }
   return {
     kind: "v2",

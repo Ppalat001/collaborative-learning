@@ -1,4 +1,4 @@
-import { learningAwareOf, type InterventionPolicy } from "./policies";
+import { learningAwareOf, unifiedGroupRulesOf, type InterventionPolicy } from "./policies";
 import type {
   CollaborationSnapshot,
   CollaborationState,
@@ -48,6 +48,10 @@ export interface DecisionContext {
   lastGroupDeliveredAt?: string | null;
   /** policy-v2-3+: triggers whose earlier prompt this scenario was followed by the same obstacle. */
   ineffectiveTriggers?: InterventionTrigger[];
+  /** policy-unified-1+: when a member last asked the group AI by hand in this scenario. */
+  lastManualGroupAt?: string | null;
+  /** policy-unified-1+: a group AI reply (manual or accepted offer) is being generated. */
+  groupGenerationInProgress?: boolean;
 }
 
 export const TRIGGER_SUPPORT: Record<
@@ -71,20 +75,20 @@ const PRIORITY: InterventionTrigger[] = [
   "possible_participation_imbalance",
 ];
 
-/** Shown to members behind "Why am I seeing this?". Never names or ranks anyone. */
+/** Shown to members behind "Why this suggestion?". Never names or ranks anyone. */
 export const GROUP_EXPLANATIONS: Record<string, string> = {
   initial_silence:
-    "Your group has been on this scenario for a few minutes and nothing has been written yet. The AI facilitator can suggest a way to get started. You can decline.",
+    "No new group activity for a while: nothing has been written since your group started this scenario. The AI can suggest a simple way to get started. You can say no.",
   stalled_discussion:
-    "There have been no new messages or edits for a few minutes. A short check-in can help a group decide what to do next. You can decline.",
+    "No new group activity for a while: there have been no new messages or answer edits for a few minutes. A short collaboration question can help you decide what to do next. You can say no.",
   explicit_confusion:
-    "Someone wrote that they are unsure how to continue, and nobody had replied yet. The facilitator can suggest a question to think about together. It will not give the answer.",
+    "Someone wrote that they are unsure how to continue, and nobody had replied yet. The AI can suggest a question to think about together. It will not give the answer.",
   unresolved_disagreement:
-    "The group seems to see this differently and has not reached agreement yet. Disagreement is useful; the facilitator can suggest a way to compare the views. It will not decide who is right.",
+    "The discussion may be repeating the same positions without new reasons or evidence. The AI can suggest a fair way to compare the views. It will not decide who is right.",
   possible_participation_imbalance:
-    "So far the discussion has come mostly from part of the group. The facilitator can suggest a way to hear every viewpoint. Nobody is being singled out, and everyone decides how much to say.",
+    "So far the discussion has come mostly from part of the group. The AI can suggest a way to hear every viewpoint. Nobody is being singled out, and everyone decides how much to say.",
   coordination_request:
-    "Someone asked how the group should organise the work. The facilitator can suggest a way to divide the thinking. The group decides.",
+    "Someone asked how the group should organise the work. The AI can suggest a way to divide the thinking. The group decides.",
 };
 
 export const PRIVATE_EXPLANATION =
@@ -110,6 +114,11 @@ const NO_ACTION_EXPLANATIONS: Record<string, string> = {
   awaiting_outcome: "A group prompt was delivered recently; its effect is observed before offering another.",
   previous_prompt_ineffective:
     "The same kind of prompt was already delivered in this scenario and the difficulty continued; it is not repeated.",
+  not_a_proactive_group_reason:
+    "Proactive group offers are only made when the group seems stuck or going in circles; this situation is left to the members (and to private help).",
+  final_answer_in_progress: "A member is confirming the final answer; the group is not interrupted.",
+  group_ai_generating: "A group AI reply is already being prepared.",
+  recent_manual_group_request: "A member asked the group AI by hand recently; no extra offer is added.",
 };
 
 /** Inferred patterns need the group-state estimate to agree before the group is interrupted. */
@@ -159,7 +168,10 @@ export class InterventionDecisionEngine {
       const candidate = this.chooseScope(assessment, snapshot, ctx);
       const eligibility = this.checkEligibility(candidate, snapshot, ctx);
       if (!eligibility.ok) {
-        firstRejection ??= { candidate, reasonCode: eligibility.reasonCode };
+        // A situation the unified rules never act on should not hide why an eligible trigger was held back.
+        if (!firstRejection || firstRejection.reasonCode === "not_a_proactive_group_reason") {
+          firstRejection = { candidate, reasonCode: eligibility.reasonCode };
+        }
         continue;
       }
       if (candidate.scope === "group" && !ctx.capabilities.proactiveGroup) {
@@ -233,8 +245,16 @@ export class InterventionDecisionEngine {
       return { ok: true };
     }
 
+    const unified = unifiedGroupRulesOf(policy);
+    if (unified && !unified.proactiveTriggers.includes(assessment.trigger)) {
+      return { ok: false, reasonCode: "not_a_proactive_group_reason" };
+    }
     const online = snapshot.onlineParticipantIds.filter((id) => snapshot.activeParticipantIds.includes(id));
     if (online.length < policy.minActiveMembersForGroupTriggers) return { ok: false, reasonCode: "group_not_present" };
+    if (unified && (snapshot.readyParticipantIds?.length ?? 0) > 0) {
+      return { ok: false, reasonCode: "final_answer_in_progress" };
+    }
+    if (unified && ctx.groupGenerationInProgress) return { ok: false, reasonCode: "group_ai_generating" };
     const learningAware = learningAwareOf(policy);
     if (learningAware && ctx.groupState) {
       // V2.3: the group-state estimate replaces the activity-only "productive" check,
@@ -259,6 +279,9 @@ export class InterventionDecisionEngine {
       return { ok: false, reasonCode: "max_prompts_reached" };
     }
     if (!this.checkCooldown(ctx.lastProactiveAt, snapshot.now, policy)) return { ok: false, reasonCode: "cooldown_active" };
+    if (unified && !this.checkCooldown(ctx.lastManualGroupAt ?? null, snapshot.now, policy)) {
+      return { ok: false, reasonCode: "recent_manual_group_request" };
+    }
     if (ctx.dismissedTriggers.includes(assessment.trigger)) return { ok: false, reasonCode: "previously_dismissed" };
     return { ok: true };
   }

@@ -101,6 +101,15 @@ export const MANUAL_GROUP_SUPPORT_TYPES: GroupSupportType[] = [
   "reflection_checkpoint",
 ];
 
+/** Short labels for the group AI buttons next to the Step 1 chat composer. */
+export const GROUP_BUTTON_LABELS: Partial<Record<GroupSupportType, string>> = {
+  discussion_summary: "Summarize",
+  cognitive_division: "Divide the thinking",
+  disagreement_mediation: "Compare views",
+  reasoning_prompt: "Guiding question",
+  reflection_checkpoint: "Check-in",
+};
+
 /** Private proactive help is limited to the least intrusive content levels. */
 export const PRIVATE_OFFER_SUPPORT_TYPES = ["hint", "guiding_question", "explanation"] as const;
 export type PrivateOfferSupportType = (typeof PRIVATE_OFFER_SUPPORT_TYPES)[number];
@@ -169,6 +178,8 @@ export interface CollaborationSnapshot {
   discussion: DiscussionEntry[];
   groupAnswer: string;
   submitted: boolean;
+  /** Members who have clicked "I am good" on the final answer (submission under way). */
+  readyParticipantIds?: string[];
   previousInterventions: PreviousIntervention[];
   /** Members who opted in to private proactive offers. */
   privateOptInParticipantIds: string[];
@@ -228,6 +239,8 @@ export interface InterventionView {
   reasonExplanation: string;
   aiOrigin: string | null;
   createdAt: string;
+  /** When generation was requested (a manual request, or the first "yes" to an offer). */
+  acceptedAt: string | null;
   deliveredAt: string | null;
   failureReason: string | null;
   /** This member's own latest feedback on the item. */

@@ -104,8 +104,8 @@ function SuggestionCard({
       aria-live="polite"
       className="fixed right-4 bottom-4 z-40 w-[22rem] max-w-[calc(100vw-2rem)] rounded-2xl border-2 border-indigo-500 bg-white p-4 shadow-xl"
     >
-      <p id={titleId} className="text-xs font-semibold tracking-wide text-indigo-700 uppercase">
-        Private suggestion · only you can see this
+      <p id={titleId} className="text-xs font-semibold tracking-wide text-indigo-700">
+        Private AI suggestion — only you can see this
       </p>
 
       {item.status === "suggested" && (

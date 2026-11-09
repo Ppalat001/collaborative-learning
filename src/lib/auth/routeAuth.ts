@@ -7,7 +7,7 @@ import {
   conditionManager,
   type StudyAssignment,
 } from "@/lib/intervention/ResearchConditionManager";
-import { EligibilityError, eligibilityGuard } from "@/lib/intervention/ResearchEligibilityGuard";
+import { eligibilityGuard, isEligibilityError } from "@/lib/intervention/ResearchEligibilityGuard";
 import { getParticipantInSession, getSessionByCode } from "@/lib/services/sessions";
 
 type Session = NonNullable<Awaited<ReturnType<typeof getSessionByCode>>>;
@@ -26,10 +26,11 @@ export interface ParticipantContext extends SessionContext {
 type Failure = { ok: false; response: NextResponse };
 
 export function errorResponse(error: unknown, fallback = "Request failed"): NextResponse {
-  if (error instanceof EligibilityError) {
+  if (isEligibilityError(error)) {
+    const retry = error.retryAfterSeconds;
     return NextResponse.json(
-      { error: error.message, code: error.code, blockers: error.blockers },
-      { status: error.status }
+      { error: error.message, code: error.code, blockers: error.blockers, ...(retry ? { retryAfterSeconds: retry } : {}) },
+      { status: error.status, ...(retry ? { headers: { "Retry-After": String(retry) } } : {}) }
     );
   }
   if (error && typeof error === "object" && "status" in error && error instanceof Error) {

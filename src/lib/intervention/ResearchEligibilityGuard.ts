@@ -11,10 +11,21 @@ export class EligibilityError extends Error {
     message: string,
     readonly code: string,
     readonly status: number,
-    readonly blockers: string[] = []
+    readonly blockers: string[] = [],
+    /** Server-derived wait before the same request can succeed (rate limits). */
+    readonly retryAfterSeconds?: number
   ) {
     super(message);
+    this.name = "EligibilityError";
   }
+}
+
+/**
+ * In the custom server the orchestrator is shared through globalThis, so an error it
+ * throws can come from another copy of this module than the route's, and instanceof fails.
+ */
+export function isEligibilityError(error: unknown): error is EligibilityError {
+  return error instanceof EligibilityError || (error instanceof Error && error.name === "EligibilityError");
 }
 
 export interface MemberReadiness {

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { checkParticipantToken, issueParticipantToken } from "@/lib/auth/participantAuth";
 import { AdaptiveScaffoldingEngine, type ParticipantHistory } from "@/lib/intervention/AdaptiveScaffoldingEngine";
-import { getPolicy, listPolicyVersions } from "@/lib/intervention/policies";
+import { getPolicy, listPolicyVersions, unifiedGroupRulesOf } from "@/lib/intervention/policies";
 import {
   capabilitiesFor,
   normalizeFeatures,
@@ -82,7 +82,7 @@ describe("ResearchConditionManager release gate", () => {
     const result = new ResearchConditionManager({}).planAssignment({ createdVia: "home_page" });
     assert.ok(result.ok && result.plan);
     assert.equal(result.plan.researchCondition, "proactive_adaptive");
-    assert.equal(result.plan.interventionPolicyVersion, "policy-v2-3");
+    assert.equal(result.plan.interventionPolicyVersion, "policy-unified-1");
     assert.equal(result.plan.assignmentMethod, "configured_default");
     assert.equal(result.plan.createdVia, "home_page");
     assert.equal(result.plan.minGroupSize, 2);
@@ -136,7 +136,7 @@ describe("ResearchConditionManager release gate", () => {
     assert.equal(result.ok, false);
     const current = manager.planAssignment({ createdVia: "admin", condition: "proactive_adaptive" });
     assert.ok(current.ok && current.plan);
-    assert.equal(current.plan.interventionPolicyVersion, "policy-v2-3");
+    assert.equal(current.plan.interventionPolicyVersion, "policy-unified-1");
   });
 
   test("ADAPTIVE_V2_POLICY_VERSION pins new groups of an ongoing cohort to policy-v2-2", () => {
@@ -171,6 +171,34 @@ describe("ResearchConditionManager release gate", () => {
     ] as const) {
       assert.equal(v23[key], v22[key], key);
     }
+  });
+
+  test("policy-unified-1 copies policy-v2-3 except one proactive group offer and two offer reasons", () => {
+    const v23 = getPolicy("policy-v2-3");
+    const unified = getPolicy("policy-unified-1");
+    assert.equal(unified.testOnly, false);
+    assert.equal(unified.maxProactiveGroupPerScenario, 1);
+    assert.deepEqual(unified.learningAware?.groupOffers, {
+      dismissal: "per_member",
+      proactiveTriggers: ["initial_silence", "stalled_discussion", "unresolved_disagreement"],
+    });
+    assert.equal(unifiedGroupRulesOf(v23), null);
+    for (const key of [
+      "initialSilenceSeconds",
+      "stallSeconds",
+      "cooldownSeconds",
+      "offerExpirySeconds",
+      "maxManualGroupRequestsPerScenario",
+      "manualRequestCooldownSeconds",
+      "maxProactivePrivatePerParticipantPerScenario",
+    ] as const) {
+      assert.equal(unified[key], v23[key], key);
+    }
+    assert.equal(unified.initialSilenceSeconds, 120);
+    assert.equal(unified.stallSeconds, 180);
+    assert.equal(unified.maxManualGroupRequestsPerScenario, 6);
+    assert.equal(unified.manualRequestCooldownSeconds, 30);
+    assert.deepEqual(unified.adaptivePrivate, v23.adaptivePrivate);
   });
 
   test("groups record every version and the condition", () => {

@@ -1,6 +1,17 @@
 import policyData from "@/data/intervention-policies.json";
+import type { InterventionTrigger } from "./types";
 
 export type BetaPrior = [alpha: number, beta: number];
+
+/** Triggers that can lead to a proactive group offer at all (group process situations). */
+const GROUP_OFFER_TRIGGERS: InterventionTrigger[] = [
+  "initial_silence",
+  "stalled_discussion",
+  "explicit_confusion",
+  "unresolved_disagreement",
+  "possible_participation_imbalance",
+  "coordination_request",
+];
 
 /**
  * Settings for the per-member learning model behind private popup offers. The
@@ -88,7 +99,16 @@ export interface LearningAwarePolicy {
     answerSynthesisMinChars: number;
   };
   classifier: { enabled: boolean; timeoutMs: number; minConfidence: number; minSecondsBetweenCalls: number };
-  groupOffers: { dismissal: "per_member" };
+  groupOffers: {
+    dismissal: "per_member";
+    /**
+     * policy-unified-1 and later: the only reasons for a proactive group offer.
+     * Its presence also keeps offers away while a member is confirming the final
+     * answer, while a group AI reply is being generated, and for `cooldownSeconds`
+     * after a manual group AI request. Absent on policy-v2-3, which keeps its rules.
+     */
+    proactiveTriggers?: InterventionTrigger[];
+  };
   outcome: { windowSeconds: number; confoundWindowSeconds: number };
   feedback: { enabled: boolean; promptDelaySeconds: number };
   scaffolding: { fadeAfterIndependentScenarios: number; requireCorroboratedNeed: boolean };
@@ -215,12 +235,30 @@ function validateLearningAware(version: string, la: LearningAwarePolicy, hasAdap
     if (typeof value !== "boolean") fail(`${key} must be true or false`);
   }
   if (la.groupOffers?.dismissal !== "per_member") fail('groupOffers.dismissal must be "per_member"');
+  const triggers = la.groupOffers.proactiveTriggers;
+  if (
+    triggers !== undefined &&
+    (!Array.isArray(triggers) || triggers.length === 0 || !triggers.every((t) => GROUP_OFFER_TRIGGERS.includes(t)))
+  ) {
+    fail("groupOffers.proactiveTriggers must list group triggers");
+  }
   if (!hasAdaptive) fail("requires adaptivePrivate settings");
 }
 
 /** The V2.3 settings of a policy, or null for policies that predate V2.3. */
 export function learningAwareOf(policy: InterventionPolicy | null | undefined): LearningAwarePolicy | null {
   return policy?.learningAware ?? null;
+}
+
+/**
+ * The final unified group-offer rules (policy-unified-1 and later), or null for
+ * older policies, whose groups keep the rules they were created with.
+ */
+export function unifiedGroupRulesOf(
+  policy: InterventionPolicy | null | undefined
+): { proactiveTriggers: InterventionTrigger[] } | null {
+  const triggers = policy?.learningAware?.groupOffers.proactiveTriggers;
+  return triggers ? { proactiveTriggers: triggers } : null;
 }
 
 function validateAdaptive(version: string, adaptive: AdaptivePrivatePolicy) {

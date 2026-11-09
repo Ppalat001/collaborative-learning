@@ -88,10 +88,10 @@ export function ShareIdeaControl({
   if (sources.length === 0) return null;
   return (
     <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
-      <p className="text-sm font-medium text-slate-900">Share an idea with your group</p>
+      <p className="text-sm font-medium text-slate-900">Share a short idea with your group</p>
       <p className="text-xs text-slate-500">
         Private AI responses stay private unless you share them. Edit the text so it shows only what you want the
-        group to see. Full expert answers cannot be shared this way.
+        group to see (up to {SHARE_MAX} characters). Full expert answers cannot be shared this way.
       </p>
       <select
         value={selectedId}
@@ -134,7 +134,10 @@ export function ShareIdeaControl({
             </button>
           ) : (
             <div className="mt-2 rounded-lg bg-slate-50 p-3 text-sm">
-              <p className="text-xs text-slate-500">Your group will see exactly this, with your name:</p>
+              <p className="text-xs text-slate-500">
+                Your group will see exactly this in the Step 1 chat, marked &quot;Shared by you · AI-assisted
+                excerpt&quot;:
+              </p>
               <blockquote className="mt-1 border-l-4 border-slate-300 pl-3 whitespace-pre-line text-slate-800">
                 {text.trim()}
               </blockquote>
@@ -161,7 +164,7 @@ export function ShareIdeaControl({
               </button>
             </div>
           )}
-          {done && <p className="mt-2 text-xs text-emerald-700">Shared with your group.</p>}
+          {done && <p className="mt-2 text-xs text-emerald-700">Shared with your group in the Step 1 chat.</p>}
         </>
       )}
     </div>

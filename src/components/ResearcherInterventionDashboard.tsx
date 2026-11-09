@@ -144,6 +144,7 @@ interface Dashboard {
     learnerModels: number;
     learnerModelUpdates: number;
   };
+  aiUsage: AiUsage;
   failures: { id: string; scenarioOrder: number; supportType: string; reason: string | null; at: string | null }[];
   timeline: {
     id: string;
@@ -189,6 +190,97 @@ async function download(url: string, filename: string, password: string) {
   link.href = URL.createObjectURL(await res.blob());
   link.download = filename;
   link.click();
+}
+
+interface AiUsage {
+  humanMessages: number;
+  groupAi: {
+    manualRequests: number;
+    manualReplies: number;
+    proactiveOffers: number;
+    proactiveAccepted: number;
+    proactiveReplies: number;
+    proactiveExpired: number;
+    proactiveClosedByMembers: number;
+  };
+  privateAi: {
+    manualCalls: number;
+    popupsOffered: number;
+    popupsAccepted: number;
+    popupsDeclined: number;
+    popupsDeferred: number;
+    popupsExpired: number;
+  };
+  sharedExcerpts: number;
+  origins: { groupAndPopups: Record<string, number>; step2: Record<string, number> };
+  feedback: { progress: Record<string, number>; outcomes: Record<string, number>; unknownOutcomes: number };
+  tokens: { input: number; output: number };
+  failures: number;
+}
+
+function UsageList({ title, rows }: { title: string; rows: [string, number][] }) {
+  return (
+    <div className="rounded-lg border border-slate-200 p-3">
+      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</div>
+      <ul className="mt-1 space-y-0.5 text-sm text-slate-700">
+        {rows.map(([label, count]) => (
+          <li key={label} className="flex justify-between gap-3">
+            <span>{label}</span>
+            <span className="font-mono">{count}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** Each kind of AI use on its own line; human chat messages are never mixed in. */
+function AiUsagePanel({ usage }: { usage: AiUsage }) {
+  return (
+    <div>
+      <h4 className="text-sm font-semibold text-slate-800">AI use (counted separately)</h4>
+      <div className="mt-1 grid gap-3 sm:grid-cols-3">
+        <UsageList
+          title="Step 1 group chat"
+          rows={[
+            ["Human messages", usage.humanMessages],
+            ["Manual group AI requests", usage.groupAi.manualRequests],
+            ["Manual group AI replies", usage.groupAi.manualReplies],
+            ["Proactive group offers", usage.groupAi.proactiveOffers],
+            ["Proactive offers accepted", usage.groupAi.proactiveAccepted],
+            ["Proactive replies delivered", usage.groupAi.proactiveReplies],
+            ["Offers expired (not opened)", usage.groupAi.proactiveExpired],
+            ["Offers closed by members", usage.groupAi.proactiveClosedByMembers],
+            ["Shared private excerpts", usage.sharedExcerpts],
+          ]}
+        />
+        <UsageList
+          title="Step 2 private help"
+          rows={[
+            ["Manual private AI calls", usage.privateAi.manualCalls],
+            ["Popups offered", usage.privateAi.popupsOffered],
+            ["Popups accepted", usage.privateAi.popupsAccepted],
+            ["Popups declined (No thanks)", usage.privateAi.popupsDeclined],
+            ["Popups deferred (Not now)", usage.privateAi.popupsDeferred],
+            ["Popups expired", usage.privateAi.popupsExpired],
+          ]}
+        />
+        <UsageList
+          title="Cost and failures"
+          rows={[
+            ["Input tokens (group AI + popups)", usage.tokens.input],
+            ["Output tokens (group AI + popups)", usage.tokens.output],
+            ["Failed generations", usage.failures],
+            ["Unknown outcomes", usage.feedback.unknownOutcomes],
+          ]}
+        />
+        <Counts title="Origin: group AI + popups" values={usage.origins.groupAndPopups} />
+        <Counts title="Origin: Step 2 responses" values={usage.origins.step2} />
+        <Counts title="Progress feedback" values={usage.feedback.progress} />
+        <Counts title="Observed outcomes" values={usage.feedback.outcomes} />
+      </div>
+    </div>
+  );
 }
 
 function Counts({ title, values }: { title: string; values: Record<string, number> }) {
@@ -704,6 +796,7 @@ export function ResearcherInterventionDashboard({ password, active, selectedCode
             <Counts title="AI origin" values={dashboard.counts.aiOrigins} />
             <Counts title="Member responses" values={dashboard.counts.feedback} />
           </div>
+          {dashboard.aiUsage && <AiUsagePanel usage={dashboard.aiUsage} />}
 
           {dashboard.failures.length > 0 && (
             <div>
